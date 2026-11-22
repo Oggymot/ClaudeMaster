@@ -166,7 +166,16 @@ ev:SetScript('OnEvent', function(_, event, unit, arg2, spellID)
       mark(key, name, DOT[name], false)
       if name == 'Bane of Havoc' then W.havocAt = now end
     elseif name == 'Conflagrate' then
-      for _, kk in ipairs(key) do if W.dots[kk] then W.dots[kk].Immolate = nil end end   -- Conflagrate spotrebuje Immolate
+      -- Conflagrate spotrebuje Immolate - na Foreveru ale talent Shadow and Flame dava sanci
+      -- (5/5 = vzdy), ze Immolate zustane. Pri 5/5 nic nemazat, jinak si ho schovat: kdyz
+      -- Conflagrate zustane pouzitelny (vyzaduje Immolate na cili), Immolate tam porad je.
+      if (ns.talent('Shadow and Flame') or 0) < 5 then
+        W.immSaved = W.immSaved or {}
+        for _, kk in ipairs(key) do
+          local d = W.dots[kk]
+          if d and d.Immolate then W.immSaved[kk] = d.Immolate d.Immolate = nil end
+        end
+      end
     elseif name == 'Demon Armor' or name == 'Demon Skin' then
       W.armorUntil = now + 1800
     elseif name == 'Soulstone Resurrection' then
@@ -185,8 +194,21 @@ local function dotEntry(name)
     if e and e.untilT > GetTime() then return e end
   end
 end
+local function immolateKept()
+  if not W.immSaved then return nil end
+  local now = GetTime()
+  for _, kk in ipairs(targetKeys()) do
+    local e = W.immSaved[kk]
+    if e and e.untilT > now then
+      local f = C_Spell and C_Spell.IsSpellUsable or IsUsableSpell
+      local id = ns.id('Conflagrate')
+      if f and id and safeBool(pc(f, id)) == true then return e end
+    end
+  end
+end
 local function dotLeft(name)
   local e = dotEntry(name)
+  if not e and name == 'Immolate' then e = immolateKept() end
   local left = e and (e.untilT - GetTime()) or 0
   if left <= 0 and (ns.targetDebuff(name) or ns.cdm('target', name)) then left = 3 end
   return left
@@ -871,7 +893,7 @@ local function apply(c, s, a)
     if BANE[n] then for k in pairs(BANE) do s.dots[k] = 0 end end
     s.dots[n] = s.t + ct + DOT[n]
   end
-  if n == 'Conflagrate' then s.dots.Immolate = 0 end
+  if n == 'Conflagrate' and (ns.talent('Shadow and Flame') or 0) < 5 then s.dots.Immolate = 0 end
   s.t = s.t + dur
 end
 
