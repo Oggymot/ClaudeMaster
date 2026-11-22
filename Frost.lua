@@ -302,7 +302,7 @@ local function decide(c, s)
         return A('Cryoblast', 'Otevri silnym kouzlem') end
       if can('Pyroblast') and not c.group and s.step == 1 and c.inRange ~= false then
         return A('Pyroblast', 'Pull: Pyroblast z max. dosahu (mob k tobe dojde az po dopadu)') end
-      local adds = (c.enemies.idle or 0) > 0 and ('  |cffffcc00pozor, %d dalsi blizko|r'):format(c.enemies.idle) or ''
+      local adds = (c.enemies.idle or 0) > 0 and (' |cffffcc00(+%d blizko)|r'):format(c.enemies.idle) or ''
       return A(filler, (c.inRange == false and 'Pull: dojdi na dosah (30 yd)' or 'Pull: ' .. filler .. ' z max. dosahu') .. adds)
     end
     -- HP: najist se

@@ -330,35 +330,20 @@ end
 function Duo.ready(c, short)
   local p = Duo.peer()
   if not p then return nil end
-  if short then
-    -- kompaktne: "ty: mana 42% | Oggy: AI, mana 52%"
-    local me, them = {}, {}
-    if c.php and c.php < 70 then me[#me + 1] = ('HP %d%%'):format(c.php) end
-    if c.manaKnown and c.mana < 0.6 then me[#me + 1] = ('mana %d%%'):format(math.floor(c.mana * 100)) end
-    if c.drinking or c.eating then me[#me + 1] = 'pijes' end
-    if p.drink then them[#them + 1] = 'pije' end
-    if p.prep and not p.combat and GetTime() - p.at < 6 then them[#them + 1] = abbr(p.prep) end
-    if p.hp and p.hp < 70 then them[#them + 1] = ('HP %d%%'):format(p.hp) end
-    if p.mana and p.mana < 0.6 then them[#them + 1] = ('mana %d%%'):format(math.floor(p.mana * 100)) end
-    if p.unit and safeBool(pc(UnitIsDeadOrGhost, p.unit)) == true then them[#them + 1] = 'mrtvy' end
-    if #me == 0 and #them == 0 then return true, '|cff66ee77READY|r' end
-    local parts = {}
-    if #me > 0 then parts[#parts + 1] = 'ty: ' .. table.concat(me, ', ') end
-    if #them > 0 then parts[#parts + 1] = p.name .. ': ' .. table.concat(them, ', ') end
-    return false, '|cffffcc00Cekej|r |cffe0d090' .. table.concat(parts, ' | ') .. '|r'
-  end
-  local why = {}
-  local me = c.php
-  if me and me < 70 then why[#why + 1] = ('ty HP %d %%'):format(me) end
-  if c.manaKnown and c.mana < 0.6 then why[#why + 1] = ('ty mana %d %%'):format(math.floor(c.mana * 100)) end
-  if c.drinking or c.eating then why[#why + 1] = 'ty jis/pijes' end
-  if p.drink then why[#why + 1] = p.name .. ' pije' end
-  if p.prep and not p.combat and GetTime() - p.at < 6 then why[#why + 1] = ('%s se chysta (%s)'):format(p.name, p.prep) end
-  if p.hp and p.hp < 70 then why[#why + 1] = ('%s HP %d %%'):format(p.name, p.hp) end
-  if p.mana and p.mana < 0.6 then why[#why + 1] = ('%s mana %d %%'):format(p.name, math.floor(p.mana * 100)) end
-  if p.unit and safeBool(pc(UnitIsDeadOrGhost, p.unit)) == true then why[#why + 1] = p.name .. ' je mrtvy' end
-  if #why == 0 then return true, '|cff66ee77READY|r' end
-  return false, '|cffffcc00Cekej: ' .. table.concat(why, ', ') .. '|r'
+  local me, them = {}, {}
+  if c.php and c.php < 70 then me[#me + 1] = ('HP %d%%'):format(c.php) end
+  if c.manaKnown and c.mana < 0.6 then me[#me + 1] = ('mana %d%%'):format(math.floor(c.mana * 100)) end
+  if c.drinking or c.eating then me[#me + 1] = 'pijes' end
+  if p.drink then them[#them + 1] = 'pije' end
+  if p.prep and not p.combat and GetTime() - p.at < 6 then them[#them + 1] = short and abbr(p.prep) or p.prep end
+  if p.hp and p.hp < 70 then them[#them + 1] = ('HP %d%%'):format(p.hp) end
+  if p.mana and p.mana < 0.6 then them[#them + 1] = ('mana %d%%'):format(math.floor(p.mana * 100)) end
+  if p.unit and safeBool(pc(UnitIsDeadOrGhost, p.unit)) == true then them[#them + 1] = 'mrtvy' end
+  if #me == 0 and #them == 0 then return true, '|cff66ee77READY|r' end
+  local parts = {}
+  if #me > 0 then parts[#parts + 1] = 'ty: ' .. table.concat(me, ', ') end
+  if #them > 0 then parts[#parts + 1] = p.name .. ': ' .. table.concat(them, ', ') end
+  return false, '|cffffcc00Cekej|r |cffe0d090' .. table.concat(parts, ' | ') .. '|r'
 end
 
 -- /cm duo: stav spojeni

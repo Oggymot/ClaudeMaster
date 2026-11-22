@@ -547,7 +547,7 @@ local function decide(c, s)
             { icon = 'Interface\\Icons\\Spell_Shadow_MindSteal' })
         end
       end
-      local adds = (c.enemies.idle or 0) > 0 and ('  |cffffcc00pozor, %d dalsi blizko|r'):format(c.enemies.idle) or ''
+      local adds = (c.enemies.idle or 0) > 0 and (' |cffffcc00(+%d blizko)|r'):format(c.enemies.idle) or ''
       local sendPet = (c.pet and not c.group) and ' (nejdriv posli peta)' or ''
       if s.step == 1 and c.tough and ready('Soul Fire') and c.shards > keep and not c.moving then
         return A('Soul Fire', 'Silny cil: otevri Soul Fire z max. dosahu' .. adds)

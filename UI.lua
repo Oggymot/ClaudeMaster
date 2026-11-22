@@ -420,8 +420,6 @@ local function infoLines(c)
     if (e.cluster or 0) >= 2 and e.cluster ~= e.onMe then t = t .. ('  pohromade %d'):format(e.cluster) end
     if (e.cc or 0) > 0 then t = t .. ('  |cffc080ffovce %d|r'):format(e.cc) end
     lines[#lines + 1] = t
-  elseif e.idle > 0 and c.hostile then
-    lines[#lines + 1] = ('|cffffcc00Pozor: %d dalsi mob(y) blizko|r'):format(e.idle)
   end
   -- mimo boj: staci mana na dalsi boj?
   if not c.inCombat and c.manaKnown and ns.Mem then
@@ -625,7 +623,7 @@ function UI.update(c, plan, util)
     if #extra > 0 and db.compact then
       sideTxt = table.concat(extra, '\n')
     elseif #extra > 0 then
-      local e = table.concat(extra, '  ')
+      local e = table.concat(extra, '   ')
       txt = (txt ~= '' and (txt .. '\n' .. e)) or e
     end
   end
