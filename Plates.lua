@@ -249,6 +249,12 @@ local function make(plate)
   o.dots:SetPoint('LEFT', o.aggro, 'RIGHT', 4, 0)
   o.dots:SetTextColor(0.75, 0.5, 1)
   -- CC (ovce): vlevo od pismen
+  -- questovy mob (mas ho zabit / dropuje questovy item): zluty vykricnik vpravo od health baru
+  o.quest = o:CreateTexture(nil, 'OVERLAY')
+  o.quest:SetSize(14, 14)
+  o.quest:SetPoint('LEFT', hb, 'RIGHT', 2, 0)
+  o.quest:SetTexture('Interface\\GossipFrame\\AvailableQuestIcon')
+  o.quest:Hide()
   o.cc = o:CreateTexture(nil, 'OVERLAY')
   o.cc:SetSize(18, 18)
   o.cc:SetPoint('RIGHT', o.who, 'LEFT', -3, 0)
@@ -282,6 +288,7 @@ end
 local function clear(o)
   o.who:SetText('') o.aggro:SetText('') o.dots:SetText('')
   o.cc:Hide() o.ccq:Hide() o.ccq:SetText('')
+  if o.quest then o.quest:Hide() end
   for i = 1, 4 do o.kick[i]:Hide() end
 end
 
@@ -361,6 +368,11 @@ local function update()
         seen[o] = true
         clear(o)
         local myId = ids[pl] or nil
+        -- questovy mob (sedy = tagnuty cizim hracem: polopruhledne)
+        if o.quest and ns.Quests and ns.Quests.mobNeed and ns.Quests.mobNeed(u) then
+          o.quest:SetAlpha(safeBool(pc(UnitIsTapDenied, u)) == true and 0.35 or 1)
+          o.quest:Show()
+        end
         -- kdo ho bije: ja (muj cil) + parťák (jeho cil ze zpravy)
         if grouped then
           local who = {}

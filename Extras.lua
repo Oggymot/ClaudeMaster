@@ -20,6 +20,7 @@ local ICON = {
   onme = 'Interface\\Icons\\Ability_Warrior_DefensiveStance', elite = 'Interface\\Icons\\Achievement_Boss_Ragnaros',
   mana = 'Interface\\Icons\\INV_Potion_76', drink = 'Interface\\Icons\\INV_Drink_18', hp = 'Interface\\Icons\\Spell_Holy_SealOfSacrifice',
   summon = 'Interface\\Icons\\Spell_Shadow_RaiseDead', join = 'Interface\\Icons\\Ability_Warrior_Charge',
+  quest = 'Interface\\GossipFrame\\AvailableQuestIcon',
 }
 ns.ICON = ICON
 function ns.ico(key, size)

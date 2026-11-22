@@ -453,9 +453,12 @@ local SEP = '  |cff556070-|r  '
 -- (ikonky: skola kouzel, utek, leceni, CC, patrola - bez textu)
 function UI.mobText(c)
   local m = c.mob
-  if not m then return nil end
   local I = ns.ico
   local p = {}
+  -- questovy mob: vykricnik + kolik jeste
+  local q = c.hostile and ns.Quests and ns.Quests.mobNeed and ns.Quests.mobNeed('target')
+  if q then p[#p + 1] = I('quest') .. (q.have and q.need and ('|cffffd100%d/%d|r'):format(q.have, q.need) or '') end
+  if not m then return #p > 0 and table.concat(p, ' ') or nil end
   if m.caster then p[#p + 1] = I(m.school and ns.ICON[m.school] and m.school or 'arcane') end
   local d = m.db
   if d and #d.heal > 0 then p[#p + 1] = I('heal') end

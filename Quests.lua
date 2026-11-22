@@ -113,3 +113,104 @@ function Q.toggle(arg)
   Q.last = 0
   request()
 end
+
+------------------------------------------------------------------------------------------
+-- Questovi moby: koho mas zabit (nebo z koho padne questovy item)
+--  1) tooltip moba (hra u nej sama ukazuje radek s cilem questu, napr. "Kobold Vermin slain: 3/10")
+--  2) jmeno moba = nesplneny cil typu "monster" v quest logu
+--  3) databaze dropu: mob dropuje questovy item, ktery jeste sbiras
+------------------------------------------------------------------------------------------
+Q.objs, Q.objAt, Q.dirty = {}, 0, true
+local function objKey(text)
+  local t = text:gsub('%s*:?%s*%d+%s*/%s*%d+%s*', ' '):gsub('^%s+', ''):gsub('%s+$', '')
+  t = t:gsub('%s+slain$', ''):gsub('%s+killed$', ''):gsub('^Kill%s+', '')
+  return t:lower()
+end
+local function rebuild()
+  local now = GetTime()
+  if not Q.dirty and now - Q.objAt < 10 then return Q.objs end
+  Q.dirty, Q.objAt = false, now
+  local out = {}
+  local n = (QL and QL.GetNumQuestLogEntries) and safeNum(pc(QL.GetNumQuestLogEntries)) or 0
+  for i = 1, n do
+    local info = pc(QL.GetInfo, i)
+    if type(info) == 'table' and not info.isHeader and safeNum(info.questID) then
+      local list = QL.GetQuestObjectives and pc(QL.GetQuestObjectives, info.questID)
+      for _, o in ipairs(type(list) == 'table' and list or {}) do
+        local text, typ = safe(o.text), safe(o.type)
+        if type(text) == 'string' and safe(o.finished) ~= true and (typ == 'monster' or typ == 'item') then
+          local have, need = text:match('(%d+)%s*/%s*(%d+)')
+          out[#out + 1] = { title = safe(info.title) or '?', text = text, typ = typ, key = objKey(text),
+            have = tonumber(have) or safeNum(o.numFulfilled), need = tonumber(need) or safeNum(o.numRequired) }
+        end
+      end
+    end
+  end
+  Q.objs = out
+  return out
+end
+pcall(f.RegisterEvent, f, 'QUEST_WATCH_UPDATE')
+local oldOnEvent = f:GetScript('OnEvent')
+f:SetScript('OnEvent', function(self, e, ...)
+  if e == 'QUEST_LOG_UPDATE' or e == 'QUEST_ACCEPTED' or e == 'QUEST_WATCH_UPDATE' then Q.dirty = true wipe(Q.cache or {}) end
+  if e ~= 'QUEST_WATCH_UPDATE' then oldOnEvent(self, e, ...) end
+end)
+
+local TT_OBJ = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.QuestObjective
+local function fromTooltip(u)
+  if not (C_TooltipInfo and C_TooltipInfo.GetUnit and TT_OBJ) then return nil end
+  local data = pc(C_TooltipInfo.GetUnit, u)
+  local lines = type(data) == 'table' and data.lines
+  if type(lines) ~= 'table' then return nil end
+  for _, ln in ipairs(lines) do
+    if safe(ln.type) == TT_OBJ and safe(ln.completed) ~= true then
+      local text = safe(ln.leftText)
+      if type(text) == 'string' then
+        local have, need = text:match('(%d+)%s*/%s*(%d+)')
+        if not have or tonumber(have) < tonumber(need) then
+          -- najdi cely cil v logu (kvuli nazvu questu)
+          local k = objKey(text:gsub('^%s*%-%s*', ''))
+          for _, o in ipairs(rebuild()) do if o.key == k then return o end end
+          return { title = '?', text = text, key = k, have = tonumber(have), need = tonumber(need) }
+        end
+      end
+    end
+  end
+  return false
+end
+
+Q.cache = {}
+-- vraci cil questu pro unit (tabulka), nebo nil
+function Q.mobNeed(u)
+  if not UnitExists(u) or safeBool(pc(UnitIsPlayer, u)) == true then return nil end
+  local name = safe(pc(UnitName, u))
+  if type(name) ~= 'string' then return nil end
+  local key = safe(pc(UnitGUID, u)) or name
+  local now = GetTime()
+  local hit = Q.cache[key]
+  if hit and now - hit.at < 3 then return hit.v or nil end
+  local objs = rebuild()
+  local v
+  if #objs > 0 then
+    v = fromTooltip(u)
+    if v == nil or v == false then
+      local ln = name:lower()
+      for _, o in ipairs(objs) do
+        if o.typ == 'monster' and (o.key == ln or o.key:find(ln, 1, true)) then v = o break end
+      end
+    end
+    if not v and ns.MobDB and ns.MobDB.forUnit then
+      local r = ns.MobDB.forUnit(u)
+      for _, d in ipairs(r and r.drops or {}) do
+        local dn = d.name and d.name:lower()
+        for _, o in ipairs(objs) do
+          if o.typ == 'item' and dn and o.key == dn then v = o break end
+        end
+        if v then break end
+      end
+    end
+  end
+  Q.cache[key] = { at = now, v = v or false }
+  return v or nil
+end
+function Q.hasKillObjectives() return #rebuild() > 0 end

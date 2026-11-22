@@ -448,8 +448,9 @@ local function tagScan()
   local now = GetTime()
   if now - T.at < 0.5 then return T end
   T.at = now
-  local tapped, free = 0, 0
+  local tapped, free, qFree, qName = 0, 0, 0, nil
   local units = ns.Plates and ns.Plates.units or {}
+  local QM = ns.Quests and ns.Quests.mobNeed
   for u in pairs(units) do
     -- jmenovka ciziho hrace (jen kdyz ma hrac zapnute jmenovky pratel / nepratel)
     if safeBool(pc(UnitIsPlayer, u)) == true and safeBool(pc(UnitInParty, u)) ~= true
@@ -461,14 +462,18 @@ local function tagScan()
       and safeBool(pc(UnitIsDeadOrGhost, u)) ~= true then
       local tap = safeBool(pc(UnitIsTapDenied, u))
       if tap == true then tapped = tapped + 1
-      elseif tap == false and safeBool(pc(UnitAffectingCombat, u)) == false then free = free + 1 end
+      elseif tap == false and safeBool(pc(UnitAffectingCombat, u)) == false then
+        free = free + 1
+        local q = QM and QM(u)
+        if q then qFree = qFree + 1 qName = qName or safe(pc(UnitName, u)) T.qObj = q end
+      end
     end
   end
   local players = 0
   for k, at in pairs(seen) do
     if now - at > 60 then seen[k] = nil else players = players + 1 end
   end
-  T.tapped, T.free, T.players = tapped, free, players
+  T.tapped, T.free, T.players, T.qFree, T.qName = tapped, free, players, qFree, qName
   -- plna oblast: vic cizich (tagnutych) mobu, aspon 3 cizi hraci kolem, nebo mi nekdo nedavno vzal moba
   T.contested = tapped >= 2 or players >= 3 or now - T.stolenAt < 180
   return T
@@ -480,9 +485,27 @@ function TA.tagHint(c, s, A, ready)
   local T = tagScan()
   local now = GetTime()
   local tapped = safeBool(pc(UnitIsTapDenied, 'target'))
-  if tapped == false then T.freeAt = now return nil end
+  if tapped == false then
+    T.freeAt = now
+    -- mimo boj na volneho moba, ktery neni na quest, a kolem jsou volni questovi: kratce upozornit
+    -- (jen prvni 4 s po vyberu cile, pak uz te to nechava byt)
+    local QM = ns.Quests and ns.Quests.mobNeed
+    if not c.inCombat and QM and (T.qFree or 0) > 0 and not QM('target')
+      and safeBool(pc(UnitAffectingCombat, 'target')) == false then
+      local nm = safe(pc(UnitName, 'target'))
+      if nm ~= T.qTipName then T.qTipName, T.qTipAt = nm, now end
+      if now - (T.qTipAt or 0) < 4 then
+        local o = T.qObj
+        local cnt = o and o.have and o.need and (' %d/%d'):format(o.have, o.need) or ''
+        return A('TAG', ('Tenhle neni na quest. Na quest kolem: %s%s (volnych %d)'):format(T.qName or '?', cnt, T.qFree), 'hint',
+          { icon = 'Interface\\GossipFrame\\AvailableQuestIcon' })
+      end
+    end
+    return nil
+  end
   if tapped ~= true then return nil end
-  local more = (T.free or 0) > 0 and (' Volnych kolem: %d.'):format(T.free) or ''
+  local more = (T.qFree or 0) > 0 and (' Volnych na quest kolem: %d (%s).'):format(T.qFree, T.qName or '?')
+    or ((T.free or 0) > 0 and (' Volnych kolem: %d.'):format(T.free) or '')
   if (T.players or 0) >= 3 then more = more .. (' Hracu kolem: %d.'):format(T.players) end
   -- byl volny pred chvili a ja na nej castim = vzal mi ho nekdo
   if c.castName and now - T.freeAt < 3 then
