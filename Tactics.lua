@@ -425,23 +425,23 @@ local TAG_SPELLS = {
   WARLOCK = { 'Curse of Agony', 'Bane of Agony', 'Corruption' },
 }
 TA.tag = { at = 0, stolenAt = -999, freeAt = -999, players = 0 }
--- cizi hraci v okoli (mimo moji partu): z combat logu (dosah ~50 m) a z jmenovek hracu.
+-- cizi hraci v okoli (mimo moji partu): z jmenovek hracu a z mysi / cile.
+-- POZOR: combat log (COMBAT_LOG_EVENT_UNFILTERED) Forever addonum zakazuje - registrace
+-- vyhodi popup "blocked from an action only available to the Blizzard UI". Nepouzivat.
 -- Klic = GUID nebo jmeno, hodnota = kdy naposledy videni. Pocitaji se poslednich 60 s.
 local seen = {}
-local band = bit and bit.band
+local function notePlayer(u)
+  if safeBool(pc(UnitIsPlayer, u)) == true and safeBool(pc(UnitInParty, u)) ~= true
+    and safeBool(pc(UnitIsUnit, u, 'player')) ~= true then
+    local k = safe(pc(UnitGUID, u)) or safe(pc(UnitName, u))
+    if type(k) == 'string' then seen[k] = GetTime() end
+  end
+end
 do
-  local cf = CreateFrame('Frame')
-  pcall(cf.RegisterEvent, cf, 'COMBAT_LOG_EVENT_UNFILTERED')
-  cf:SetScript('OnEvent', function()
-    if not (CombatLogGetCurrentEventInfo and band) then return end
-    local _, _, _, srcGUID, srcName, srcFlags = CombatLogGetCurrentEventInfo()
-    local fl = safeNum(srcFlags)
-    -- 0x400 = hrac, 0x8 = mimo moji skupinu
-    if fl and band(fl, 0x400) ~= 0 and band(fl, 0x8) ~= 0 then
-      local k = safe(srcGUID) or safe(srcName)
-      if type(k) == 'string' then seen[k] = GetTime() end
-    end
-  end)
+  local mf = CreateFrame('Frame')
+  pcall(mf.RegisterEvent, mf, 'UPDATE_MOUSEOVER_UNIT')
+  pcall(mf.RegisterEvent, mf, 'PLAYER_TARGET_CHANGED')
+  mf:SetScript('OnEvent', function(_, e) notePlayer(e == 'UPDATE_MOUSEOVER_UNIT' and 'mouseover' or 'target') end)
 end
 local function tagScan()
   local T = TA.tag
@@ -453,11 +453,7 @@ local function tagScan()
   local QM = ns.Quests and ns.Quests.mobNeed
   for u in pairs(units) do
     -- jmenovka ciziho hrace (jen kdyz ma hrac zapnute jmenovky pratel / nepratel)
-    if safeBool(pc(UnitIsPlayer, u)) == true and safeBool(pc(UnitInParty, u)) ~= true
-      and safeBool(pc(UnitIsUnit, u, 'player')) ~= true then
-      local k = safe(pc(UnitGUID, u)) or safe(pc(UnitName, u))
-      if type(k) == 'string' then seen[k] = now end
-    end
+    notePlayer(u)
     if safeBool(pc(UnitCanAttack, 'player', u)) == true and safeBool(pc(UnitIsPlayer, u)) ~= true
       and safeBool(pc(UnitIsDeadOrGhost, u)) ~= true then
       local tap = safeBool(pc(UnitIsTapDenied, u))
