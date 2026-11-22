@@ -695,7 +695,13 @@ ns.scaleProbe = newProbe(1, {
     and safeBool(pc(UnitIsDeadOrGhost, 'player')) ~= true end,
   prep = function(P, i, b) b:SetMinMaxValues(0, 2) b:SetValue(1) end,
   apply = function(P, i, b) b:SetValue(UnitHealthPercent('player', true, stepCurve(1.5))) end,
-  read = function(P) ns.db.hpScale = P.fired[1] and 100 or 1 return true end,
+  -- meritko az po 3 shodnych merenich za sebou (jedno chybne mereni = vsechna HP "pod 20 %")
+  read = function(P)
+    local v = P.fired[1] and 100 or 1
+    if P.last == v then P.same = (P.same or 1) + 1 else P.last, P.same = v, 1 end
+    if P.same >= 3 then ns.db.hpScale = v P.last, P.same = nil, nil end
+    return true
+  end,
 })
 
 local function healthProbe(unit, lines)
@@ -709,7 +715,18 @@ local function healthProbe(unit, lines)
     apply = function(P, i, b)
       b:SetValue(UnitHealthPercent(unit, true, stepCurve(P.lines[i] / 100 * ns.db.hpScale)))
     end,
-    read = function(P) return readBands(P, false) end,   -- zmena = nad carou
+    read = function(P)
+      if not readBands(P, false) then return false end
+      -- kontrola meritka: hrac mimo boj "pod vsemi carami" (pod 20 %) je skoro jiste spatne meritko
+      if unit == 'player' and P.below[#P.below] and P.below[1] and not ns.inCombat()
+        and safeBool(pc(UnitIsDeadOrGhost, 'player')) ~= true then
+        P.bad = (P.bad or 0) + 1
+        if P.bad >= 2 then ns.db.hpScale = nil P.bad = 0 end   -- zmerit meritko znovu
+        return false
+      end
+      P.bad = 0
+      return true
+    end,
   })
 end
 ns.targetProbe = healthProbe('target', { 5, 10, 20, 30, 35, 40, 50, 60, 70, 80, 90 })
