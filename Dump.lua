@@ -311,6 +311,129 @@ function ns.apiProbe()
   try(o, 'range.filler', CS.IsSpellInRange, fil, 'target')
   local g = try(o, 'gcd.table', CS.GetSpellCooldown, 61304)
   field(o, 'gcd.duration', g, 'duration')
+  -- ===== rozsireni: pomocnik rotace, krivky, widgety, duration objekty =====
+  local function keys(key, t, pat)
+    if type(t) ~= 'table' then o[key] = 'NOTABLE' return end
+    local ks = {}
+    for k in pairs(t) do
+      k = tostring(k)
+      if not pat or k:find(pat) then ks[#ks + 1] = k end
+    end
+    table.sort(ks)
+    o[key] = table.concat(ks, ','):sub(1, 900)
+  end
+  local function meth(key, obj, name, ...)
+    local okf, f = pcall(function() return obj[name] end)
+    if not okf or type(f) ~= 'function' then o[key] = 'NOMETHOD' return end
+    return try(o, key, f, obj, ...)
+  end
+  local function methods(key, obj)
+    local okm, mt = pcall(getmetatable, obj)
+    if okm and type(mt) == 'table' and type(mt.__index) == 'table' then keys(key, mt.__index)
+    elseif type(obj) == 'table' then keys(key, obj)
+    else o[key] = type(obj) end
+  end
+  -- 1) vestaveny pomocnik rotace (Assisted Combat)
+  local AC = C_AssistedCombat
+  keys('x.AC.keys', AC)
+  keys('x.ActionBar.assist', C_ActionBar, 'Assist')
+  if type(AC) == 'table' then
+    try(o, 'x.AC.IsAvailable', AC.IsAvailable)
+    local n1 = try(o, 'x.AC.Next', AC.GetNextCastSpell, false)
+    try(o, 'x.AC.NextVisible', AC.GetNextCastSpell, true)
+    if n1 and n1[1] and safeNum(n1[2]) and CS.GetSpellName then try(o, 'x.AC.NextName', CS.GetSpellName, n1[2]) end
+    local rs = try(o, 'x.AC.Rotation', AC.GetRotationSpells)
+    if rs and rs[1] and type(rs[2]) == 'table' and not issec(rs[2]) then o['x.AC.RotationN'] = tostring(#rs[2]) end
+    try(o, 'x.AC.ActionSpell', AC.GetActionSpell)
+  end
+  -- 2) krivky (secret -> procenta / barva)
+  for _, g in ipairs({ 'UnitHealthMissing', 'UnitHealthPercent', 'UnitPowerPercent', 'canaccessvalue',
+      'canaccesssecrets', 'scrubsecretvalues', 'secretwrap', 'CreateColor' }) do
+    o['x.fn.' .. g] = type(_G[g])
+  end
+  keys('x.CurveUtil.keys', C_CurveUtil)
+  keys('x.CurveConstants', CurveConstants)
+  local CC = CurveConstants
+  if type(CC) == 'table' and CC.ScaleTo100 ~= nil then
+    try(o, 'x.hp.player.scale100', UnitHealthPercent, 'player', true, CC.ScaleTo100)
+    try(o, 'x.hp.target.scale100', UnitHealthPercent, 'target', true, CC.ScaleTo100)
+  end
+  local CU = C_CurveUtil
+  if type(CU) == 'table' and type(CU.CreateCurve) == 'function' then
+    local okc, cv = pcall(CU.CreateCurve)
+    if okc and cv then
+      methods('x.curve.methods', cv)
+      meth('x.curve.add0', cv, 'AddPoint', 0, 0)
+      meth('x.curve.add1', cv, 'AddPoint', 1, 100)
+      meth('x.curve.eval', cv, 'Evaluate', 0.5)
+      try(o, 'x.hp.player.curve', UnitHealthPercent, 'player', true, cv)
+      try(o, 'x.hp.target.curve', UnitHealthPercent, 'target', true, cv)
+    else o['x.curve'] = 'ERR' end
+  end
+  if type(CU) == 'table' and type(CU.CreateColorCurve) == 'function' and CreateColor then
+    local okc, cc = pcall(CU.CreateColorCurve)
+    if okc and cc then
+      meth('x.ccurve.add0', cc, 'AddPoint', 0, CreateColor(1, 0, 0))
+      meth('x.ccurve.add1', cc, 'AddPoint', 1, CreateColor(0, 1, 0))
+      local col = try(o, 'x.hp.player.color', UnitHealthPercent, 'player', true, cc)
+      if col and col[1] and col[2] and not issec(col[2]) then
+        methods('x.color.methods', col[2])
+        local rgb = meth('x.color.r', col[2], 'GetRGB')
+        if rgb and rgb[1] then o['x.color.g'] = rep(true, rgb[3]) end
+      end
+    end
+  end
+  -- 3) widgety: secret do StatusBar / FontString a zpet (rozmery)
+  ns._probeF = ns._probeF or {}
+  local PF = ns._probeF
+  if not PF.sb then
+    PF.sb = CreateFrame('StatusBar', nil, UIParent)
+    PF.sb:SetSize(100, 10) PF.sb:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', -500, 500)
+    PF.sb:SetStatusBarTexture('Interface\\TargetingFrame\\UI-StatusBar')
+    PF.fs = PF.sb:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+    PF.fs:SetPoint('LEFT')
+  end
+  PF.sb:Show()
+  local hm = safeNum(pc(UnitHealthMax, 'player')) or 100
+  try(o, 'x.sb.minmax', PF.sb.SetMinMaxValues, PF.sb, 0, hm)
+  try(o, 'x.sb.set', PF.sb.SetValue, PF.sb, UnitHealth('player'))
+  try(o, 'x.sb.get', PF.sb.GetValue, PF.sb)
+  local tex = PF.sb:GetStatusBarTexture()
+  if tex then
+    try(o, 'x.sb.texWidth', tex.GetWidth, tex)
+    try(o, 'x.sb.texRight', tex.GetRight, tex)
+    try(o, 'x.sb.texCoord', tex.GetTexCoord, tex)
+  end
+  try(o, 'x.fs.set', PF.fs.SetText, PF.fs, UnitHealth('player'))
+  try(o, 'x.fs.get', PF.fs.GetText, PF.fs)
+  try(o, 'x.fs.width', PF.fs.GetStringWidth, PF.fs)
+  try(o, 'x.fs.setPct', PF.fs.SetFormattedText, PF.fs, '%d', UnitHealthPercent and UnitHealthPercent('player') or 0)
+  try(o, 'x.fs.widthPct', PF.fs.GetStringWidth, PF.fs)
+  PF.sb:Hide()
+  -- 4) cooldowny a aury pres duration objekty
+  keys('x.DurationUtil.keys', C_DurationUtil)
+  keys('x.Spell.dur', C_Spell, 'Duration')
+  keys('x.UnitAuras.dur', C_UnitAuras, 'Duration')
+  local dsp = sp or fil
+  local dd = try(o, 'x.cdDur', CS.GetSpellCooldownDuration, dsp)
+  if not (dd and dd[1] and dd[2] and not issec(dd[2])) then dd = try(o, 'x.gcdDur', CS.GetSpellCooldownDuration, 61304) end
+  if dd and dd[1] and dd[2] and not issec(dd[2]) then
+    local d = dd[2]
+    methods('x.dur.methods', d)
+    for _, mn in ipairs({ 'GetRemainingDuration', 'GetElapsedDuration', 'GetTotalDuration', 'GetStartTime',
+        'GetEndTime', 'IsZero', 'HasSecretValues', 'GetRemainingPercent' }) do
+      meth('x.dur.' .. mn, d, mn)
+    end
+    if not PF.cd then
+      PF.cd = CreateFrame('Cooldown', nil, UIParent, 'CooldownFrameTemplate')
+      PF.cd:SetSize(20, 20) PF.cd:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', -500, 500)
+    end
+    PF.cd:Show()
+    meth('x.cdFrame.setDur', PF.cd, 'SetCooldownFromDurationObject', d)
+    meth('x.cdFrame.times', PF.cd, 'GetCooldownTimes')
+    meth('x.cdFrame.duration', PF.cd, 'GetCooldownDuration')
+    PF.cd:Hide()
+  end
   -- ulozit
   local inC = ns.inCombat and ns.inCombat() or false
   ns.db.apiProbe = ns.db.apiProbe or {}
