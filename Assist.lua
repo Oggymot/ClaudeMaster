@@ -152,8 +152,15 @@ local function addMobLines(tt, unit)
     local ok, im = pcall(ns.Immune.describe, { schools = e.schools or {}, spells = e.spells or {} })
     if ok and type(im) == 'table' and #im > 0 then lines[#lines + 1] = '|cffff7070imunni:|r ' .. table.concat(im, ', ') end
   end
-  if #lines == 0 then return end
-  tt:AddLine('|cff4fa3ffClaudeMaster:|r ' .. table.concat(lines, ', '), 0.85, 0.85, 0.85, true)
+  -- databaze (classic): jen jako doplnek, vlastni pozorovani je nahore
+  local rec = ns.MobDB and ns.MobDB.forUnit(unit)
+  local dbl = rec and ns.MobDB.describe(rec)
+  local lv = safeNum(pc(UnitLevel, unit))
+  local drop = rec and ns.MobDB.dropText(rec, lv and lv > 0 and lv or nil)
+  if #lines == 0 and not dbl and not drop then return end
+  if #lines > 0 then tt:AddLine('|cff4fa3ffClaudeMaster:|r ' .. table.concat(lines, ', '), 0.85, 0.85, 0.85, true) end
+  if dbl then tt:AddLine('|cff4fa3ffDatabaze:|r ' .. dbl, 0.75, 0.75, 0.75, true) end
+  if drop then tt:AddLine('|cff4fa3ffDrop:|r ' .. drop, 0.75, 0.75, 0.75, true) end
   tt:Show()
 end
 

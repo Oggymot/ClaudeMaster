@@ -14,6 +14,8 @@ Frost.lua
 Warlock.lua
 Dump.lua
 Extras.lua
+MobData.lua
+MobDB.lua
 Afflict.lua
 Tactics.lua
 Plates.lua

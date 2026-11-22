@@ -189,6 +189,8 @@ function UI.setClick(key, a)
   local sig = tostring(typ) .. '|' .. tostring(val) .. '|' .. tostring(unit) .. '|' .. tostring(a and a.slot)
   if sig == lastSig[key] then return end
   lastSig[key] = sig
+  if test and not typ then return end          -- test: zkouset jen skutecnou akci
+  if test then UI.ctest.done = true end        -- jen jeden pokus za boj (kazdy blok = hlaska)
   -- "cm-type" je zadana akce; samotne "type" prepina zabezpeceny state driver (v boji = nic)
   local okA = pcall(function()
     b:SetAttribute('cm-type', typ)
@@ -202,10 +204,14 @@ function UI.setClick(key, a)
     -- test: opravdu se zmena v boji ulozila?
     local now = typ == 'spell' and b:GetAttribute('spell') or b:GetAttribute('item')
     local ok = okA and now == val and b:GetAttribute('type') == typ
-    UI.ctest.done = true
     ns.say(ok and ('|cff66ee77Test klikani v boji: zmena PROSLA|r (%s = %s). Zkus kliknout na ikonu.'):format(key, tostring(label))
-      or '|cffff5555Test klikani v boji: hra zmenu ZABLOKOVALA|r - v boji klik opravdu nejde.')
-    if not ok then return end
+      or '|cffff5555Test klikani v boji: hra zmenu ZABLOKOVALA|r - v boji klik opravdu nejde. Test vypnut.')
+    if not ok then
+      -- test sam vypnout; po boji vratit bezpecne vypinani tlacitek v boji
+      ns.db.clickTest = false
+      UI.ctestRestore = true
+      return
+    end
   end
   UI.clickNames[key] = label
   if key == 'main' then UI.clickName = label end
@@ -213,6 +219,16 @@ end
 -- Na zacatku boje tlacitko "vypneme" (v boji uz to nepujde zmenit)
 -- Na zacatku boje na tlacitko nesahame (to by hra zablokovala). Vypne ho state driver.
 UI.ctest = {}
+-- po neuspesnem testu vratit vypinani tlacitek v boji (state driver), jakmile boj skonci
+do
+  local rf = CreateFrame('Frame')
+  rf:RegisterEvent('PLAYER_REGEN_ENABLED')
+  rf:SetScript('OnEvent', function()
+    if not UI.ctestRestore or InCombatLockdown() then return end
+    UI.ctestRestore = nil
+    for _, b in pairs(UI.clicks or {}) do RegisterStateDriver(b, 'cmcombat', '[combat] in; out') end
+  end)
+end
 function UI.combatStart()
   UI.ctest.done = nil
   wipe(lastSig)
