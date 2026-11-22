@@ -69,11 +69,21 @@ local function keysOf(key)
   if type(key) == 'table' then return key end
   return { key }
 end
+-- Jmenovka cile: token 'nameplateN' patri jednomu mobovi, dokud je jeho jmenovka videt.
+-- V boji je GUID skryte a 't<token>' se meni s kazdym prepnutim cile - bez tohohle by addon
+-- po tabnuti zpet na moba "zapomnel" jeho Immolate a radil ho znovu.
+local function plateKey()
+  for u in pairs(ns.Plates and ns.Plates.units or {}) do
+    if safeBool(pc(UnitIsUnit, 'target', u)) == true then return 'p' .. u end
+  end
+end
 local function targetKeys()
   local k = {}
   local g = safe(pc(UnitGUID, 'target'))
   if type(g) == 'string' then k[#k + 1] = g end
   k[#k + 1] = 't' .. ns.T.token
+  local p = plateKey()
+  if p then k[#k + 1] = p end
   return k
 end
 local function mark(key, name, dur, other)
@@ -102,7 +112,8 @@ local function bounced(name)
   if name and DOT[name] then mark(targetKeys(), name, (CURSE[name] or BANE[name]) and math.min(DOT[name], 120) or 10, true) end
 end
 local ev = CreateFrame('Frame')
-for _, e in ipairs({ 'UNIT_SPELLCAST_SUCCEEDED', 'UNIT_SPELLCAST_FAILED', 'UI_ERROR_MESSAGE', 'PLAYER_TARGET_CHANGED' }) do
+for _, e in ipairs({ 'UNIT_SPELLCAST_SUCCEEDED', 'UNIT_SPELLCAST_FAILED', 'UI_ERROR_MESSAGE', 'PLAYER_TARGET_CHANGED',
+  'NAME_PLATE_UNIT_ADDED', 'NAME_PLATE_UNIT_REMOVED' }) do
   pcall(ev.RegisterEvent, ev, e)
 end
 ev:SetScript('OnEvent', function(_, event, unit, arg2, spellID)
@@ -114,6 +125,12 @@ ev:SetScript('OnEvent', function(_, event, unit, arg2, spellID)
       lastBounce = now
       if now - lastFail.t < 1 then bounced(lastFail.name) end
     end
+    return
+  end
+  if event == 'NAME_PLATE_UNIT_ADDED' or event == 'NAME_PLATE_UNIT_REMOVED' then
+    -- jmenovka zmizela / patri novemu mobovi: jeji DoTy zahodit
+    local u = safe(unit)
+    if type(u) == 'string' then W.dots['p' .. u] = nil end
     return
   end
   if event == 'PLAYER_TARGET_CHANGED' then
