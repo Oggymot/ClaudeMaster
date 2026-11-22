@@ -511,6 +511,28 @@ local function spendMana(name) manaSeen.spent = manaSeen.spent + ns.cost(name) e
 ------------------------------------------------------------------------------------------
 -- Auray hrace (mimo boj citelne) + Cooldown Manager + proc glow
 ------------------------------------------------------------------------------------------
+-- dochazi mi dech? (bezi ukazatel dechu; s Unending Breath / vodnim dychanim nebezi)
+function ns.breathRunning()
+  if not GetMirrorTimerInfo then return nil end
+  for i = 1, 3 do
+    local timer, _, _, scale, paused = pc(GetMirrorTimerInfo, i)
+    if safe(timer) == 'BREATH' then
+      local p, sc = safe(paused), safeNum(scale)
+      return not (p == 1 or p == true) and (sc == nil or sc < 0)
+    end
+  end
+  return false
+end
+-- buff na hraci podle jmena, prochazenim vsech buffu (spolehlivejsi nez hledani jmenem)
+function ns.playerHasBuff(name)
+  if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return nil end
+  for i = 1, 40 do
+    local a = pc(C_UnitAuras.GetAuraDataByIndex, 'player', i, 'HELPFUL')
+    if type(a) ~= 'table' then return ns.inCombat() and nil or false end
+    if safe(a.name) == name then return true end
+  end
+  return false
+end
 -- jsem pod vodou? (plavu pod hladinou, nebo bezi ukazatel dechu)
 function ns.underwater()
   if IsSubmerged and safeBool(pc(IsSubmerged)) == true then return true end

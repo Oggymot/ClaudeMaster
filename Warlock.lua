@@ -463,9 +463,12 @@ local function decide(c, s)
 
   -- pod vodou: Unending Breath (10 min dychani) - sobe, pak parte
   if s.step == 1 and ns.known('Unending Breath') and ns.underwater() and not s.used.breath then
+    -- buff uz mam? (dvema zpusoby; navic s nim nebezi ukazatel dechu)
     local mine = ns.playerAura('Unending Breath')
+    if not mine then mine = ns.playerHasBuff('Unending Breath') end
     local recent = GetTime() - (ns.castAt['Unending Breath'] or -999) < 540
-    if mine == false or (mine == nil and not recent) then
+    local losing = ns.breathRunning()
+    if not mine and not recent and losing ~= false then
       s.used.breath = true
       return A('Unending Breath', 'Pod vodou: Unending Breath (dychani na 10 min)', 'spell', { unit = 'player' })
     end
