@@ -496,4 +496,21 @@ function PL.test()
     ns.say('  zpravy o cili od partaka: zadne')
   end
   ns.say(('  sdilene ovce: %d'):format(#PL.sheep))
+  -- prima porovnani s cilem partaka (jdou v boji?)
+  local sec = issecretvalue or function() return false end
+  local function fmt(ok, v)
+    if not ok then return '|cffff5555chyba|r' end
+    if sec(v) then return '|cffff5555SECRET|r' end
+    return '|cff66ee77' .. tostring(v) .. '|r'
+  end
+  for i = 1, 4 do
+    local pu = 'party' .. i
+    if UnitExists(pu) then
+      local a, b = pcall(UnitIsUnit, 'target', pu .. 'target')
+      local c, d = pcall(UnitThreatSituation, pu, 'target')
+      local e, f = pcall(UnitDetailedThreatSituation, pu, 'target')
+      ns.say(('  %s: muj cil = jeho cil: %s, jeho threat na mem cili: %s, tankuje ho: %s'):format(
+        tostring(safe(pc(UnitName, pu))), fmt(a, b), fmt(c, d), fmt(e, f)))
+    end
+  end
 end
