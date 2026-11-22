@@ -228,17 +228,28 @@ function Duo.send(c, plan)
   local hpP = hp and math.floor(hp) or -1
   -- v boji: hned pri zmene HP/many o 3+ %, jinak jednou za 4 s; mimo boj kazde 3 s
   local changed = math.abs(hpP - (Duo.lastHp or -99)) >= 3 or math.abs(manaP - (Duo.lastMana or -99)) >= 3
+  -- pod vodou a dochazi dech (bezi ukazatel) = zadost o Unending Breath; zmena se posila hned
+  local uw = (ns.underwater() and ns.breathRunning() ~= false) and 1 or 0
   local gap = now - Duo.lastSend
+  local uwNew = uw ~= (Duo.lastUw or 0) and gap >= 0.5
   if c and c.inCombat then
-    if not ((changed and gap >= 0.7) or gap >= 4) then return end
-  elseif gap < 3 and not (prep ~= (Duo.lastPrep or '') and gap >= 0.5) then return end
-  Duo.lastSend, Duo.lastHp, Duo.lastMana, Duo.lastPrep = now, hpP, manaP, prep
+    if not ((changed and gap >= 0.7) or gap >= 4 or uwNew) then return end
+  elseif gap < 3 and not (prep ~= (Duo.lastPrep or '') and gap >= 0.5) and not uwNew then return end
+  if uw == 1 and (Duo.lastUw or 0) == 0 then
+    for nm, p in pairs(Duo.peers) do
+      if p.cls == 'WARLOCK' and now - p.at < 15 then
+        ns.say(('|cff6fa8ffDochazi ti dech|r - pozadal jsem %s o Unending Breath.'):format(nm))
+        break
+      end
+    end
+  end
+  Duo.lastSend, Duo.lastHp, Duo.lastMana, Duo.lastPrep, Duo.lastUw = now, hpP, manaP, prep, uw
   local ai = auraHas('player', { 'Arcane Intellect', 'Arcane Brilliance' })
   local drink = auraHas('player', { 'Drink', 'Food', 'Refreshment' })
-  local msg = ('S,%s,%d,%d,%d,%d,%d,%d,%d,%d,%s,%d,%d,%d'):format(ns.class or '?', manaP,
+  local msg = ('S,%s,%d,%d,%d,%d,%d,%d,%d,%d,%s,%d,%d,%d,%d'):format(ns.class or '?', manaP,
     ns.Bags.count('water'), ns.Bags.count('food'), ai == nil and -1 or (ai and 1 or 0), ns.Bags.count('stone'),
     drink and 1 or 0, (c and c.inCombat) and 1 or 0, hpP, prep ~= '' and prep or '-',
-    ns.Bags.countConj('water'), ns.Bags.countConj('food'), ns.Bags.countConj('mpot'))
+    ns.Bags.countConj('water'), ns.Bags.countConj('food'), ns.Bags.countConj('mpot'), uw)
   rawSend(msg)
   -- parťák zmlkl (odpojil se / vypnul addon)
   for nm, p in pairs(Duo.peers) do
@@ -331,7 +342,7 @@ dev:SetScript('OnEvent', function(_, _, prefix, msg, _, sender)
   Duo.peers[name] = { linked = true, n = ((old and old.n) or 0) + 1, name = name,
     cls = f[2], mana = (n(3) or -1) >= 0 and n(3) / 100 or nil, water = n(4) or 0, food = n(5) or 0,
     ai = n(6), hs = n(7) or 0, drink = n(8) == 1, combat = n(9) == 1, hp = (n(10) or -1) >= 0 and n(10) or nil, prep = (f[11] and f[11] ~= '-') and f[11] or nil,
-    cw = n(12), cf = n(13), cm = n(14),
+    cw = n(12), cf = n(13), cm = n(14), uw = n(15) == 1,
     at = GetTime(), unit = unitByName(name) }
 end)
 

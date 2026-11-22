@@ -176,6 +176,14 @@ function P.scan(c)
           and auraByName(u, 'Unending Breath') == false and inRange('Unending Breath', u) then
           r.needBreath = m
         end
+        -- spoluhrac s addonem sam hlasi "pod vodou, dochazi dech" (funguje i v boji a i kdyz ja nejsem pod vodou)
+        if not r.needBreath and ns.known('Unending Breath') and ns.Duo and ns.Duo.peers then
+          local p = m.name and ns.Duo.peers[m.name]
+          if p and p.uw and GetTime() - p.at < 8 and inRange('Unending Breath', u) then
+            m.asked = true
+            r.needBreath = m
+          end
+        end
         if canDispel and not r.curse and hasDispellable(u) and inRange('Remove Lesser Curse', u) then r.curse = m end
         if felhunter and not r.magic and hasMagic(u) then r.magic = m end
         -- spoluhrac (ne tank), na kterem jsou moby
