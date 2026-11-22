@@ -101,18 +101,34 @@ local function idParse(s)
   return id
 end
 -- shoda: GUID presne, nebo stejna raid znacka, nebo creature ID, kdyz je takovy mob u mne jen jeden
--- (GUID jen kdyz je mezi mymi jmenovkami jedinecne - kdyby hra GUID maskovala, nesmi se shodovat vic mobu)
+-- POZOR: na Foreveru ma TENTYZ mob u kazdeho hrace JINE GUID (maskovane pro klienta; overeno
+-- /cm test u obou na stejnem mobovi). GUID tedy mezi klienty nic neznamena - shoda jen kdyz je
+-- nahodou stejne, ruzne GUID neznamena ruzny mob. Spolehliva je raid znacka; jinak druh moba (creature ID)
+-- + HP: kdyz je u mne takovy mob jediny, nebo kdyz HP sedi (a nejsou oba na plnem HP).
 local npcCount, guidCount = {}, {}
-local function match(u, id, myId)
+-- true / false / nil (nelze rozhodnout)
+local function match3(u, id, myId, peerHp)
   if not id then return false end
   myId = myId or idOf(u)
-  if not myId then return false end
+  if not myId then return nil end
+  if id.m and myId.m then return id.m == myId.m end
   if id.g and myId.g and id.g == myId.g and (guidCount[id.g] or 1) == 1 then return true end
-  if id.m and myId.m and id.m == myId.m then return true end
-  if id.n and myId.n and id.n == myId.n and npcCount[id.n] == 1 then return true end
-  return false
+  if not (id.n and myId.n) then return nil end
+  if id.n ~= myId.n then return false end
+  local myHp = ns.healthPct(u)
+  if not myHp and safeBool(pc(UnitIsUnit, u, 'target')) == true then myHp = ns.healthPct('target') end
+  if peerHp and myHp then
+    local d = math.abs(peerHp - myHp)
+    if d > 8 then return false end
+    if npcCount[id.n] == 1 then return true end
+    if d <= 3 and not (peerHp >= 98 and myHp >= 98) then return true end
+    return nil
+  end
+  if npcCount[id.n] == 1 then return true end
+  return nil
 end
-PL.idOf, PL.match = idOf, match
+local function match(u, id, myId, peerHp) return match3(u, id, myId, peerHp) == true end
+PL.idOf, PL.match, PL.match3 = idOf, match, match3
 function PL.guidOk(g) return g ~= nil and (guidCount[g] or 1) == 1 end
 
 ------------------------------------------------------------------------------------------
@@ -396,7 +412,7 @@ local function update()
         if grouped then
           local who = {}
           if is(u, 'target') then who[#who + 1] = ('|c%s%s|r'):format(myHex, myL) end
-          if peerT and peerT.id and match(u, peerT.id, myId) then
+          if peerT and peerT.id and match(u, peerT.id, myId, peerT.hp) then
             who[#who + 1] = ('|c%s%s|r'):format(peerUnit and classHex(peerUnit) or 'ffffffff', (peerName or '?'):sub(1, 1))
           end
           if #who > 0 then o.who:SetText(table.concat(who, ' ')) end
@@ -475,7 +491,7 @@ function PL.test()
   local t, nm = PL.peerTarget()
   if t then
     ns.say(('  cil partaka (%s): %s, HP %s, shoda s mym cilem: %s'):format(nm, t.id and idStr(t.id) or 'zadny',
-      tostring(t.hp), tostring(t.id and match('target', t.id) or false)))
+      tostring(t.hp), tostring(t.id and match3('target', t.id, nil, t.hp))))
   else
     ns.say('  zpravy o cili od partaka: zadne')
   end

@@ -245,10 +245,8 @@ function TA.split(c)
   local pT = PL and PL.peerTarget and PL.peerTarget()
   if not (pT and pT.id) then TA.splitSince = nil return nil end
   local myId = PL.idOf('target')
-  local same = myId and PL.match('target', pT.id, myId)
-  -- (samotne creature ID nestaci - stejnych mobu muze byt vic; GUID jen kdyz je jedinecne)
-  local comparable = myId and ((pT.id.g and myId.g and PL.guidOk(myId.g)) or (pT.id.m and myId.m))
-  if not comparable then same = nil end   -- nelze porovnat (napr. dungeon bez znacek)
+  -- (GUID je u kazdeho klienta jine; match3 vraci nil, kdyz to nejde poznat)
+  local same = PL.match3('target', pT.id, nil, pT.hp)
   -- jeho cil je ovce (sdilena) -> neresit
   local theirCC = false
   for _, s in ipairs(PL.sheep or {}) do
