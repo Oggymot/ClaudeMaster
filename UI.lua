@@ -986,6 +986,8 @@ SlashCmdList.CLAUDEMASTER = function(msg)
   elseif cmd == 'status' then status()
   elseif cmd == 'config' or cmd == 'options' or cmd == 'nastaveni' then
     if ns.Options then ns.Options.toggle() end
+  elseif cmd == 'sonda' or cmd == 'probe' then
+    if ns.apiProbe then ns.apiProbe() end
   elseif cmd == 'test' then
     if ns.Plates and ns.Plates.test then ns.Plates.test() end
   elseif cmd == 'questy' or cmd == 'quests' then

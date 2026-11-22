@@ -205,3 +205,122 @@ function ns.fullDump()
       .. '\\SavedVariables\\ClaudeMaster.lua|r')
   end)
 end
+
+------------------------------------------------------------------------------------------
+-- /cm sonda: co hra v boji / mimo boj prozradi primo (bez odhadu). Ulozi do db.apiProbe.boj / .klid
+-- Kazda polozka: hodnota, SECRET (skryte), nil, NOFUNC, nebo ERR (volani spadlo).
+------------------------------------------------------------------------------------------
+local issec = issecretvalue or function() return false end
+local function rep(ok, v)
+  if not ok then return 'ERR' end
+  if issec(v) then return 'SECRET' end
+  if v == nil then return 'nil' end
+  local s = tostring(v)
+  return #s > 40 and s:sub(1, 40) or s
+end
+local function try(out, key, f, ...)
+  if type(f) ~= 'function' then out[key] = 'NOFUNC' return end
+  local r = { pcall(f, ...) }
+  out[key] = rep(r[1], r[2])
+  return r
+end
+local function field(out, key, r, name)
+  if r and r[1] and type(r[2]) == 'table' and not issec(r[2]) then
+    out[key] = rep(pcall(function() return r[2][name] end))
+  end
+end
+function ns.apiProbe()
+  local o = {}
+  local CS, UA = C_Spell or {}, C_UnitAuras or {}
+  -- vlastni HP / mana
+  try(o, 'player.UnitHealth', UnitHealth, 'player')
+  try(o, 'player.UnitHealthMax', UnitHealthMax, 'player')
+  try(o, 'player.UnitHealthPercent', UnitHealthPercent, 'player')
+  try(o, 'player.UnitPower', UnitPower, 'player', 0)
+  try(o, 'player.UnitPowerMax', UnitPowerMax, 'player', 0)
+  try(o, 'player.UnitPowerPercent', UnitPowerPercent, 'player', 0)
+  -- cil
+  try(o, 'target.UnitHealth', UnitHealth, 'target')
+  try(o, 'target.UnitHealthMax', UnitHealthMax, 'target')
+  try(o, 'target.UnitHealthPercent', UnitHealthPercent, 'target')
+  try(o, 'target.UnitPower', UnitPower, 'target')
+  try(o, 'target.UnitName', UnitName, 'target')
+  try(o, 'target.UnitLevel', UnitLevel, 'target')
+  try(o, 'target.UnitGUID', UnitGUID, 'target')
+  try(o, 'target.UnitAffectingCombat', UnitAffectingCombat, 'target')
+  try(o, 'target.UnitCastingInfo', UnitCastingInfo, 'target')
+  try(o, 'target.UnitChannelInfo', UnitChannelInfo, 'target')
+  try(o, 'target.IsTapDenied', UnitIsTapDenied, 'target')
+  -- na koho mob utoci (slozene tokeny)
+  try(o, 'tt.IsUnit_player', UnitIsUnit, 'targettarget', 'player')
+  try(o, 'tt.UnitName', UnitName, 'targettarget')
+  try(o, 'tt.Exists', UnitExists, 'targettarget')
+  try(o, 'tt.IsUnit_party1', UnitIsUnit, 'targettarget', 'party1')
+  try(o, 'tt.IsUnit_pet', UnitIsUnit, 'targettarget', 'pet')
+  -- threat
+  local r = try(o, 'threat.isTanking', UnitDetailedThreatSituation, 'player', 'target')
+  if r and r[1] then
+    o['threat.status'] = rep(true, r[3]) o['threat.scaledPct'] = rep(true, r[4]) o['threat.rawPct'] = rep(true, r[5])
+  end
+  try(o, 'threat.situation', UnitThreatSituation, 'player', 'target')
+  -- parta
+  try(o, 'party1.UnitHealth', UnitHealth, 'party1')
+  try(o, 'party1.UnitHealthPercent', UnitHealthPercent, 'party1')
+  try(o, 'party1.UnitPower', UnitPower, 'party1', 0)
+  try(o, 'party1.IsUnit_target', UnitIsUnit, 'party1target', 'target')
+  try(o, 'party1.threatOnTarget', UnitThreatSituation, 'party1', 'target')
+  try(o, 'pet.UnitHealth', UnitHealth, 'pet')
+  try(o, 'pet.UnitHealthPercent', UnitHealthPercent, 'pet')
+  -- jmenovka (prvni nepratelska)
+  local np
+  for i = 1, 40 do
+    local u = 'nameplate' .. i
+    if UnitExists(u) and safeBool(pc(UnitCanAttack, 'player', u)) == true then np = u break end
+  end
+  if np then
+    try(o, 'np.UnitHealth', UnitHealth, np)
+    try(o, 'np.UnitHealthPercent', UnitHealthPercent, np)
+    try(o, 'np.IsUnit_target', UnitIsUnit, np, 'target')
+    try(o, 'np.target_IsUnit_player', UnitIsUnit, np .. 'target', 'player')
+    try(o, 'np.target_Exists', UnitExists, np .. 'target')
+    try(o, 'np.threat', UnitThreatSituation, 'player', np)
+    try(o, 'np.UnitCastingInfo', UnitCastingInfo, np)
+  end
+  -- aury
+  local a = try(o, 'aura.player1', UA.GetAuraDataByIndex, 'player', 1, 'HELPFUL')
+  field(o, 'aura.player1.name', a, 'name')
+  field(o, 'aura.player1.expiration', a, 'expirationTime')
+  field(o, 'aura.player1.spellId', a, 'spellId')
+  local d = try(o, 'aura.target1', UA.GetAuraDataByIndex, 'target', 1, 'HARMFUL|PLAYER')
+  field(o, 'aura.target1.name', d, 'name')
+  field(o, 'aura.target1.expiration', d, 'expirationTime')
+  -- cooldowny / dosah
+  local sp
+  for _, n in ipairs({ 'Frost Nova', 'Fire Blast', 'Cone of Cold', 'Death Coil', 'Conflagrate', 'Shadowburn' }) do
+    if ns.known and ns.known(n) then sp = n break end
+  end
+  if sp then
+    o['spell'] = sp
+    local c = try(o, 'cd.table', CS.GetSpellCooldown, sp)
+    field(o, 'cd.startTime', c, 'startTime')
+    field(o, 'cd.duration', c, 'duration')
+    field(o, 'cd.isEnabled', c, 'isEnabled')
+    try(o, 'cd.usable', CS.IsSpellUsable, sp)
+  end
+  local fil = (ns.class == 'WARLOCK') and 'Shadow Bolt' or 'Frostbolt'
+  try(o, 'range.filler', CS.IsSpellInRange, fil, 'target')
+  local g = try(o, 'gcd.table', CS.GetSpellCooldown, 61304)
+  field(o, 'gcd.duration', g, 'duration')
+  -- ulozit
+  local inC = ns.inCombat and ns.inCombat() or false
+  ns.db.apiProbe = ns.db.apiProbe or {}
+  ns.db.apiProbe[inC and 'boj' or 'klid'] = { at = date and date('%H:%M:%S') or '?', class = ns.class, r = o }
+  local n, sec, err = 0, 0, 0
+  for _, v in pairs(o) do
+    n = n + 1
+    if v == 'SECRET' then sec = sec + 1 elseif v == 'ERR' then err = err + 1 end
+  end
+  ns.say(('Sonda (%s): %d polozek, |cffff5555%d SECRET|r, %d chyb. Ulozeno.%s'):format(
+    inC and 'v boji' or 'mimo boj', n, sec, err,
+    inC and ' Udelej to i mimo boj, pak /reload.' or ' Udelej to i v boji (s cilem), pak /reload.'))
+end
