@@ -337,13 +337,25 @@ local function decide(c, s)
       return A('Conjure Water', 'Doplnit vodu (mas min nez 6)') end
     -- duo: partak s addonem nema vodu
     local peer = ns.Duo and ns.Duo.peer()
-    if peer and peer.cls ~= 'WARRIOR' and peer.cls ~= 'ROGUE' and peer.water < 5 and not peer.combat and s.step == 1 then
-      if ns.Bags.count('water') >= 10 then
+    -- vycarovana voda/jidlo stoji jen manu: parťák nemusi kupovat (pocita se jen vycarovane, kdyz to posila)
+    local pw = peer and (peer.cw or peer.water)
+    if peer and peer.cls ~= 'WARRIOR' and peer.cls ~= 'ROGUE' and peer.cls ~= 'MAGE' and pw < 5 and not peer.combat and s.step == 1 then
+      if ns.Bags.countConj('water') >= 10 then
         local w = ns.Bags.best('water')
-        return A('TARGET', ('%s ma jen %d vody: posli ji svou (trade)'):format(peer.name, peer.water), 'hint',
+        return A('TARGET', ('%s ma jen %d vycarovane vody: posli ji svou (trade, zadarmo)'):format(peer.name, pw), 'hint',
           { icon = w and ns.itemIcon(w) or 'Interface\\Icons\\INV_Drink_18' })
       elseif ns.known('Conjure Water') and c.mana > 0.4 and not s.used['Conjure Water'] then
-        return A('Conjure Water', ('%s ma jen %d vody: vyrob a posli (trade)'):format(peer.name, peer.water))
+        return A('Conjure Water', ('%s ma jen %d vycarovane vody: vyrob a posli (trade)'):format(peer.name, pw))
+      end
+    end
+    local pf = peer and (peer.cf or peer.food)
+    if peer and peer.cls ~= 'MAGE' and pf and pf < 4 and not peer.combat and s.step == 1 then
+      if ns.Bags.countConj('food') >= 10 then
+        local fd = ns.Bags.best('food')
+        return A('TARGET', ('%s ma jen %d vycarovaneho jidla: posli mu sve (trade, zadarmo)'):format(peer.name, pf), 'hint',
+          { icon = fd and ns.itemIcon(fd) or 'Interface\\Icons\\INV_Misc_Food_10' })
+      elseif ns.known('Conjure Food') and c.mana > 0.4 and not s.used['Conjure Food'] then
+        return A('Conjure Food', ('%s ma jen %d vycarovaneho jidla: vyrob a posli (trade)'):format(peer.name, pf))
       end
     end
     return nil

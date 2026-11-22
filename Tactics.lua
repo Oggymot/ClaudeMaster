@@ -298,6 +298,18 @@ if E and E.plan then
       return cc or TA.split(c) or TA.multiDot(c)
     end)
     if ok and a and not util then util = a end
+    -- ne-mag ve skupine s magem: vycarovana voda/jidlo jsou zadarmo (setri penize za kupovane)
+    if not util and not c.inCombat and not c.hostile and ns.class ~= 'MAGE' and ns.Bags.groupMage then
+      local mage = ns.Bags.groupMage()
+      if mage then
+        local cw, cf = ns.Bags.countConj('water'), ns.Bags.countConj('food')
+        if cw < 5 or cf < 3 then
+          local what = (cw < 5 and cf < 3) and 'vodu a jidlo' or (cw < 5 and 'vodu' or 'jidlo')
+          util = hint(('Popros %s o vycarovanou %s - zadarmo, setri penize'):format(mage, what),
+            cw < 5 and 'Interface\\Icons\\INV_Drink_18' or 'Interface\\Icons\\INV_Misc_Food_10')
+        end
+      end
+    end
     return plan, util
   end
 end

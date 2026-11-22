@@ -76,6 +76,9 @@ function B.scan()
         elseif name:find('Healthstone') then table.insert(kinds.stone, it)
         elseif name:find('Healing Potion') or name:find('Healing Draught') then table.insert(kinds.hpot, it)
         elseif name:find('Mana Potion') or name:find('Mana Draught') then table.insert(kinds.mpot, it)
+        -- vycarovany lektvar many (od maga): stoji jen manu, takze ma prednost pred kupovanym
+        elseif it.conjured and (name:find('Mana') or (sp and sp:find('Mana'))) and not (sp and (sp:find('Drink') or sp == 'Refreshment' or sp:find('Food'))) then
+          table.insert(kinds.mpot, it)
         elseif name:find('Firestone$') or name:find('Spellstone$') then
           -- warlock: kamen na zbran (Firestone = +crit a ohen, lepsi pro Destruction)
           it.imbue = name
@@ -154,6 +157,23 @@ function B.count(kind)
   return n
 end
 function B.list(kind) return B.kinds[kind] or {} end
+-- kolik mam vycarovanych (od maga, zadarmo)
+function B.countConj(kind)
+  local n = 0
+  for _, it in ipairs(B.kinds[kind] or {}) do if it.conjured then n = n + it.count end end
+  return n
+end
+-- mag ve skupine (krome me): jmeno
+function B.groupMage()
+  if not (IsInGroup and IsInGroup()) then return nil end
+  for i = 1, 4 do
+    local u = 'party' .. i
+    if UnitExists(u) then
+      local _, cls = UnitClass(u)
+      if cls == 'MAGE' then return safe(pc(UnitName, u)) or 'mag' end
+    end
+  end
+end
 
 -- Scroll, ktery ti chybi (mimo boj, buff jde precist)
 function B.missingScroll()

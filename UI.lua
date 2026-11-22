@@ -388,6 +388,14 @@ function UI.build()
   f.reason:SetWidth(TEXT_W) f.reason:SetJustifyH('LEFT') f.reason:SetJustifyV('TOP')
   f.reason:SetWordWrap(true) f.reason:SetSpacing(1)
 
+  -- kompaktni rezim: kratky text vpravo od ikon (pull, ready check) misto pod nimi
+  f.side = f:CreateFontString(nil, 'OVERLAY')
+  f.side:SetFont(FONT, 10, 'OUTLINE')
+  f.side:SetPoint('TOPLEFT', f, 'TOPRIGHT', 6, -PAD)
+  f.side:SetWidth(170) f.side:SetJustifyH('LEFT') f.side:SetJustifyV('TOP')
+  f.side:SetWordWrap(true) f.side:SetSpacing(1)
+  f.side:SetShadowOffset(1, -1) f.side:SetShadowColor(0, 0, 0, 1)
+
   f.info = f:CreateFontString(nil, 'OVERLAY')
   f.info:SetFont(FONT, 10, 'OUTLINE')
   f.info:SetPoint('TOPLEFT', f.reason, 'BOTTOMLEFT', 0, -5)
@@ -602,6 +610,8 @@ function UI.update(c, plan, util)
   UI.lastReason = main and (main.reason or main.name) or nil
   if db.compact then txt = '' end
   -- pred pullem: jeden radek pod hlavni radou = hodnoceni pullu (jen kdyz je co rict) + ready check
+  -- (kompaktne vpravo od ikon)
+  local sideTxt = ''
   if not c.inCombat and c.hostile then
     local extra = {}
     if ns.Tactics and ns.Tactics.pullText then
@@ -609,14 +619,17 @@ function UI.update(c, plan, util)
       if okP and ptxt then extra[#extra + 1] = ptxt end
     end
     if ns.Duo and ns.Duo.ready then
-      local rdy, rtxt = ns.Duo.ready(c)
+      local rdy, rtxt = ns.Duo.ready(c, db.compact)
       if rtxt then extra[#extra + 1] = rtxt end
     end
-    if #extra > 0 then
+    if #extra > 0 and db.compact then
+      sideTxt = table.concat(extra, '\n')
+    elseif #extra > 0 then
       local e = table.concat(extra, '  ')
       txt = (txt ~= '' and (txt .. '\n' .. e)) or e
     end
   end
+  f.side:SetText(sideTxt)
   f.reason:SetText(txt)
   local info = (db.showInfo and not db.compact) and infoLines(c) or ''
   f.info:SetText(info)

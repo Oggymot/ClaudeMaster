@@ -205,9 +205,10 @@ function Duo.send(c, plan)
   Duo.lastSend, Duo.lastHp, Duo.lastMana, Duo.lastPrep = now, hpP, manaP, prep
   local ai = auraHas('player', { 'Arcane Intellect', 'Arcane Brilliance' })
   local drink = auraHas('player', { 'Drink', 'Food', 'Refreshment' })
-  local msg = ('S,%s,%d,%d,%d,%d,%d,%d,%d,%d,%s'):format(ns.class or '?', manaP,
+  local msg = ('S,%s,%d,%d,%d,%d,%d,%d,%d,%d,%s,%d,%d,%d'):format(ns.class or '?', manaP,
     ns.Bags.count('water'), ns.Bags.count('food'), ai == nil and -1 or (ai and 1 or 0), ns.Bags.count('stone'),
-    drink and 1 or 0, (c and c.inCombat) and 1 or 0, hpP, prep ~= '' and prep or '-')
+    drink and 1 or 0, (c and c.inCombat) and 1 or 0, hpP, prep ~= '' and prep or '-',
+    ns.Bags.countConj('water'), ns.Bags.countConj('food'), ns.Bags.countConj('mpot'))
   rawSend(msg)
   -- parťák zmlkl (odpojil se / vypnul addon)
   for nm, p in pairs(Duo.peers) do
@@ -300,6 +301,7 @@ dev:SetScript('OnEvent', function(_, _, prefix, msg, _, sender)
   Duo.peers[name] = { linked = true, n = ((old and old.n) or 0) + 1, name = name,
     cls = f[2], mana = (n(3) or -1) >= 0 and n(3) / 100 or nil, water = n(4) or 0, food = n(5) or 0,
     ai = n(6), hs = n(7) or 0, drink = n(8) == 1, combat = n(9) == 1, hp = (n(10) or -1) >= 0 and n(10) or nil, prep = (f[11] and f[11] ~= '-') and f[11] or nil,
+    cw = n(12), cf = n(13), cm = n(14),
     at = GetTime(), unit = unitByName(name) }
 end)
 
@@ -319,9 +321,32 @@ function Duo.hpOf(unit)
 end
 
 -- Ready check pred pullem: oba (ty i parťák) HP a mana v poradku, nikdo nepije
-function Duo.ready(c)
+-- zkratka kouzla: "Arcane Intellect" -> "AI"
+local function abbr(s)
+  if type(s) ~= 'string' or #s <= 8 then return s end
+  local a = s:gsub('(%a)%a*%s*', '%1')
+  return a
+end
+function Duo.ready(c, short)
   local p = Duo.peer()
   if not p then return nil end
+  if short then
+    -- kompaktne: "ty: mana 42% | Oggy: AI, mana 52%"
+    local me, them = {}, {}
+    if c.php and c.php < 70 then me[#me + 1] = ('HP %d%%'):format(c.php) end
+    if c.manaKnown and c.mana < 0.6 then me[#me + 1] = ('mana %d%%'):format(math.floor(c.mana * 100)) end
+    if c.drinking or c.eating then me[#me + 1] = 'pijes' end
+    if p.drink then them[#them + 1] = 'pije' end
+    if p.prep and not p.combat and GetTime() - p.at < 6 then them[#them + 1] = abbr(p.prep) end
+    if p.hp and p.hp < 70 then them[#them + 1] = ('HP %d%%'):format(p.hp) end
+    if p.mana and p.mana < 0.6 then them[#them + 1] = ('mana %d%%'):format(math.floor(p.mana * 100)) end
+    if p.unit and safeBool(pc(UnitIsDeadOrGhost, p.unit)) == true then them[#them + 1] = 'mrtvy' end
+    if #me == 0 and #them == 0 then return true, '|cff66ee77READY|r' end
+    local parts = {}
+    if #me > 0 then parts[#parts + 1] = 'ty: ' .. table.concat(me, ', ') end
+    if #them > 0 then parts[#parts + 1] = p.name .. ': ' .. table.concat(them, ', ') end
+    return false, '|cffffcc00Cekej|r |cffe0d090' .. table.concat(parts, ' | ') .. '|r'
+  end
   local why = {}
   local me = c.php
   if me and me < 70 then why[#why + 1] = ('ty HP %d %%'):format(me) end
