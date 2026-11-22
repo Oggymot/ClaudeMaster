@@ -243,13 +243,15 @@ function TA.split(c)
   -- cil parťáka znam jen z jeho addonu (identita moba + HP); porovnani "cil spoluhrace" hra nedovoli
   local PL = ns.Plates
   local pT = PL and PL.peerTarget and PL.peerTarget()
-  if not (pT and pT.id) then TA.splitSince = nil return nil end
+  -- nejdriv primo (UnitIsUnit target vs party1target), jinak odhad ze zpravy jeho addonu
+  local same = PL and PL.direct and PL.direct('target', pu)
+  if same == nil and not (pT and pT.id) then TA.splitSince = nil return nil end
   local myId = PL.idOf('target')
   -- (GUID je u kazdeho klienta jine; match3 vraci nil, kdyz to nejde poznat)
-  local same = PL.match3('target', pT.id, nil, pT.hp)
+  if same == nil then same = PL.match3('target', pT.id, nil, pT.hp) end
   -- jeho cil je ovce (sdilena) -> neresit
   local theirCC = false
-  for _, s in ipairs(PL.sheep or {}) do
+  for _, s in ipairs(pT and pT.id and PL.sheep or {}) do
     if s.untilT > GetTime() and ((s.id.g and s.id.g == pT.id.g) or (s.id.m and s.id.m == pT.id.m)) then theirCC = true end
   end
   if same ~= false or theirCC or c.targetCC then TA.splitSince = nil return nil end
@@ -257,7 +259,7 @@ function TA.split(c)
   TA.splitSince = TA.splitSince or now
   if now - TA.splitSince < 2.5 then return nil end
   local mine = ns.healthPct('target')
-  local theirs = pT.hp
+  local theirs = pT and pT.hp
   if ns.class == 'WARLOCK' then
     -- warlock muze DoTovat vic mobu; varovat jen kdyz je cil parťáka zjevne niz
     if theirs and mine and theirs + 15 < mine then

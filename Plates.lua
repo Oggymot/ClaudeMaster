@@ -127,6 +127,18 @@ local function match3(u, id, myId, peerHp)
   if npcCount[id.n] == 1 then return true end
   return nil
 end
+-- Prime porovnani "je tohle cil partaka?" (UnitIsUnit s party1target) - presne, kdyz ho hra dovoli
+-- (mimo boj overeno; v boji muze vracet secret -> nil a pouzije se odhad vyse)
+local function direct(u, pu)
+  if type(pu) ~= 'string' then return nil end
+  local pt = pu .. 'target'
+  if safeBool(pc(UnitExists, pt)) ~= true then return nil end
+  if safeBool(pc(UnitCanAttack, 'player', pt)) == false then return nil end   -- cili hrace/pratele
+  local r = safeBool(pc(UnitIsUnit, u, pt))
+  if r == nil then return nil end
+  return r
+end
+PL.direct = direct
 local function match(u, id, myId, peerHp) return match3(u, id, myId, peerHp) == true end
 PL.idOf, PL.match, PL.match3 = idOf, match, match3
 function PL.guidOk(g) return g ~= nil and (guidCount[g] or 1) == 1 end
@@ -412,7 +424,8 @@ local function update()
         if grouped then
           local who = {}
           if is(u, 'target') then who[#who + 1] = ('|c%s%s|r'):format(myHex, myL) end
-          if peerT and peerT.id and match(u, peerT.id, myId, peerT.hp) then
+          local dm = direct(u, peerUnit)
+          if dm == true or (dm == nil and peerT and peerT.id and match(u, peerT.id, myId, peerT.hp)) then
             who[#who + 1] = ('|c%s%s|r'):format(peerUnit and classHex(peerUnit) or 'ffffffff', (peerName or '?'):sub(1, 1))
           end
           if #who > 0 then o.who:SetText(table.concat(who, ' ')) end
