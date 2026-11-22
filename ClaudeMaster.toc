@@ -1,0 +1,22 @@
+## Interface: 16001
+## Title: ClaudeMaster
+## Notes: Frost Mage / Destruction Warlock poradce: analyzuje cil, skupinu mobu, tvou manu, cooldowny a procy a doporucuje, co castit.
+## Author: Claude
+## Version: 1.0.0
+## SavedVariablesPerCharacter: ClaudeMasterDB
+
+Core.lua
+Bags.lua
+Party.lua
+Immune.lua
+Memory.lua
+Frost.lua
+Warlock.lua
+Dump.lua
+Extras.lua
+Afflict.lua
+Tactics.lua
+Plates.lua
+Assist.lua
+UI.lua
+Options.lua
