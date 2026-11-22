@@ -910,6 +910,19 @@ function ns.close(unit)
 end
 
 local PARTY_UNITS = { 'party1', 'party2', 'party3', 'party4', 'partypet1', 'partypet2', 'partypet3', 'partypet4' }
+-- Miri mob u na spoluhrace pu? (overeno /cm sonda: UnitIsUnit(mob..'target', 'party1') vraci na Foreveru nil,
+-- ale jmeno cile moba i threat spoluhrace jdou cist i v boji) -> true / false / nil
+function ns.mobTargets(u, pu)
+  local r = safeBool(pc(UnitIsUnit, u .. 'target', pu))
+  if r ~= nil then return r end
+  local a, b = safe(pc(UnitName, u .. 'target')), safe(pc(UnitName, pu))
+  if type(a) == 'string' and type(b) == 'string' then return a == b end
+  if UnitDetailedThreatSituation then
+    local t = safeBool(pc(UnitDetailedThreatSituation, pu, u))
+    if t == true then return true end
+  end
+  return nil
+end
 -- Kontrola davu, kterou AoE rozbije (ovce, sap, shackle, trap...)
 local CC_AURAS = { 'Polymorph', 'Sap', 'Shackle Undead', 'Hibernate', 'Freezing Trap Effect', 'Banish', 'Seduction',
   'Blind', 'Gouge', 'Repentance', 'Scare Beast', 'Wyvern Sting' }
@@ -1008,7 +1021,7 @@ function ns.scanEnemies()
           -- na koho z party mob miri
           if grouped and not onMe then
             for _, pu in ipairs(PARTY_UNITS) do
-              if UnitExists(pu) and safeBool(pc(UnitIsUnit, u .. 'target', pu)) then
+              if UnitExists(pu) and ns.mobTargets(u, pu) == true then
                 r.on[pu] = (r.on[pu] or 0) + 1
                 break
               end

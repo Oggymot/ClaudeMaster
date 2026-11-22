@@ -439,6 +439,9 @@ local function update()
           elseif st == 1 then
             -- mas vic threatu nez ten, koho bije: za chvili pujde po tobe
             o.aggro:SetText('|cffff9900!TY|r')
+          elseif peerUnit and ns.mobTargets and ns.mobTargets(u, peerUnit) == true then
+            -- primo ze hry (jmeno cile moba / threat parťáka), bez zprav
+            o.aggro:SetText('|cffffcc33>' .. tostring(safe(pc(UnitName, peerUnit)) or '?') .. '|r')
           else
             for nm, a in pairs(PL.peerA) do
               if now - a.at < 4 then
