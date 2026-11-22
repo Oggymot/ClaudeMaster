@@ -20,10 +20,27 @@ local function hasBuff(names, trackedUntil)
   if unknown then return GetTime() < (trackedUntil or 0) end
   return false
 end
-local function bestArmor()
-  if ns.known('Ice Armor') then return 'Ice Armor' end
-  if ns.known('Frost Armor') then return 'Frost Armor' end
-  if ns.known('Mage Armor') then return 'Mage Armor' end
+-- Armor podle situace:
+--  tank drzi moby (parta s tankem / dungeon ve skupine) -> Mage Armor (mana i pri kouzleni; na tebe nikdo nebije)
+--  solo proti kouzlici mobce -> Mage Armor (+odolnost, zpomaleni by stejne nebylo k nicemu)
+--  jinak (solo, parta bez tanku) -> Ice/Frost Armor (armor + zpomali kazdeho, kdo te bije)
+local function armorSitu(c)
+  return (c.tankUp or (c.instance and c.group)) and 'tank' or 'solo'
+end
+local function bestArmor(c)
+  local ice = (ns.known('Ice Armor') and 'Ice Armor') or (ns.known('Frost Armor') and 'Frost Armor') or nil
+  local mage = ns.known('Mage Armor') and 'Mage Armor' or nil
+  if not c then return ice or mage end
+  if mage and armorSitu(c) == 'tank' then return mage, 'tank drzi moby, mana pri kouzleni' end
+  if mage and not c.group and c.hostile and c.mob and c.mob.caster then return mage, 'cil kouzli: +odolnost, mana' end
+  if ice then return ice, 'moby te bijou: zpomali je' end
+  return mage
+end
+local function currentArmor()
+  for _, n in ipairs(ARMORS) do
+    if ns.playerAura(n) then return n end
+  end
+  if GetTime() < (ns.armorUntil or 0) then return ns.armorName end
 end
 
 ------------------------------------------------------------------------------------------
@@ -179,6 +196,7 @@ function E.context()
   c.pullAge = ns.T.engagedAt and (GetTime() - ns.T.engagedAt) or 0
   local tk = c.party and c.party.tank
   c.tankUp = c.group and tk ~= nil
+  ns.armorSituNow = armorSitu(c)
   if tk then c.tankMobs = c.enemies.on[tk.unit] or 0 c.tankName = c.tankName or tk.name end
   if c.hostile then c.mark = safeNum(pc(GetRaidTargetIndex, 'target')) end
   -- skutecny threat (kdyz ho Forever neskryva): % k pretazeni aggra od tanka
@@ -239,8 +257,19 @@ local function decide(c, s)
 
   ---------------------------------------------------------------- mimo boj
   if not c.inCombat then
-    if not c.armor and bestArmor() and not s.used.armor then
-      s.used.armor = true return A(bestArmor(), 'Chybi ti armor') end
+    local want, why = bestArmor(c)
+    if not c.armor and want and not s.used.armor then
+      s.used.armor = true
+      return A(want, 'Chybi ti armor' .. (why and (' (' .. why .. ')') or ''))
+    end
+    -- situace se od nahozeni zmenila (pripojil se tank / parta se rozpadla): vymenit.
+    -- Kdyz si jinou armor das sam ve stejne situaci, addon to respektuje.
+    local cur = currentArmor()
+    if c.armor and want and cur and cur ~= want and ns.armorSitu and ns.armorSitu ~= armorSitu(c)
+      and not c.drinking and not c.eating and (not c.manaKnown or c.mana >= 0.4) and not s.used.armor then
+      s.used.armor = true
+      return A(want, ('Vymen %s za %s (%s)'):format(cur, want, why or ''))
+    end
     if not c.ai and ns.known('Arcane Intellect') and not s.used['Arcane Intellect'] then
       return A('Arcane Intellect', 'Chybi Arcane Intellect', 'spell', { unit = 'player' }) end
     -- parta: Arcane Intellect a curse

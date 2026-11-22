@@ -1089,7 +1089,8 @@ local function onCast(spellID)
     local rootImmune = ns.Immune and ns.Immune.bad(ns.Immune.info(), 'Frost Nova')
     if T.near ~= false and not rootImmune then T.frozenUntil, T.frozenHits = now + 8, 0 end
   elseif name == 'Ice Barrier' then ns.barrierUntil = now + 60
-  elseif name == 'Ice Armor' or name == 'Frost Armor' or name == 'Mage Armor' or name == 'Molten Armor' then ns.armorUntil = now + 1800
+  elseif name == 'Ice Armor' or name == 'Frost Armor' or name == 'Mage Armor' or name == 'Molten Armor' then
+    ns.armorUntil, ns.armorName, ns.armorSitu = now + 1800, name, ns.armorSituNow
   elseif name == 'Arcane Intellect' then ns.aiUntil = now + 1800
   elseif name == 'Restore Mana' then ns.itemUsedAt.gem = now
   elseif name == 'Healing Potion' then ns.itemUsedAt.potion = now
