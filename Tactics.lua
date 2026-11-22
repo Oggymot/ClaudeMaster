@@ -34,6 +34,36 @@ local function classOf(u)
   return cl == 'elite' or cl == 'rareelite' or cl == 'worldboss', cl == 'worldboss'
 end
 
+-- pasmo vzdalenosti z dosahu kouzel: 1 = do 10 yd, 2 = do 20, 3 = do 30, 4 = dal (nil = nevime)
+local R20 = { 'Fire Blast', 'Searing Pain', 'Scorch' }
+local function band(u)
+  if safeBool(pc(CheckInteractDistance, u, 3)) == true then return 1 end
+  if C_Spell and C_Spell.IsSpellInRange then
+    for _, n in ipairs(R20) do
+      local id = ns.known(n) and ns.id(n)
+      if id then
+        local r = safeBool(pc(C_Spell.IsSpellInRange, id, u))
+        if r == true then return 2 elseif r == false then break end
+      end
+    end
+  end
+  local c = ns.close(u)
+  if c == true then return 3 elseif c == false then return 4 end
+end
+TA.band = band
+-- co o mobovi vi databaze (lecitel, CC, utika, patrola)
+local function noteDB(r, u, isTarget)
+  local d = ns.MobDB and ns.MobDB.forUnit(u)
+  if not d then return end
+  local nm = d.name
+  if #d.heal > 0 then r.healers = r.healers + 1 if not isTarget then r.healerName = r.healerName or nm end
+    if isTarget then r.targetHeals = true end end
+  if #d.cc > 0 then r.ccers = r.ccers + 1 end
+  if #d.summon > 0 then r.summoners = r.summoners + 1 end
+  if d.flee then r.fleers = r.fleers + 1 end
+  if d.patrol then r.patrols = r.patrols + 1 end
+end
+
 function TA.scanPack()
   local now = GetTime()
   if now - TA.packAt < 0.5 then return TA.pack end
@@ -46,7 +76,9 @@ function TA.scanPack()
   local tl = safeNum(pc(UnitLevel, 'target')) or my
   local el, boss = classOf('target')
   local r = { n = 1, elite = el and 1 or 0, boss = boss or tl < 0, maxLvl = tl < 0 and (my + 10) or tl, estimated = tx == nil,
-    humanoid = 0, demon = 0 }
+    humanoid = 0, demon = 0, healers = 0, ccers = 0, summoners = 0, fleers = 0, patrols = 0, patrolNear = nil }
+  pcall(noteDB, r, 'target', true)
+  local tb = band('target')
   local ct = safe(pc(UnitCreatureType, 'target'))
   if ct == 'Humanoid' then r.humanoid = 1 elseif ct == 'Demon' or ct == 'Elemental' then r.demon = 1 end
   local plates = C_NamePlate and C_NamePlate.GetNamePlates and pc(C_NamePlate.GetNamePlates)
@@ -60,9 +92,12 @@ function TA.scanPack()
         and safeBool(pc(UnitAffectingCombat, u)) ~= true then
         local inPack = false
         local x, y = centerOf(pl)
+        local ub = band(u)
         if tx and x then
           local d = math.sqrt((x - tx) ^ 2 + (y - ty) ^ 2)
           inPack = d < lim and ns.close(u) ~= false
+          -- na obrazovce blizko, ale podle dosahu kouzel jinde (pred / za cilem)
+          if inPack and tb and ub and math.abs(tb - ub) >= 2 then inPack = false end
         elseif safe(pc(UnitName, u)) == tname and ns.near(u) then
           inPack = true   -- bez pozic: stejny druh hodne blizko
         end
@@ -76,6 +111,11 @@ function TA.scanPack()
           r.maxLvl = math.max(r.maxLvl, l2)
           local c2 = safe(pc(UnitCreatureType, u))
           if c2 == 'Humanoid' then r.humanoid = r.humanoid + 1 elseif c2 == 'Demon' or c2 == 'Elemental' then r.demon = r.demon + 1 end
+          pcall(noteDB, r, u, false)
+        elseif ub and ub <= 3 and not r.patrolNear then
+          -- patrola v dosahu, ale mimo pack: muze prijit behem boje
+          local d = ns.MobDB and ns.MobDB.forUnit(u)
+          if d and d.patrol then r.patrolNear = d.name end
         end
       end
     end
@@ -116,22 +156,29 @@ end
 
 local RATE_TXT = {
   { '|cff66ee77', 'lehke' },
-  { '|cffcfe08a', 'zvladnutelne' },
-  { '|cffffaa33', 'tezke - pripravte CC' },
-  { '|cffff5555', 'moc - nechte byt nebo tahejte po jednom' },
+  { '|cffcfe08a', 'ok' },
+  { '|cffffaa33', 'tezke, CC' },
+  { '|cffff5555', 'moc, po jednom' },
 }
 function TA.pullText(c)
   if c.inCombat or not c.hostile then return nil end
   local lvl, p = TA.rate(c)
   if not lvl then return nil end
-  if p.n == 1 and p.elite == 0 and not p.boss and (p.diff or 0) < 2 and lvl <= 2 then return nil end
-  local parts = {}
-  parts[#parts + 1] = p.n == 1 and '1 mob' or ((p.estimated and '~' or '') .. p.n .. ' moby')
-  if p.boss then parts[#parts + 1] = 'BOSS'
-  elseif p.elite > 0 then parts[#parts + 1] = p.elite .. 'x elite' end
-  if p.diff and p.diff >= 2 then parts[#parts + 1] = '+' .. p.diff .. ' lvl' end
+  local notable = p.healers > 0 or p.ccers > 0 or p.summoners > 0 or p.patrolNear or (p.fleers > 0 and p.n >= 2)
+  if p.n == 1 and p.elite == 0 and not p.boss and (p.diff or 0) < 2 and lvl <= 2 and not notable then return nil end
+  local I = ns.ico
   local t = RATE_TXT[lvl]
-  local txt = ('%sPull: %s - %s|r'):format(t[1], table.concat(parts, ', '), t[2])
+  -- lebky = obtiznost, pak pocet mobu a ikonky toho, na co si dat pozor
+  local parts = { string.rep(I('skull', 12), lvl) .. ' ' .. t[1] .. ((p.estimated and '~' or '') .. p.n .. 'x') .. '|r' }
+  if p.boss then parts[#parts + 1] = '|cffff5555BOSS|r'
+  elseif p.elite > 0 then parts[#parts + 1] = '|cffffd100' .. p.elite .. 'x elite|r' end
+  if p.diff and p.diff >= 2 then parts[#parts + 1] = '+' .. p.diff .. ' lvl' end
+  if p.healers > 0 then parts[#parts + 1] = I('heal') .. (p.healers > 1 and p.healers or '') end
+  if p.ccers > 0 then parts[#parts + 1] = I('cc') .. (p.ccers > 1 and p.ccers or '') end
+  if p.summoners > 0 then parts[#parts + 1] = I('summon') end
+  if p.fleers > 0 then parts[#parts + 1] = I('flee') .. (p.fleers > 1 and p.fleers or '') end
+  if p.patrolNear then parts[#parts + 1] = I('patrol') .. ' |cffffcc00patrola|r' end
+  local txt = table.concat(parts, ' ') .. '  ' .. t[1] .. t[2] .. '|r'
   -- plan CC pro vic mobu (duo)
   if p.n >= 2 and (lvl >= 2) then
     local plan = TA.ccPlanText(c, p)
@@ -157,6 +204,12 @@ TA.myCC = myCC
 function TA.ccPlanText(c, p)
   local peer = ns.Duo and ns.Duo.peer()
   local mine = myCC(c)
+  -- lecitel v packu: ten jde do CC (nebo ho bijte prvniho, kdyz je to cil)
+  if p.healerName and mine then
+    return ('Plan: %s na lecitele (%s), bijte cil'):format(mine == 'Polymorph' and 'ovce' or mine, p.healerName)
+  elseif p.targetHeals and p.n >= 2 then
+    return 'Plan: cil se leci - bijte ho prvniho, interrupt na heal'
+  end
   if not peer then
     if mine and p.n >= 2 then return ('Plan: %s na druheho, bij prvniho'):format(mine) end
     return nil
@@ -298,6 +351,10 @@ if E and E.plan then
       return cc or TA.split(c) or TA.multiDot(c)
     end)
     if ok and a and not util then util = a end
+    local j = ns.Plates and ns.Plates.joined
+    if not util and c.inCombat and j and GetTime() - j.at < 3 then
+      util = hint(('+1 se pridal: %s'):format(j.name or 'mob'), ns.ICON and ns.ICON.join, true)
+    end
     -- ne-mag ve skupine s magem: vycarovana voda/jidlo jsou zadarmo (setri penize za kupovane)
     if not util and not c.inCombat and not c.hostile and ns.class ~= 'MAGE' and ns.Bags.groupMage then
       local mage = ns.Bags.groupMage()

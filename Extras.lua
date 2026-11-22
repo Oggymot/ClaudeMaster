@@ -7,6 +7,36 @@ local ADDON, ns = ...
 if not ns.enabled then return end
 local pc, safe, safeNum, safeBool = ns.pc, ns.safe, ns.safeNum, ns.safeBool
 
+-- ikonka do textu: |T cesta:velikost |t
+local ICON = {
+  ready = 'Interface\\RaidFrame\\ReadyCheck-Ready', wait = 'Interface\\RaidFrame\\ReadyCheck-Waiting',
+  notready = 'Interface\\RaidFrame\\ReadyCheck-NotReady', skull = 'Interface\\TargetingFrame\\UI-RaidTargetingIcon_8',
+  heal = 'Interface\\Icons\\Spell_Holy_Heal', flee = 'Interface\\Icons\\Ability_Rogue_Sprint',
+  cc = 'Interface\\Icons\\Spell_Shadow_Possession', sheep = 'Interface\\Icons\\Spell_Nature_Polymorph',
+  patrol = 'Interface\\Icons\\Ability_Tracking', fire = 'Interface\\Icons\\Spell_Fire_FlameBolt',
+  frost = 'Interface\\Icons\\Spell_Frost_FrostBolt02', shadow = 'Interface\\Icons\\Spell_Shadow_ShadowBolt',
+  arcane = 'Interface\\Icons\\Spell_Nature_StarFall', nature = 'Interface\\Icons\\Spell_Nature_Lightning',
+  holy = 'Interface\\Icons\\Spell_Holy_HolySmite', swords = 'Interface\\Icons\\Ability_DualWield',
+  onme = 'Interface\\Icons\\Ability_Warrior_DefensiveStance', elite = 'Interface\\Icons\\Achievement_Boss_Ragnaros',
+  mana = 'Interface\\Icons\\INV_Potion_76', drink = 'Interface\\Icons\\INV_Drink_18', hp = 'Interface\\Icons\\Spell_Holy_SealOfSacrifice',
+  summon = 'Interface\\Icons\\Spell_Shadow_RaiseDead', join = 'Interface\\Icons\\Ability_Warrior_Charge',
+}
+ns.ICON = ICON
+function ns.ico(key, size)
+  local p = ICON[key] or key
+  size = size or 13
+  if p:find('^Interface\\Icons') then return ('|T%s:%d:%d:0:0:64:64:5:59:5:59|t'):format(p, size, size) end
+  return ('|T%s:%d|t'):format(p, size)
+end
+-- ikona tridy (z herni textury trid)
+function ns.classIco(cls, size)
+  local t = cls and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[cls]
+  if not t then return '' end
+  size = size or 13
+  return ('|TInterface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes:%d:%d:0:0:256:256:%d:%d:%d:%d|t'):format(size, size,
+    t[1] * 256, t[2] * 256, t[3] * 256, t[4] * 256)
+end
+
 local function auraHas(unit, names)
   if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return nil end
   for i = 1, 40 do
@@ -339,11 +369,11 @@ function Duo.ready(c, short)
   if p.hp and p.hp < 70 then them[#them + 1] = ('HP %d%%'):format(p.hp) end
   if p.mana and p.mana < 0.6 then them[#them + 1] = ('mana %d%%'):format(math.floor(p.mana * 100)) end
   if p.unit and safeBool(pc(UnitIsDeadOrGhost, p.unit)) == true then them[#them + 1] = 'mrtvy' end
-  if #me == 0 and #them == 0 then return true, '|cff66ee77READY|r' end
+  if #me == 0 and #them == 0 then return true, ns.ico('ready', 14) .. ' |cff66ee77READY|r' end
   local parts = {}
   if #me > 0 then parts[#parts + 1] = 'ty: ' .. table.concat(me, ', ') end
-  if #them > 0 then parts[#parts + 1] = p.name .. ': ' .. table.concat(them, ', ') end
-  return false, '|cffffcc00Cekej|r |cffe0d090' .. table.concat(parts, ' | ') .. '|r'
+  if #them > 0 then parts[#parts + 1] = ns.classIco(p.cls) .. ' ' .. p.name .. ': ' .. table.concat(them, ', ') end
+  return false, ns.ico('wait', 14) .. ' |cffe0d090' .. table.concat(parts, ' | ') .. '|r'
 end
 
 -- /cm duo: stav spojeni

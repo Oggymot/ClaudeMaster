@@ -51,6 +51,7 @@ local function parse(id)
       elseif tag == 'd' and e.school ~= 'physical' then r.dmgSchool[e.school] = true end
     end
   end
+  r.patrol = f[14] == '1'
   r.drops = {}
   for d in (f[13] or ''):gmatch('[^;]+') do
     local id, ch, kind, name = d:match('^(%d+)~([%d%.]+)~(%w)~(.+)$')
@@ -170,6 +171,7 @@ function MD.describe(r)
   if #r.cc > 0 then p[#p + 1] = '|cffff7070CC:|r ' .. table.concat(r.cc, ', ') end
   if #r.summon > 0 then p[#p + 1] = 'privolava pomoc' end
   if r.flee then p[#p + 1] = '|cffffcc00utika|r' end
+  if r.patrol then p[#p + 1] = 'patroluje' end
   return #p > 0 and table.concat(p, ', ') or nil
 end
 

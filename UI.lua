@@ -450,24 +450,30 @@ end
 local SEP = '  |cff556070-|r  '
 -- kazda skupina na vlastnim radku: moby / cil / stavy
 -- co vime o mobovi: jen to dulezite (kouzli cim, utika - jiste, ne odhad)
+-- (ikonky: skola kouzel, utek, leceni, CC, patrola - bez textu)
 function UI.mobText(c)
   local m = c.mob
   if not m then return nil end
+  local I = ns.ico
   local p = {}
-  if m.caster then p[#p + 1] = '|cff9aa6b8kouzli' .. (m.school == 'fire' and ' ohnem' or (m.school == 'frost' and ' mrazem'
-    or (m.school == 'shadow' and ' stinem' or ''))) .. '|r' end
-  if m.flees and not m.fleeGuess then p[#p + 1] = '|cffffcc00utika|r' end
-  return #p > 0 and table.concat(p, ', ') or nil
+  if m.caster then p[#p + 1] = I(m.school and ns.ICON[m.school] and m.school or 'arcane') end
+  local d = m.db
+  if d and #d.heal > 0 then p[#p + 1] = I('heal') end
+  if d and #d.cc > 0 then p[#p + 1] = I('cc') end
+  if m.flees and not m.fleeGuess then p[#p + 1] = I('flee') end
+  if d and d.patrol and not c.inCombat then p[#p + 1] = I('patrol') end
+  return #p > 0 and table.concat(p, ' ') or nil
 end
 local function infoLines(c)
   local lines = {}
   local e = c.enemies
   if (c.inCombat or e.combat > 0) and (e.combat > 1 or (e.cc or 0) > 0 or e.onMe > 1) then
-    local t = ('Moby v boji |cffffffff%d|r'):format(e.combat)
-    if e.near > 0 then t = t .. ('  (u tebe %d)'):format(e.near) end
-    if e.onMe > 0 then t = t .. ('  |cffff7070na tobe %d|r'):format(e.onMe) end
-    if (e.cluster or 0) >= 2 and e.cluster ~= e.onMe then t = t .. ('  pohromade %d'):format(e.cluster) end
-    if (e.cc or 0) > 0 then t = t .. ('  |cffc080ffovce %d|r'):format(e.cc) end
+    -- meče = moby v boji, stit = na tobe, ovce = v CC
+    local I = ns.ico
+    local t = ('%s |cffffffff%d|r'):format(I('swords'), e.combat)
+    if e.onMe > 0 then t = t .. ('   %s |cffff7070%d|r'):format(I('onme'), e.onMe) end
+    if (e.cluster or 0) >= 2 and e.cluster ~= e.onMe then t = t .. ('   |cff9aa6b8pohromade %d|r'):format(e.cluster) end
+    if (e.cc or 0) > 0 then t = t .. ('   %s |cffc080ff%d|r'):format(I('sheep'), e.cc) end
     lines[#lines + 1] = t
   end
   -- mimo boj: staci mana na dalsi boj?
@@ -491,11 +497,11 @@ local function infoLines(c)
   if peer and c.inCombat and ns.Duo.encounter then
     lines[#lines + 1] = '|cffffcc00Boss: hra blokuje zpravy, s partakem nic nesdilime|r'
   elseif peer and c.inCombat and ((peer.hp and peer.hp < 70) or (peer.mana and peer.mana < 0.3) or peer.drink) then
-    local hp = peer.hp and ('HP ' .. peer.hp .. ' %') or 'HP ?'
-    local m = peer.mana and (', mana ' .. math.floor(peer.mana * 100) .. ' %') or ''
-    local col = (peer.hp and peer.hp < 35 and '|cffff5555') or (peer.hp and peer.hp < 60 and '|cffffcc00') or '|cffcfd8e3'
-    if not c.inCombat then col = (peer.drink and '|cffffcc00') or col end
-    lines[#lines + 1] = ('Partak %s: %s%s%s%s|r'):format(peer.name, col, hp, m, peer.drink and ', pije' or '')
+    -- ikona tridy + HP (barevne) + mana (modre)
+    local col = (peer.hp and peer.hp < 35 and '|cffff5555') or (peer.hp and peer.hp < 60 and '|cffffcc00') or '|cff66ee77'
+    local hp = peer.hp and (col .. peer.hp .. '%|r') or '?'
+    local m = peer.mana and ('  |cff6fa8ff' .. math.floor(peer.mana * 100) .. '%|r') or ''
+    lines[#lines + 1] = ('%s %s  %s%s%s'):format(ns.classIco(peer.cls), peer.name, hp, m, peer.drink and ('  ' .. ns.ico('drink')) or '')
   end
   if ns.class == 'WARLOCK' and c.instance and c.ssKnown ~= nil and ns.Warlock and ns.Warlock.ssKnown then
     lines[#lines + 1] = c.ssOn and ('Soulstone: |cff9a7cffna ' .. c.ssOn .. '|r')

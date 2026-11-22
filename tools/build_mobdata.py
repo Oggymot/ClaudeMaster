@@ -114,6 +114,16 @@ def drops(lootid):
     return ';'.join('%d~%s~%s~%s' % (it, ('%.1f' % ch).rstrip('0').rstrip('.'), fl, nm.replace(';', ',').replace('|', '/'))
                     for _, it, ch, fl, nm in out[:4])
 
+# --- patroly: kolik spawnu ma pohyb po trase (movement_type 2) ---------------------------------
+spawnN, wayN = {}, {}
+for r in c.execute('select id, movement_type from creature'):
+    spawnN[r['id']] = spawnN.get(r['id'], 0) + 1
+    if r['movement_type'] == 2:
+        wayN[r['id']] = wayN.get(r['id'], 0) + 1
+def patrol(e):
+    w = wayN.get(e, 0)
+    return w > 0 and w / spawnN[e] >= 0.2
+
 # --- creatures --------------------------------------------------------------------------------
 cre = {}
 for r in c.execute('select * from creature_template order by patch'):
@@ -146,15 +156,15 @@ for e, r in sorted(cre.items()):
     for sch, col in (('F', 'fire_res'), ('R', 'frost_res'), ('S', 'shadow_res'), ('A', 'arcane_res'), ('N', 'nature_res')):
         if (r[col] or 0) >= 75:
             res.append('%s%d' % (sch, r[col]))
-    rows.append('[%d]="%s|%d|%d|%d|%d|%d|%d|%s|%s|%d|%d|%s|%s"' % (
+    rows.append('[%d]="%s|%d|%d|%d|%d|%d|%d|%s|%s|%d|%d|%s|%s|%s"' % (
         e, esc(name), r['level_min'], r['level_max'], r['rank'], r['type'],
         r['mechanic_immune_mask'] or 0, r['school_immune_mask'] or 0,
         ','.join(res), '1' if e in flee else '', r['unit_class'] or 0,
-        int(r['call_for_help_range'] or 0), ';'.join(sp), esc(drops(r['loot_id']))))
+        int(r['call_for_help_range'] or 0), ';'.join(sp), esc(drops(r['loot_id'])), '1' if patrol(e) else ''))
 
 with open(out, 'w', encoding='utf-8', newline='\n') as f:
     f.write('-- ClaudeMaster: data o mobech z vmangos world DB (GPL-2.0, https://github.com/vmangos/core)\n')
-    f.write('-- Vygenerovano skriptem build_mobdata.py. Format: "jmeno|lvlMin|lvlMax|rank|typ|mechImm|schoolImm|odolnosti|utika|classa|pomoc|kouzla|dropy"\n')
+    f.write('-- Vygenerovano skriptem build_mobdata.py. Format: "jmeno|lvlMin|lvlMax|rank|typ|mechImm|schoolImm|odolnosti|utika|classa|pomoc|kouzla|dropy|patrola"\n')
     f.write('-- dropy: "itemID~sance~druh~jmeno" oddelene ";"  druh q=quest c=cloth/kuze 2-5=kvalita\n')
     f.write('-- kouzla: "tag:skola[+]jmeno" oddelene ";"  tag h=leci c=CC s=privolava d=dmg; + = kouzlo se castuje (jde prerusit)\n')
     f.write('local ADDON, ns = ...\n')

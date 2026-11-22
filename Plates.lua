@@ -24,9 +24,57 @@ local function classHex(u)
 end
 local function is(a, b) return safeBool(pc(UnitIsUnit, a, b)) == true end
 local function plateUnit(pl) return pl.namePlateUnitToken or (pl.UnitFrame and pl.UnitFrame.unit) end
+-- jmenovky drzime podle udalosti hry (objevi se / zmizi), ne prohledavanim vsech ramcu
+PL.units = {}
+PL.combatOf = {}
 local function getPlates()
-  local p = C_NamePlate and C_NamePlate.GetNamePlates and pc(C_NamePlate.GetNamePlates)
-  return type(p) == 'table' and p or {}
+  local out = {}
+  if not PL.seeded then
+    -- jmenovky, ktere uz byly videt pred nactenim addonu (/reload)
+    PL.seeded = true
+    local p = C_NamePlate and C_NamePlate.GetNamePlates and pc(C_NamePlate.GetNamePlates)
+    for _, pl in ipairs(type(p) == 'table' and p or {}) do
+      local u = pl.namePlateUnitToken or (pl.UnitFrame and pl.UnitFrame.unit)
+      if u then PL.units[u] = true end
+    end
+  end
+  if next(PL.units) == nil then
+    local p = C_NamePlate and C_NamePlate.GetNamePlates and pc(C_NamePlate.GetNamePlates)
+    return type(p) == 'table' and p or out
+  end
+  for u in pairs(PL.units) do
+    local pl = C_NamePlate.GetNamePlateForUnit and pc(C_NamePlate.GetNamePlateForUnit, u)
+    if pl then out[#out + 1] = pl else PL.units[u] = nil end
+  end
+  return out
+end
+do
+  local ev = CreateFrame('Frame')
+  pcall(ev.RegisterEvent, ev, 'NAME_PLATE_UNIT_ADDED')
+  pcall(ev.RegisterEvent, ev, 'NAME_PLATE_UNIT_REMOVED')
+  pcall(ev.RegisterEvent, ev, 'PLAYER_REGEN_DISABLED')
+  ev:SetScript('OnEvent', function(_, e, u)
+    if e == 'PLAYER_REGEN_DISABLED' then PL.fightAt = GetTime() return end
+    u = safe(u)
+    if type(u) ~= 'string' then return end
+    if e == 'NAME_PLATE_UNIT_ADDED' then
+      PL.units[u] = true
+      PL.combatOf[u] = safeBool(pc(UnitAffectingCombat, u)) == true
+    else
+      PL.units[u] = nil
+      PL.combatOf[u] = nil
+    end
+  end)
+end
+-- mob blizko, ktery byl v klidu, se behem boje pridal (social aggro / patrola)
+local function checkJoined(u, inCombat)
+  local now = safeBool(pc(UnitAffectingCombat, u)) == true
+  local was = PL.combatOf[u]
+  PL.combatOf[u] = now
+  if not (inCombat and now and was == false) then return end
+  if GetTime() - (PL.fightAt or 0) < 2 then return end   -- zacatek pullu: vsichni najednou
+  if is(u, 'target') or ns.close(u) == false then return end
+  PL.joined = { at = GetTime(), name = safe(pc(UnitName, u)) }
 end
 
 ------------------------------------------------------------------------------------------
@@ -307,6 +355,7 @@ local function update()
   for _, pl in ipairs(plates) do
     local u = plateUnit(pl)
     if u and safeBool(pc(UnitCanAttack, 'player', u)) == true and safeBool(pc(UnitIsDeadOrGhost, u)) ~= true then
+      pcall(checkJoined, u, inCombat)
       local o = overlayFor(pl)
       if o then
         seen[o] = true
