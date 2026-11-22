@@ -481,6 +481,12 @@ local function decide(c, s)
     end
   end
 
+  -- tagovani: sedy (cizi) mob / nekdo ho vzal behem castu / instant otvirak v plne oblasti
+  if ns.Tactics and ns.Tactics.tagHint then
+    local tg = ns.Tactics.tagHint(c, s, A, ready) or ns.Tactics.tagOpener(c, s, A, ready)
+    if tg then return tg end
+  end
+
   ---------------------------------------------------------------- mimo boj
   if not c.inCombat then
     local town = c.resting and not c.hostile   -- ve meste: zadne buffy ani pet (az venku)

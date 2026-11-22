@@ -412,3 +412,71 @@ if E and E.plan then
     return plan, util
   end
 end
+
+------------------------------------------------------------------------------------------
+-- Tagovani v plne oblasti (hodne hracu, malo mobu)
+--  * cil uz tagnul nekdo jiny (sedy, UnitIsTapDenied) -> nebij ho, za nej nic nedostanes
+--  * nekdo ti ho vzal behem castu -> zastav cast
+--  * oblast je "plna" (vic tagnutych mobu kolem / nedavno ti nekdo moba vzal)
+--    -> otevri instantem: tag se pocita az pri zasahu, 2.5s Frostbolt casto prohraje
+------------------------------------------------------------------------------------------
+local TAG_SPELLS = {
+  MAGE = { 'Fire Blast', 'Ice Lance' },
+  WARLOCK = { 'Curse of Agony', 'Bane of Agony', 'Corruption' },
+}
+TA.tag = { at = 0, stolenAt = -999, freeAt = -999 }
+local function tagScan()
+  local T = TA.tag
+  local now = GetTime()
+  if now - T.at < 0.5 then return T end
+  T.at = now
+  local tapped, free = 0, 0
+  local units = ns.Plates and ns.Plates.units or {}
+  for u in pairs(units) do
+    if safeBool(pc(UnitCanAttack, 'player', u)) == true and safeBool(pc(UnitIsPlayer, u)) ~= true
+      and safeBool(pc(UnitIsDeadOrGhost, u)) ~= true then
+      local tap = safeBool(pc(UnitIsTapDenied, u))
+      if tap == true then tapped = tapped + 1
+      elseif tap == false and safeBool(pc(UnitAffectingCombat, u)) == false then free = free + 1 end
+    end
+  end
+  T.tapped, T.free = tapped, free
+  T.contested = tapped >= 2 or now - T.stolenAt < 180
+  return T
+end
+function TA.tagInfo() return tagScan() end
+
+function TA.tagHint(c, s, A, ready)
+  if s.step ~= 1 or not c.hostile or c.tPlayer then return nil end
+  local T = tagScan()
+  local now = GetTime()
+  local tapped = safeBool(pc(UnitIsTapDenied, 'target'))
+  if tapped == false then T.freeAt = now return nil end
+  if tapped ~= true then return nil end
+  local more = (T.free or 0) > 0 and (' Volnych kolem: %d.'):format(T.free) or ''
+  -- byl volny pred chvili a ja na nej castim = vzal mi ho nekdo
+  if c.castName and now - T.freeAt < 3 then
+    T.stolenAt = now
+    return A('TAG', 'Mob ti vzal jiny hrac - zastav cast (pohni se) a vezmi jineho.' .. more, 'hint',
+      { urgent = true, icon = 'Interface\Icons\Spell_Shadow_SacrificialShield' })
+  end
+  return A('TAG', 'Sedy mob = tagnul ho jiny hrac, za nej nic nedostanes.' .. more, 'hint',
+    { icon = 'Interface\Icons\Spell_Shadow_SacrificialShield' })
+end
+
+-- otvirak do plne oblasti: instant s dosahem (vola se jen mimo boj na volneho moba)
+function TA.tagOpener(c, s, A, ready)
+  if s.step ~= 1 or c.inCombat or not c.hostile or c.tPlayer or c.tankUp then return nil end
+  local T = tagScan()
+  if not T.contested then return nil end
+  if safeBool(pc(UnitAffectingCombat, 'target')) == true then return nil end
+  for _, sp in ipairs(TAG_SPELLS[ns.class] or {}) do
+    if ready(sp) and ns.castTime(sp) < 0.1 then
+      local id = ns.id and ns.id(sp)
+      local inR = id and C_Spell and C_Spell.IsSpellInRange and safeBool(pc(C_Spell.IsSpellInRange, id, 'target'))
+      if inR ~= false then
+        return A(sp, ('Plna oblast: tagni instantem (%s), at ti ho nikdo nevezme'):format(sp), 'spell', { urgent = true })
+      end
+    end
+  end
+end

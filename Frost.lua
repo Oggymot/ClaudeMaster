@@ -257,6 +257,12 @@ local function decide(c, s)
     return A('Will to Survive', 'Jsi pod kontrolou (stun/fear): Will to Survive', 'spell', { urgent = true })
   end
 
+  -- tagovani: sedy (cizi) mob / nekdo ho vzal behem castu / instant otvirak v plne oblasti
+  if ns.Tactics and ns.Tactics.tagHint then
+    local tg = ns.Tactics.tagHint(c, s, A, ready) or ns.Tactics.tagOpener(c, s, A, ready)
+    if tg then return tg end
+  end
+
   ---------------------------------------------------------------- mimo boj
   if not c.inCombat then
     local want, why = bestArmor(c)
