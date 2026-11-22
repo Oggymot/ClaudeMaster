@@ -74,7 +74,70 @@ function Q.update()
   for _, q in ipairs(quests) do inLog[q.id] = true end
   for id in pairs(db.qHidden) do if not inLog[id] then db.qHidden[id] = nil end end
 
-  if db.questSort and QL.SortQuestWatches then pc(QL.SortQuestWatches) end
+  if db.questSort then Q.sort() end
+end
+
+-- sledovane questy v poradi, jak je ukazuje seznam
+function Q.watchList()
+  local out = {}
+  local n = QL.GetNumQuestWatches and safeNum(pc(QL.GetNumQuestWatches)) or 0
+  for i = 1, n do
+    local id = QL.GetQuestIDForQuestWatchIndex and safeNum(pc(QL.GetQuestIDForQuestWatchIndex, i))
+    if id then out[#out + 1] = id end
+  end
+  return out
+end
+function Q.dist(id)
+  local d = QL.GetDistanceSqToQuest and safeNum(pc(QL.GetDistanceSqToQuest, id))
+  return d and math.sqrt(d) or nil
+end
+-- Razeni podle vzdalenosti. Seznam ukazuje questy v poradi sledovani, takze kdyz hra sama
+-- neseradi (SortQuestWatches na Foreveru nemusi existovat / nic nedela), preradime je sami:
+-- odebrat a znovu pridat od nejblizsiho. Jen kdyz se zmenilo poradi a max. jednou za 10 s.
+Q.sortAt = 0
+function Q.sort()
+  local list = Q.watchList()
+  if #list < 2 then return end
+  local d = {}
+  for i, id in ipairs(list) do d[id] = Q.dist(id) or (1e9 + i) end
+  local want = {}
+  for i, id in ipairs(list) do want[i] = id end
+  table.sort(want, function(a, b) return d[a] < d[b] end)
+  local same = true
+  for i = 1, #list do if list[i] ~= want[i] then same = false break end end
+  if same then return end
+  local now = GetTime()
+  if now - Q.sortAt < 10 then return end
+  Q.sortAt = now
+  if QL.SortQuestWatches then
+    pc(QL.SortQuestWatches)
+    local after = Q.watchList()
+    local ok = #after == #want
+    for i = 1, #want do if after[i] ~= want[i] then ok = false break end end
+    if ok then Q.how = 'hra' return end
+  end
+  if not (QL.AddQuestWatch and QL.RemoveQuestWatch) then return end
+  Q.how = 'addon'
+  local types = {}
+  for _, id in ipairs(want) do types[id] = QL.GetQuestWatchType and pc(QL.GetQuestWatchType, id) or nil end
+  for _, id in ipairs(want) do pc(QL.RemoveQuestWatch, id) end
+  for _, id in ipairs(want) do
+    if types[id] ~= nil then pc(QL.AddQuestWatch, id, types[id]) else pc(QL.AddQuestWatch, id) end
+  end
+end
+
+-- /cm questy info: co hra umi a jak daleko jsou sledovane questy
+function Q.info()
+  local function has(f) return QL[f] and '|cff66ee77ano|r' or '|cffff5555ne|r' end
+  ns.say(('Questy API: SortQuestWatches %s, GetDistanceSqToQuest %s, GetQuestIDForQuestWatchIndex %s, AddQuestWatch %s')
+    :format(has('SortQuestWatches'), has('GetDistanceSqToQuest'), has('GetQuestIDForQuestWatchIndex'), has('AddQuestWatch')))
+  ns.say(('Zona: %s, razeni: %s (naposledy radil: %s), skrytych addonem: %d'):format(
+    tostring(ns.db.questZone), tostring(ns.db.questSort), Q.how or '-', (function() local k = 0 for _ in pairs(ns.db.qHidden or {}) do k = k + 1 end return k end)()))
+  for i, id in ipairs(Q.watchList()) do
+    local t = QL.GetTitleForQuestID and safe(pc(QL.GetTitleForQuestID, id)) or id
+    local dd = Q.dist(id)
+    ns.say(('  %d. %s  %s'):format(i, tostring(t), dd and ('%d yd'):format(dd) or '?'))
+  end
 end
 
 local function request()
@@ -102,6 +165,7 @@ end)
 
 function Q.toggle(arg)
   local db = ns.db
+  if arg == 'info' then Q.info() return end
   if arg == 'zona' or arg == 'zone' then db.questZone = not db.questZone
   elseif arg == 'razeni' or arg == 'sort' then db.questSort = not db.questSort
   else

@@ -941,7 +941,7 @@ local HELP = {
   '/cm summary - ukazat posledni shrnuti boje',
   '/cm duo - stav vymeny dat s partakem (mag + warlock)',
   '/cm zmeny - co hra zmenila na kouzlech (patch) od minule',
-  '/cm questy [zona|razeni] - questy pod minimapou: jen z aktualni oblasti, razeni podle vzdalenosti',
+  '/cm questy [zona|razeni|info] - questy pod minimapou: jen z aktualni oblasti, razeni podle vzdalenosti',
   '/cm bug [poznamka] - ulozit poslednich 30 s (co addon videl a radil), po /reload poslat',
   '/cm learn - co se addon naucil z tveho hrani (reset = zapomenout, off/on)',
   '/cm mobs reset - smazat pamet mobu',
