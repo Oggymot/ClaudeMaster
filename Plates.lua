@@ -84,8 +84,11 @@ local function idOf(u)
   local g = safe(pc(UnitGUID, u))
   if type(g) ~= 'string' then g = nil end
   local n = g and g:match('^%a+%-%d+%-%d+%-%d+%-%d+%-(%d+)%-') or nil
+  -- GUID bez poradoveho cisla spawnu (same nuly) je stejne pro vsechny moby toho druhu -> neni identita
+  local spawn = g and g:match('%-(%x+)$')
+  if spawn and spawn:match('^0+$') then g = nil end
   local m = safeNum(pc(GetRaidTargetIndex, u))
-  if not (g or m) then return nil end
+  if not (g or m or n) then return nil end
   return { g = g, n = n, m = m }
 end
 local function idStr(id) return (id.g or '') .. '/' .. (id.n or '') .. '/' .. (id.m or '') end
@@ -98,17 +101,19 @@ local function idParse(s)
   return id
 end
 -- shoda: GUID presne, nebo stejna raid znacka, nebo creature ID, kdyz je takovy mob u mne jen jeden
-local npcCount = {}
+-- (GUID jen kdyz je mezi mymi jmenovkami jedinecne - kdyby hra GUID maskovala, nesmi se shodovat vic mobu)
+local npcCount, guidCount = {}, {}
 local function match(u, id, myId)
   if not id then return false end
   myId = myId or idOf(u)
   if not myId then return false end
-  if id.g and myId.g and id.g == myId.g then return true end
+  if id.g and myId.g and id.g == myId.g and (guidCount[id.g] or 1) == 1 then return true end
   if id.m and myId.m and id.m == myId.m then return true end
   if id.n and myId.n and id.n == myId.n and npcCount[id.n] == 1 then return true end
   return false
 end
 PL.idOf, PL.match = idOf, match
+function PL.guidOk(g) return g ~= nil and (guidCount[g] or 1) == 1 end
 
 ------------------------------------------------------------------------------------------
 -- Zpravy: X^T=<id>^H=<hp cile>^A=<id>,<id>   P^<id>^<sekund>^<kouzlo>
@@ -347,7 +352,7 @@ local function update()
   local myHex = classHex('player')
   local myL = (safe(pc(UnitName, 'player')) or '?'):sub(1, 1)
   -- kolik jmenovek ma jaky creature ID (shoda podle druhu jen kdyz je jediny)
-  wipe(npcCount)
+  wipe(npcCount) wipe(guidCount)
   local ids = {}
   for _, pl in ipairs(plates) do
     local u = plateUnit(pl)
@@ -355,6 +360,7 @@ local function update()
       local id = idOf(u)
       ids[pl] = id or false
       if id and id.n then npcCount[id.n] = (npcCount[id.n] or 0) + 1 end
+      if id and id.g then guidCount[id.g] = (guidCount[id.g] or 0) + 1 end
     end
   end
   local want = ns.Tactics and ns.Tactics.ccWanted

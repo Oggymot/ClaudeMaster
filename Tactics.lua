@@ -246,7 +246,8 @@ function TA.split(c)
   if not (pT and pT.id) then TA.splitSince = nil return nil end
   local myId = PL.idOf('target')
   local same = myId and PL.match('target', pT.id, myId)
-  local comparable = myId and ((pT.id.g and myId.g) or (pT.id.m and myId.m) or (pT.id.n and myId.n))
+  -- (samotne creature ID nestaci - stejnych mobu muze byt vic; GUID jen kdyz je jedinecne)
+  local comparable = myId and ((pT.id.g and myId.g and PL.guidOk(myId.g)) or (pT.id.m and myId.m))
   if not comparable then same = nil end   -- nelze porovnat (napr. dungeon bez znacek)
   -- jeho cil je ovce (sdilena) -> neresit
   local theirCC = false
