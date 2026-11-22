@@ -938,6 +938,7 @@ local HELP = {
   '/cm summary - ukazat posledni shrnuti boje',
   '/cm duo - stav vymeny dat s partakem (mag + warlock)',
   '/cm zmeny - co hra zmenila na kouzlech (patch) od minule',
+  '/cm questy [zona|razeni] - questy pod minimapou: jen z aktualni oblasti, razeni podle vzdalenosti',
   '/cm bug [poznamka] - ulozit poslednich 30 s (co addon videl a radil), po /reload poslat',
   '/cm learn - co se addon naucil z tveho hrani (reset = zapomenout, off/on)',
   '/cm mobs reset - smazat pamet mobu',
@@ -984,6 +985,8 @@ SlashCmdList.CLAUDEMASTER = function(msg)
     if ns.Options then ns.Options.toggle() end
   elseif cmd == 'test' then
     if ns.Plates and ns.Plates.test then ns.Plates.test() end
+  elseif cmd == 'questy' or cmd == 'quests' then
+    if ns.Quests then ns.Quests.toggle(arg) end
   elseif cmd == 'duo' then
     if ns.Duo then ns.Duo.status() end
   elseif cmd == 'zmeny' or cmd == 'patch' then

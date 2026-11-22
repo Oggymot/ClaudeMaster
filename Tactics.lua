@@ -424,7 +424,25 @@ local TAG_SPELLS = {
   MAGE = { 'Fire Blast', 'Ice Lance' },
   WARLOCK = { 'Curse of Agony', 'Bane of Agony', 'Corruption' },
 }
-TA.tag = { at = 0, stolenAt = -999, freeAt = -999 }
+TA.tag = { at = 0, stolenAt = -999, freeAt = -999, players = 0 }
+-- cizi hraci v okoli (mimo moji partu): z combat logu (dosah ~50 m) a z jmenovek hracu.
+-- Klic = GUID nebo jmeno, hodnota = kdy naposledy videni. Pocitaji se poslednich 60 s.
+local seen = {}
+local band = bit and bit.band
+do
+  local cf = CreateFrame('Frame')
+  pcall(cf.RegisterEvent, cf, 'COMBAT_LOG_EVENT_UNFILTERED')
+  cf:SetScript('OnEvent', function()
+    if not (CombatLogGetCurrentEventInfo and band) then return end
+    local _, _, _, srcGUID, srcName, srcFlags = CombatLogGetCurrentEventInfo()
+    local fl = safeNum(srcFlags)
+    -- 0x400 = hrac, 0x8 = mimo moji skupinu
+    if fl and band(fl, 0x400) ~= 0 and band(fl, 0x8) ~= 0 then
+      local k = safe(srcGUID) or safe(srcName)
+      if type(k) == 'string' then seen[k] = GetTime() end
+    end
+  end)
+end
 local function tagScan()
   local T = TA.tag
   local now = GetTime()
@@ -433,6 +451,12 @@ local function tagScan()
   local tapped, free = 0, 0
   local units = ns.Plates and ns.Plates.units or {}
   for u in pairs(units) do
+    -- jmenovka ciziho hrace (jen kdyz ma hrac zapnute jmenovky pratel / nepratel)
+    if safeBool(pc(UnitIsPlayer, u)) == true and safeBool(pc(UnitInParty, u)) ~= true
+      and safeBool(pc(UnitIsUnit, u, 'player')) ~= true then
+      local k = safe(pc(UnitGUID, u)) or safe(pc(UnitName, u))
+      if type(k) == 'string' then seen[k] = now end
+    end
     if safeBool(pc(UnitCanAttack, 'player', u)) == true and safeBool(pc(UnitIsPlayer, u)) ~= true
       and safeBool(pc(UnitIsDeadOrGhost, u)) ~= true then
       local tap = safeBool(pc(UnitIsTapDenied, u))
@@ -440,8 +464,13 @@ local function tagScan()
       elseif tap == false and safeBool(pc(UnitAffectingCombat, u)) == false then free = free + 1 end
     end
   end
-  T.tapped, T.free = tapped, free
-  T.contested = tapped >= 2 or now - T.stolenAt < 180
+  local players = 0
+  for k, at in pairs(seen) do
+    if now - at > 60 then seen[k] = nil else players = players + 1 end
+  end
+  T.tapped, T.free, T.players = tapped, free, players
+  -- plna oblast: vic cizich (tagnutych) mobu, aspon 3 cizi hraci kolem, nebo mi nekdo nedavno vzal moba
+  T.contested = tapped >= 2 or players >= 3 or now - T.stolenAt < 180
   return T
 end
 function TA.tagInfo() return tagScan() end
@@ -454,6 +483,7 @@ function TA.tagHint(c, s, A, ready)
   if tapped == false then T.freeAt = now return nil end
   if tapped ~= true then return nil end
   local more = (T.free or 0) > 0 and (' Volnych kolem: %d.'):format(T.free) or ''
+  if (T.players or 0) >= 3 then more = more .. (' Hracu kolem: %d.'):format(T.players) end
   -- byl volny pred chvili a ja na nej castim = vzal mi ho nekdo
   if c.castName and now - T.freeAt < 3 then
     T.stolenAt = now
@@ -475,7 +505,8 @@ function TA.tagOpener(c, s, A, ready)
       local id = ns.id and ns.id(sp)
       local inR = id and C_Spell and C_Spell.IsSpellInRange and safeBool(pc(C_Spell.IsSpellInRange, id, 'target'))
       if inR ~= false then
-        return A(sp, ('Plna oblast: tagni instantem (%s), at ti ho nikdo nevezme'):format(sp), 'spell', { urgent = true })
+        local why = (T.players or 0) >= 3 and ('%d hracu kolem'):format(T.players) or 'Plna oblast'
+        return A(sp, ('%s: tagni instantem (%s), at ti ho nikdo nevezme'):format(why, sp), 'spell', { urgent = true })
       end
     end
   end

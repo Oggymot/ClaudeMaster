@@ -129,6 +129,10 @@ local function build()
   add(checkbox(f, 'Znacky u jmenovek nepratel (kdo bije, na koho jde, CC, preruseni)', function() return db.plates ~= false end, function(v) db.plates = v end))
   add(checkbox(f, 'Lista se znackami ve skupine (lebka / mesic / smazat)', function() return db.markBarOn == true end,
     function(v) db.markBarOn = v if ns.Assist then ns.Assist.applyVisibility() end end))
+  add(checkbox(f, 'Questy pod minimapou: jen z aktualni oblasti', function() return db.questZone == true end,
+    function(v) db.questZone = v if ns.Quests then ns.Quests.last = 0 ns.Quests.update() end end))
+  add(checkbox(f, 'Questy pod minimapou: radit podle vzdalenosti', function() return db.questSort == true end,
+    function(v) db.questSort = v if ns.Quests then ns.Quests.last = 0 ns.Quests.update() end end))
   add(checkbox(f, 'V tooltipu nepritele: co si addon o mobovi pamatuje', function() return db.tipMob ~= false end, function(v) db.tipMob = v end))
   if ns.class == 'WARLOCK' then
     add(checkbox(f, 'Multi-DoT: radit DoTy i na dalsi moby (tab)', function() return db.multiDot ~= false end, function(v) db.multiDot = v end))

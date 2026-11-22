@@ -22,3 +22,4 @@ Plates.lua
 Assist.lua
 UI.lua
 Options.lua
+Quests.lua
