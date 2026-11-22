@@ -16,6 +16,52 @@ local function watched(qid)
   if QL.IsQuestWatched then return pc(QL.IsQuestWatched, qid) == true end
 end
 
+-- aktivni (zvyrazneny) quest - ten se sipkou na mape
+local function superId()
+  if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
+    local id = safeNum(pc(C_SuperTrack.GetSuperTrackedQuestID))
+    return (id and id > 0) and id or nil
+  end
+  if GetSuperTrackedQuestID then
+    local id = safeNum(pc(GetSuperTrackedQuestID))
+    return (id and id > 0) and id or nil
+  end
+end
+local function setSuper(id)
+  if not id then return end
+  if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then pc(C_SuperTrack.SetSuperTrackedQuestID, id)
+  elseif SetSuperTrackedQuestID then pc(SetSuperTrackedQuestID, id) end
+end
+Q.superId = superId
+
+-- Rucni volby hrace: co si hrac sam zacal sledovat (mimo aktualni oblast), addon neschova;
+-- co sam prestal sledovat, addon nevrati. Pozna se to rozdilem proti stavu po posledni uprave addonu.
+Q.known, Q.accepted = nil, {}
+local function watchSet()
+  local set = {}
+  for _, id in ipairs(Q.watchList()) do set[id] = true end
+  return set
+end
+local function noteUser(db)
+  local now = GetTime()
+  local cur = watchSet()
+  if Q.known then
+    for id in pairs(cur) do
+      if not Q.known[id] and now - (Q.accepted[id] or 0) > 5 then
+        db.qPinned[id] = true  -- hrac si ho sam pridal
+        db.qHidden[id] = nil
+      end
+    end
+    for id in pairs(Q.known) do
+      if not cur[id] then
+        db.qPinned[id] = nil   -- hrac ho sam odebral: nevracet
+        db.qHidden[id] = nil
+      end
+    end
+  end
+  Q.known = cur
+end
+
 -- questy s cilem / odevzdanim na aktualni mape
 local function onMapSet()
   local set, any = {}, false
@@ -34,9 +80,12 @@ function Q.update()
   local db = ns.db
   if not (db and QL and QL.GetNumQuestLogEntries and QL.GetInfo) then return end
   if not (db.questZone or db.questSort or next(db.qHidden or {})) then return end
+  db.qHidden = db.qHidden or {}
+  db.qPinned = db.qPinned or {}
+  noteUser(db)
   if InCombatLockdown() then Q.pending = true return end
   Q.pending = false
-  db.qHidden = db.qHidden or {}
+  local sup = superId()
 
   local set, anySet = onMapSet()
   local n = safeNum(pc(QL.GetNumQuestLogEntries)) or 0
@@ -59,7 +108,7 @@ function Q.update()
       if q.here and not w and db.qHidden[q.id] then
         pc(QL.AddQuestWatch, q.id)
         db.qHidden[q.id] = nil
-      elseif not q.here and q.known and hereN > 0 and w then
+      elseif not q.here and q.known and hereN > 0 and w and not db.qPinned[q.id] and q.id ~= sup then
         pc(QL.RemoveQuestWatch, q.id)
         db.qHidden[q.id] = true
       end
@@ -73,8 +122,11 @@ function Q.update()
   local inLog = {}
   for _, q in ipairs(quests) do inLog[q.id] = true end
   for id in pairs(db.qHidden) do if not inLog[id] then db.qHidden[id] = nil end end
+  for id in pairs(db.qPinned) do if not inLog[id] then db.qPinned[id] = nil end end
 
   if db.questSort then Q.sort() end
+  setSuper(sup ~= superId() and sup or nil)  -- odebrani/pridani sledovani muze zrusit zvyrazneni
+  Q.known = watchSet()
 end
 
 -- sledovane questy v poradi, jak je ukazuje seznam
@@ -102,7 +154,12 @@ function Q.sort()
   for i, id in ipairs(list) do d[id] = Q.dist(id) or (1e9 + i) end
   local want = {}
   for i, id in ipairs(list) do want[i] = id end
-  table.sort(want, function(a, b) return d[a] < d[b] end)
+  -- aktivni quest vzdy nahore, ostatni podle vzdalenosti
+  local sup = superId()
+  table.sort(want, function(a, b)
+    if (a == sup) ~= (b == sup) then return a == sup end
+    return d[a] < d[b]
+  end)
   -- /cm questy obratit: kdyby seznam ukazoval opacne nez poradi sledovani
   if ns.db.questReverse then
     local r = {}
@@ -146,8 +203,10 @@ function Q.info()
   local function has(f) return QL[f] and '|cff66ee77ano|r' or '|cffff5555ne|r' end
   ns.say(('Questy API: SortQuestWatches %s, GetDistanceSqToQuest %s, GetQuestIDForQuestWatchIndex %s, AddQuestWatch %s')
     :format(has('SortQuestWatches'), has('GetDistanceSqToQuest'), has('GetQuestIDForQuestWatchIndex'), has('AddQuestWatch')))
-  ns.say(('Zona: %s, razeni: %s (radi: %s, pridava na zacatek: %s, obracene: %s), skrytych addonem: %d'):format(
-    tostring(ns.db.questZone), tostring(ns.db.questSort), Q.how or '-', tostring(Q.prepend), tostring(ns.db.questReverse == true), (function() local k = 0 for _ in pairs(ns.db.qHidden or {}) do k = k + 1 end return k end)()))
+  local function cnt(t) local k = 0 for _ in pairs(t or {}) do k = k + 1 end return k end
+  ns.say(('Zona: %s, razeni: %s (radi: %s, pridava na zacatek: %s, obracene: %s), skrytych addonem: %d, rucne pridanych: %d, aktivni: %s'):format(
+    tostring(ns.db.questZone), tostring(ns.db.questSort), Q.how or '-', tostring(Q.prepend), tostring(ns.db.questReverse == true),
+    cnt(ns.db.qHidden), cnt(ns.db.qPinned), tostring(superId() or '-')))
   for i, id in ipairs(Q.watchList()) do
     local t = QL.GetTitleForQuestID and safe(pc(QL.GetTitleForQuestID, id)) or id
     local dd = Q.dist(id)
@@ -164,10 +223,17 @@ end
 
 local f = CreateFrame('Frame')
 for _, e in ipairs({ 'PLAYER_ENTERING_WORLD', 'ZONE_CHANGED_NEW_AREA', 'ZONE_CHANGED', 'QUEST_ACCEPTED',
-  'QUEST_LOG_UPDATE', 'PLAYER_REGEN_ENABLED' }) do
+  'QUEST_LOG_UPDATE', 'PLAYER_REGEN_ENABLED', 'QUEST_WATCH_LIST_CHANGED', 'SUPER_TRACKING_CHANGED' }) do
   pcall(f.RegisterEvent, f, e)
 end
-f:SetScript('OnEvent', function() request() end)
+f:SetScript('OnEvent', function(_, e, a, b)
+  -- novy quest se sleduje automaticky - to neni rucni volba hrace
+  if e == 'QUEST_ACCEPTED' then
+    local qid = safeNum(b) or safeNum(a)
+    if qid then Q.accepted[qid] = GetTime() end
+  end
+  request()
+end)
 -- pri pohybu se meni vzdalenosti: preradit kazdych 5 s (a dobehnout odlozenou aktualizaci)
 local acc = 0
 f:SetScript('OnUpdate', function(_, el)
