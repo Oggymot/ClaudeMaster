@@ -305,8 +305,6 @@ function Q.hasKillObjectives() return #rebuild() > 0 end
 -- Questy partaka (duo): co potrebuje zabit / nasbirat on
 --  * zprava Q^typ~klic~mam~potrebuji^...  (typ m = zabit, i = item); posila se pri zmene a kazdych 30 s
 --  * moby, ktere potrebuje partak, maji na jmenovce vykricnik v barve jeho classy
---  * kdyz umre mob, ze ktereho partakovi muze padnout questovy item -> zprava QL^, partak
---    dostane upozorneni "lootni" (za zabiti mobu kredit v parte dostanou oba, za item ne)
 ------------------------------------------------------------------------------------------
 Q.peer = {}
 local lastQ, lastQAt = nil, 0
@@ -369,38 +367,9 @@ function Q.peerNeed(u)
   return who, obj
 end
 
--- smrt moba: z ciliho / mizici jmenovky (AoE, nevybrane moby)
-local told = {}
-local function onDeath(u)
-  if safeBool(pc(UnitIsDead, u)) ~= true then return end
-  if safeBool(pc(UnitIsTapDenied, u)) == true then return end   -- cizi mob, loot neni nas
-  local who, o = Q.peerNeed(u)
-  if not who or not o or o.typ ~= 'item' then return end
-  local name = safe(pc(UnitName, u)) or '?'
-  local key = safe(pc(UnitGUID, u)) or name
-  local now = GetTime()
-  if told[key] and now - told[key] < 10 then return end
-  told[key] = now
-  if ns.Duo and ns.Duo.rawSend and not ns.Duo.encounter then
-    ns.Duo.rawSend(('QL^%s^%s'):format((name:gsub('%^', '')), o.key))
-  end
-end
-local df = CreateFrame('Frame')
-pcall(df.RegisterEvent, df, 'NAME_PLATE_UNIT_REMOVED')
-pcall(df.RegisterEvent, df, 'UNIT_HEALTH')
-df:SetScript('OnEvent', function(_, e, u)
-  u = safe(u)
-  if e == 'UNIT_HEALTH' and u ~= 'target' then return end
-  if type(u) == 'string' then pcall(onDeath, u) end
-end)
--- partak zabil moba, ze ktereho muze padnout muj questovy item
-function Q.recvLoot(name, msg)
-  local mob, item = msg:match('^QL%^([^%^]*)%^(.*)$')
-  if not mob then return end
-  ns.say(('|cffffd100%s zabil %s|r - muze na nem byt tvuj questovy item (%s), lootni.'):format(name, mob, item))
-  if PlaySound and SOUNDKIT and SOUNDKIT.UI_QUEST_ROLLING_FORWARD_01 then pcall(PlaySound, SOUNDKIT.UI_QUEST_ROLLING_FORWARD_01)
-  elseif PlaySound and SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_OPEN then pcall(PlaySound, SOUNDKIT.IG_QUEST_LIST_OPEN) end
-end
+-- (upozorneni "partak zabil moba s tvym questovym lootem" bylo na prani vypnuto;
+--  starsi verze addonu muzou QL^ zpravy dal posilat - tise se ignoruji)
+function Q.recvLoot() end
 
 -- tooltip moba: co z nej potrebuje partak (moje questy ukazuje hra sama)
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
