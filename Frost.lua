@@ -343,7 +343,8 @@ local function decide(c, s)
       if ns.Bags.countConj('water') >= 10 then
         local w = ns.Bags.best('water')
         return A('TARGET', ('%s ma jen %d vycarovane vody: posli ji svou (trade, zadarmo)'):format(peer.name, pw), 'hint',
-          { icon = w and ns.itemIcon(w) or 'Interface\\Icons\\INV_Drink_18' })
+          { icon = w and ns.itemIcon(w) or 'Interface\\Icons\\INV_Drink_18',
+            trade = peer.unit and { unit = peer.unit, name = peer.name, item = w, what = 'vodu' } or nil })
       elseif ns.known('Conjure Water') and c.mana > 0.4 and not s.used['Conjure Water'] then
         return A('Conjure Water', ('%s ma jen %d vycarovane vody: vyrob a posli (trade)'):format(peer.name, pw))
       end
@@ -353,7 +354,8 @@ local function decide(c, s)
       if ns.Bags.countConj('food') >= 10 then
         local fd = ns.Bags.best('food')
         return A('TARGET', ('%s ma jen %d vycarovaneho jidla: posli mu sve (trade, zadarmo)'):format(peer.name, pf), 'hint',
-          { icon = fd and ns.itemIcon(fd) or 'Interface\\Icons\\INV_Misc_Food_10' })
+          { icon = fd and ns.itemIcon(fd) or 'Interface\\Icons\\INV_Misc_Food_10',
+            trade = peer.unit and { unit = peer.unit, name = peer.name, item = fd, what = 'jidlo' } or nil })
       elseif ns.known('Conjure Food') and c.mana > 0.4 and not s.used['Conjure Food'] then
         return A('Conjure Food', ('%s ma jen %d vycarovaneho jidla: vyrob a posli (trade)'):format(peer.name, pf))
       end

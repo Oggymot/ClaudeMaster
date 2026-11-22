@@ -181,6 +181,8 @@ function UI.setClick(key, a)
     typ, val, label = 'item', 'item:' .. a.item, (ns.Bags.items[a.item] and ns.Bags.items[a.item].name) or 'predmet'
     unit = a.unit
     if a.unit then label = label .. ' -> ' .. (safe(pc(UnitName, a.unit)) or a.unit) end
+  elseif a and a.trade and a.trade.name and a.trade.item then
+    typ, val, label = 'macro', '/target ' .. a.trade.name, ('poslat %s: %s (otevre obchod)'):format(a.trade.name, a.trade.what or 'item')
   elseif a and (a.kind == 'spell' or a.kind == 'hint') and a.name and ns.known(a.name) then
     typ, val, unit, label = 'spell', (ns.S[a.name] and ns.S[a.name].realName) or a.name, a.unit, a.name
     if a.rank and ns.rankId(a.name, a.rank) then val = ns.rankId(a.name, a.rank) label = a.name .. ' (rank ' .. a.rank .. ')' end
@@ -199,7 +201,9 @@ function UI.setClick(key, a)
     b:SetAttribute('item', typ == 'item' and val or nil)
     b:SetAttribute('unit', unit)
     b:SetAttribute('target-slot', (typ == 'item' and a.slot) or nil)
+    b:SetAttribute('macrotext', typ == 'macro' and val or nil)
   end)
+  b.cmTrade = (typ == 'macro' and a and a.trade) or nil
   if test and typ then
     -- test: opravdu se zmena v boji ulozila?
     local now = typ == 'spell' and b:GetAttribute('spell') or b:GetAttribute('item')
@@ -218,6 +222,34 @@ function UI.setClick(key, a)
 end
 -- Na zacatku boje tlacitko "vypneme" (v boji uz to nepujde zmenit)
 -- Na zacatku boje na tlacitko nesahame (to by hra zablokovala). Vypne ho state driver.
+-- obchod otevreny po kliknuti na tip: vlozit item (potvrzeni Trade nechame na hraci)
+do
+  local tf = CreateFrame('Frame')
+  tf:RegisterEvent('TRADE_SHOW')
+  tf:SetScript('OnEvent', function()
+    local p = UI.pendingTrade
+    UI.pendingTrade = nil
+    if not p or GetTime() - p.at > 15 or InCombatLockdown() then return end
+    local getNum = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+    local getInfo = C_Container and C_Container.GetContainerItemInfo
+    local pick = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
+    if not (getNum and getInfo and pick and ClickTradeButton) then return end
+    for bag = 0, 4 do
+      for slot = 1, (safeNum(pc(getNum, bag)) or 0) do
+        local info = pc(getInfo, bag, slot)
+        if type(info) == 'table' and safeNum(info.itemID) == p.item then
+          if pcall(pick, bag, slot) and pcall(ClickTradeButton, 1) then
+            ns.say('Item je v obchodu - potvrd Trade.')
+          else
+            if ClearCursor then ClearCursor() end
+            ns.say('Item se nepovedlo vlozit, pretahni ho do obchodu sam.')
+          end
+          return
+        end
+      end
+    end
+  end)
+end
 UI.ctest = {}
 -- po neuspesnem testu vratit vypinani tlacitek v boji (state driver), jakmile boj skonci
 do
@@ -244,6 +276,7 @@ local function slotTip(self)
   GameTooltip:SetOwner(self, 'ANCHOR_TOP')
   local title = a.name
   if a.kind == 'item' and a.item and ns.Bags.items[a.item] then title = ns.Bags.items[a.item].name or title end
+  if title == 'TARGET' then title = a.trade and 'Poslat partakovi' or 'Tip' end
   GameTooltip:AddLine(title or 'ClaudeMaster', T.title[1], T.title[2], T.title[3])
   if a.reason and a.reason ~= title then GameTooltip:AddLine(a.reason, 1, 1, 1, true) end
   local cn = UI.clickNames[key]
@@ -278,6 +311,12 @@ local function makeClick(key)
   -- jen jedna faze kliknuti (podle nastaveni hry), jinak by se akce spustila dvakrat
   local down = GetCVarBool and GetCVarBool('ActionButtonUseKeyDown')
   btn:RegisterForClicks(down and 'AnyDown' or 'AnyUp')
+  btn:SetScript('PostClick', function(self)
+    local t = self.cmTrade
+    if not t or InCombatLockdown() then return end
+    UI.pendingTrade = { item = t.item, at = GetTime() }
+    pcall(InitiateTrade, t.unit)
+  end)
   btn:SetScript('OnEnter', slotTip)
   btn:SetScript('OnLeave', function() GameTooltip:Hide() end)
   -- pres ikony jde panel i tahnout (jinak by ho tlacitka zakryla)
