@@ -146,7 +146,8 @@ function Bug.push(c, plan, util)
   local line = ('%.1f %s tok%d hp:%s L20:%s L10:%s ttd:%s mob:%s | ja hp:%s mana:%s | cmb:%s grp:%s tank:%s en:%s/%s onMe:%s | cast:%s(%s) | %s [%s] > %s | util:%s | dots:%s'):format(
     now, tostring(ns.Immune and ns.Immune.tname or '-'), ns.T.token, hp, f1(c.tLow20), f1(c.tLow10), f1(c.ttd),
     c.mob and (c.mob.fleeingNow and 'utika' or (c.mob.flees and 'flees' or 'ok')) or '-',
-    f1(c.php), c.mana and ('%.0f'):format(c.mana * 100) or '-',
+    (function() local v, ex, l, h = ns.healthPct('player') if ex or not v then return f1(v) end
+      return ('%s(%s-%s sc%s)'):format(f1(v), f1(l), f1(h), tostring(ns.db.hpScale)) end)(), c.mana and ('%.0f'):format(c.mana * 100) or '-',
     f1(c.inCombat), f1(c.group), f1(c.tankUp), f1(c.enemies and c.enemies.combat), f1(c.enemies and c.enemies.near), f1(c.enemies and c.enemies.onMe),
     tostring(c.tCastName or (c.tCasting and '?' or '-')), f1(c.tCastPrio),
     a1 and a1.name or '-', a1 and (a1.reason or '') or '', a2 and a2.name or '-',

@@ -760,6 +760,10 @@ local function healthProbe(unit, lines)
         return false
       end
       P.bad = 0
+      -- horni mez z tohoto a predchoziho cteni (jedno chybne cteni nema spustit "HP dole")
+      local hi = 100
+      for i, line in ipairs(P.lines) do if P.below[i] then hi = math.min(hi, line) end end
+      P.hiPrev, P.hiCur = P.hiCur, hi
       return true
     end,
   })
@@ -816,6 +820,11 @@ function ns.healthPct(unit)
     local lo, hi = 0, 100
     for i, line in ipairs(P.lines) do
       if P.below[i] then hi = math.min(hi, line) else lo = math.max(lo, line) end
+    end
+    -- vlastni HP: "pod carou" jen kdyz to potvrdi dve cteni za sebou
+    if unit == 'player' and P.hiPrev and P.hiPrev > hi then
+      hi = P.hiPrev
+      if lo > hi then lo = hi end
     end
     return (lo + hi) / 2, false, lo, hi
   end
