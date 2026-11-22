@@ -461,6 +461,21 @@ local function decide(c, s)
     return A('Will to Survive', 'Jsi pod kontrolou (stun/fear): Will to Survive', 'spell', { urgent = true })
   end
 
+  -- pod vodou: Unending Breath (10 min dychani) - sobe, pak parte
+  if s.step == 1 and ns.known('Unending Breath') and ns.underwater() and not s.used.breath then
+    local mine = ns.playerAura('Unending Breath')
+    local recent = GetTime() - (ns.castAt['Unending Breath'] or -999) < 540
+    if mine == false or (mine == nil and not recent) then
+      s.used.breath = true
+      return A('Unending Breath', 'Pod vodou: Unending Breath (dychani na 10 min)', 'spell', { unit = 'player' })
+    end
+    local nb = c.party and c.party.needBreath
+    if nb then
+      s.used.breath = true
+      return A('Unending Breath', ('Pod vodou: Unending Breath na %s'):format(nb.name), 'spell', { unit = nb.unit })
+    end
+  end
+
   ---------------------------------------------------------------- mimo boj
   if not c.inCombat then
     local armor = ns.known('Demon Armor') and 'Demon Armor' or (ns.known('Demon Skin') and 'Demon Skin' or nil)

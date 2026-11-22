@@ -511,6 +511,17 @@ local function spendMana(name) manaSeen.spent = manaSeen.spent + ns.cost(name) e
 ------------------------------------------------------------------------------------------
 -- Auray hrace (mimo boj citelne) + Cooldown Manager + proc glow
 ------------------------------------------------------------------------------------------
+-- jsem pod vodou? (plavu pod hladinou, nebo bezi ukazatel dechu)
+function ns.underwater()
+  if IsSubmerged and safeBool(pc(IsSubmerged)) == true then return true end
+  if GetMirrorTimerInfo then
+    for i = 1, 3 do
+      local timer, _, _, _, paused = pc(GetMirrorTimerInfo, i)
+      if safe(timer) == 'BREATH' and safe(paused) ~= 1 and safe(paused) ~= true then return true end
+    end
+  end
+  return false
+end
 function ns.playerAura(name)
   if not (C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName) then return nil end
   local ok, a = pcall(C_UnitAuras.GetAuraDataBySpellName, 'player', name, 'HELPFUL')

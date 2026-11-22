@@ -171,6 +171,11 @@ function P.scan(c)
             r.needAI = m
           end
         end
+        -- warlock pod vodou: Unending Breath i pro partu (auray jen mimo boj)
+        if not inCombat and not r.needBreath and ns.known('Unending Breath') and ns.underwater and ns.underwater()
+          and auraByName(u, 'Unending Breath') == false and inRange('Unending Breath', u) then
+          r.needBreath = m
+        end
         if canDispel and not r.curse and hasDispellable(u) and inRange('Remove Lesser Curse', u) then r.curse = m end
         if felhunter and not r.magic and hasMagic(u) then r.magic = m end
         -- spoluhrac (ne tank), na kterem jsou moby
