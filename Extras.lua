@@ -326,6 +326,9 @@ dev:SetScript('OnEvent', function(_, _, prefix, msg, _, sender)
   if msg:sub(1, 2) == 'C^' then Duo.ccClaim = { name = name, spell = msg:sub(3), at = GetTime() } return end
   local k2 = msg:sub(1, 2)
   if k2 == 'X^' or k2 == 'P^' then if ns.Plates and ns.Plates.recv then ns.Plates.recv(name, msg) end return end
+  -- questy partaka (QL^ = zabil moba s mym questovym lootem)
+  if msg:sub(1, 3) == 'QL^' then if ns.Quests and ns.Quests.recvLoot then ns.Quests.recvLoot(name, msg) end return end
+  if msg == 'Q' or k2 == 'Q^' then if ns.Quests and ns.Quests.recvPeer then ns.Quests.recvPeer(name, msg) end return end
   if msg:sub(1, 2) == 'M^' then
     local f = {}
     for v in (msg .. '^'):gmatch('([^%^]*)%^') do f[#f + 1] = v end

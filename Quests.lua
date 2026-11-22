@@ -103,26 +103,41 @@ function Q.sort()
   local want = {}
   for i, id in ipairs(list) do want[i] = id end
   table.sort(want, function(a, b) return d[a] < d[b] end)
-  local same = true
-  for i = 1, #list do if list[i] ~= want[i] then same = false break end end
-  if same then return end
+  -- /cm questy obratit: kdyby seznam ukazoval opacne nez poradi sledovani
+  if ns.db.questReverse then
+    local r = {}
+    for i = #want, 1, -1 do r[#r + 1] = want[i] end
+    want = r
+  end
+  local function eq(a, b)
+    if #a ~= #b then return false end
+    for i = 1, #a do if a[i] ~= b[i] then return false end end
+    return true
+  end
+  if eq(list, want) then return end
   local now = GetTime()
   if now - Q.sortAt < 10 then return end
   Q.sortAt = now
-  if QL.SortQuestWatches then
-    pc(QL.SortQuestWatches)
-    local after = Q.watchList()
-    local ok = #after == #want
-    for i = 1, #want do if after[i] ~= want[i] then ok = false break end end
-    if ok then Q.how = 'hra' return end
-  end
   if not (QL.AddQuestWatch and QL.RemoveQuestWatch) then return end
   Q.how = 'addon'
   local types = {}
   for _, id in ipairs(want) do types[id] = QL.GetQuestWatchType and pc(QL.GetQuestWatchType, id) or nil end
-  for _, id in ipairs(want) do pc(QL.RemoveQuestWatch, id) end
-  for _, id in ipairs(want) do
-    if types[id] ~= nil then pc(QL.AddQuestWatch, id, types[id]) else pc(QL.AddQuestWatch, id) end
+  local function apply(order)
+    for _, id in ipairs(order) do pc(QL.RemoveQuestWatch, id) end
+    for _, id in ipairs(order) do
+      if types[id] ~= nil then pc(QL.AddQuestWatch, id, types[id]) else pc(QL.AddQuestWatch, id) end
+    end
+  end
+  -- hra muze nove sledovany quest davat na zacatek (ne na konec): pak pridavat od nejvzdalenejsiho
+  local rev = {}
+  for i = #want, 1, -1 do rev[#rev + 1] = want[i] end
+  if Q.prepend then apply(rev) return end
+  apply(want)
+  if Q.prepend == nil and eq(Q.watchList(), rev) then
+    Q.prepend = true
+    apply(rev)
+  elseif Q.prepend == nil then
+    Q.prepend = false
   end
 end
 
@@ -131,8 +146,8 @@ function Q.info()
   local function has(f) return QL[f] and '|cff66ee77ano|r' or '|cffff5555ne|r' end
   ns.say(('Questy API: SortQuestWatches %s, GetDistanceSqToQuest %s, GetQuestIDForQuestWatchIndex %s, AddQuestWatch %s')
     :format(has('SortQuestWatches'), has('GetDistanceSqToQuest'), has('GetQuestIDForQuestWatchIndex'), has('AddQuestWatch')))
-  ns.say(('Zona: %s, razeni: %s (naposledy radil: %s), skrytych addonem: %d'):format(
-    tostring(ns.db.questZone), tostring(ns.db.questSort), Q.how or '-', (function() local k = 0 for _ in pairs(ns.db.qHidden or {}) do k = k + 1 end return k end)()))
+  ns.say(('Zona: %s, razeni: %s (radi: %s, pridava na zacatek: %s, obracene: %s), skrytych addonem: %d'):format(
+    tostring(ns.db.questZone), tostring(ns.db.questSort), Q.how or '-', tostring(Q.prepend), tostring(ns.db.questReverse == true), (function() local k = 0 for _ in pairs(ns.db.qHidden or {}) do k = k + 1 end return k end)()))
   for i, id in ipairs(Q.watchList()) do
     local t = QL.GetTitleForQuestID and safe(pc(QL.GetTitleForQuestID, id)) or id
     local dd = Q.dist(id)
@@ -166,6 +181,13 @@ end)
 function Q.toggle(arg)
   local db = ns.db
   if arg == 'info' then Q.info() return end
+  if arg == 'obratit' or arg == 'reverse' then
+    db.questReverse = not db.questReverse
+    Q.sortAt = 0 Q.prepend = nil
+    ns.say('Questy: obracene poradi ' .. (db.questReverse and 'zap' or 'vyp'))
+    request()
+    return
+  end
   if arg == 'zona' or arg == 'zone' then db.questZone = not db.questZone
   elseif arg == 'razeni' or arg == 'sort' then db.questSort = not db.questSort
   else
@@ -278,3 +300,130 @@ function Q.mobNeed(u)
   return v or nil
 end
 function Q.hasKillObjectives() return #rebuild() > 0 end
+
+------------------------------------------------------------------------------------------
+-- Questy partaka (duo): co potrebuje zabit / nasbirat on
+--  * zprava Q^typ~klic~mam~potrebuji^...  (typ m = zabit, i = item); posila se pri zmene a kazdych 30 s
+--  * moby, ktere potrebuje partak, maji na jmenovce vykricnik v barve jeho classy
+--  * kdyz umre mob, ze ktereho partakovi muze padnout questovy item -> zprava QL^, partak
+--    dostane upozorneni "lootni" (za zabiti mobu kredit v parte dostanou oba, za item ne)
+------------------------------------------------------------------------------------------
+Q.peer = {}
+local lastQ, lastQAt = nil, 0
+local function sendMine(force)
+  local D = ns.Duo
+  if not (D and D.rawSend and D.ok and IsInGroup and IsInGroup()) or D.encounter then return end
+  local parts = {}
+  for _, o in ipairs(rebuild()) do
+    local k = o.key:gsub('[%^~]', '')
+    parts[#parts + 1] = ('%s~%s~%d~%d'):format(o.typ == 'item' and 'i' or 'm', k, o.have or 0, o.need or 0)
+  end
+  local msg = 'Q'
+  for _, p in ipairs(parts) do
+    if #msg + #p + 1 > 250 then break end
+    msg = msg .. '^' .. p
+  end
+  local now = GetTime()
+  if not force and msg == lastQ and now - lastQAt < 30 then return end
+  lastQ, lastQAt = msg, now
+  D.rawSend(msg)
+end
+function Q.recvPeer(name, msg)
+  local objs = {}
+  for part in msg:gmatch('%^([^%^]+)') do
+    local t, k, have, need = part:match('^(%a)~([^~]*)~(%d+)~(%d+)$')
+    if t and k ~= '' then
+      objs[#objs + 1] = { typ = t == 'i' and 'item' or 'monster', key = k, have = tonumber(have), need = tonumber(need) }
+    end
+  end
+  Q.peer[name] = { at = GetTime(), objs = objs }
+  wipe(Q.pcache)
+end
+Q.pcache = {}
+-- potrebuje tohoto moba partak? -> jmeno partaka, cil
+function Q.peerNeed(u)
+  if not next(Q.peer) or not UnitExists(u) then return nil end
+  local name = safe(pc(UnitName, u))
+  if type(name) ~= 'string' then return nil end
+  local hit = Q.pcache[name]
+  local now = GetTime()
+  if hit and now - hit.at < 5 then return hit.who, hit.o end
+  local ln = name:lower()
+  local rec = ns.MobDB and ns.MobDB.forUnit and ns.MobDB.forUnit(u)
+  local who, obj
+  for pn, p in pairs(Q.peer) do
+    if now - p.at < 120 then
+      for _, o in ipairs(p.objs) do
+        if o.typ == 'monster' and (o.key == ln or o.key:find(ln, 1, true)) then who, obj = pn, o break end
+        if o.typ == 'item' and rec then
+          for _, d in ipairs(rec.drops or {}) do
+            if d.name and d.name:lower() == o.key then who, obj = pn, o break end
+          end
+          if who then break end
+        end
+      end
+    end
+    if who then break end
+  end
+  Q.pcache[name] = { at = now, who = who, o = obj }
+  return who, obj
+end
+
+-- smrt moba: z ciliho / mizici jmenovky (AoE, nevybrane moby)
+local told = {}
+local function onDeath(u)
+  if safeBool(pc(UnitIsDead, u)) ~= true then return end
+  if safeBool(pc(UnitIsTapDenied, u)) == true then return end   -- cizi mob, loot neni nas
+  local who, o = Q.peerNeed(u)
+  if not who or not o or o.typ ~= 'item' then return end
+  local name = safe(pc(UnitName, u)) or '?'
+  local key = safe(pc(UnitGUID, u)) or name
+  local now = GetTime()
+  if told[key] and now - told[key] < 10 then return end
+  told[key] = now
+  if ns.Duo and ns.Duo.rawSend and not ns.Duo.encounter then
+    ns.Duo.rawSend(('QL^%s^%s'):format((name:gsub('%^', '')), o.key))
+  end
+end
+local df = CreateFrame('Frame')
+pcall(df.RegisterEvent, df, 'NAME_PLATE_UNIT_REMOVED')
+pcall(df.RegisterEvent, df, 'UNIT_HEALTH')
+df:SetScript('OnEvent', function(_, e, u)
+  u = safe(u)
+  if e == 'UNIT_HEALTH' and u ~= 'target' then return end
+  if type(u) == 'string' then pcall(onDeath, u) end
+end)
+-- partak zabil moba, ze ktereho muze padnout muj questovy item
+function Q.recvLoot(name, msg)
+  local mob, item = msg:match('^QL%^([^%^]*)%^(.*)$')
+  if not mob then return end
+  ns.say(('|cffffd100%s zabil %s|r - muze na nem byt tvuj questovy item (%s), lootni.'):format(name, mob, item))
+  if PlaySound and SOUNDKIT and SOUNDKIT.UI_QUEST_ROLLING_FORWARD_01 then pcall(PlaySound, SOUNDKIT.UI_QUEST_ROLLING_FORWARD_01)
+  elseif PlaySound and SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_OPEN then pcall(PlaySound, SOUNDKIT.IG_QUEST_LIST_OPEN) end
+end
+
+-- tooltip moba: co z nej potrebuje partak (moje questy ukazuje hra sama)
+if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
+  pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Unit, function(tt)
+    if tt ~= GameTooltip then return end
+    local ok, _, unit = pcall(tt.GetUnit, tt)
+    unit = ok and safe(unit) or nil
+    if type(unit) ~= 'string' then return end
+    local who, o = Q.peerNeed(unit)
+    if who and o then
+      local cnt = (o.need or 0) > 0 and (' %d/%d'):format(o.have or 0, o.need) or ''
+      tt:AddLine(('Quest (%s): %s%s'):format(who, o.typ == 'item' and ('drop ' .. o.key) or o.key, cnt), 1, 0.82, 0)
+      tt:Show()
+    end
+  end)
+end
+
+-- posilani: pri zmene questu hned (max 1x za 2 s), jinak kazdych 30 s
+local sq = 0
+local sf = CreateFrame('Frame')
+sf:SetScript('OnUpdate', function(_, el)
+  sq = sq + el
+  if sq < 2 then return end
+  sq = 0
+  pcall(sendMine, false)
+end)

@@ -370,9 +370,21 @@ local function update()
         clear(o)
         local myId = ids[pl] or nil
         -- questovy mob (sedy = tagnuty cizim hracem: polopruhledne)
-        if o.quest and ns.Quests and ns.Quests.mobNeed and ns.Quests.mobNeed(u) then
-          o.quest:SetAlpha(safeBool(pc(UnitIsTapDenied, u)) == true and 0.35 or 1)
-          o.quest:Show()
+        -- muj = zluty, jen partakuv = v barve jeho classy
+        if o.quest and ns.Quests and ns.Quests.mobNeed then
+          local mine = ns.Quests.mobNeed(u)
+          local peer = not mine and ns.Quests.peerNeed and ns.Quests.peerNeed(u)
+          if mine or peer then
+            if mine then o.quest:SetVertexColor(1, 1, 1)
+            else
+              local pu = ns.Duo and ns.Duo.peer and ns.Duo.peer()
+              local _, cls = pu and pu.unit and UnitClass(pu.unit)
+              local cc = cls and RAID_CLASS_COLORS and RAID_CLASS_COLORS[cls]
+              if cc then o.quest:SetVertexColor(cc.r, cc.g, cc.b) else o.quest:SetVertexColor(0.6, 0.8, 1) end
+            end
+            o.quest:SetAlpha(safeBool(pc(UnitIsTapDenied, u)) == true and 0.35 or 1)
+            o.quest:Show()
+          end
         end
         -- kdo ho bije: ja (muj cil) + parťák (jeho cil ze zpravy)
         if grouped then
