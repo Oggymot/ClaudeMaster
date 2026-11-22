@@ -286,6 +286,10 @@ local function decide(c, s)
     if sc and not s.used['item:' .. sc.id] then
       return A('item:' .. sc.id, ('Chybi buff: %s'):format(sc.name), 'item', { item = sc.id })
     end
+    local fam = ns.Bags.missingFamiliar()
+    if fam and not s.used['item:' .. fam.id] then
+      return A('item:' .. fam.id, ('Bez familiara: %s (+Intellect na 1 h)'):format(fam.name), 'item', { item = fam.id })
+    end
     -- docasne vylepseni zbrane (slot 16 = hlavni ruka)
     local im = ns.Bags.missingImbue()
     if im and not s.used['item:' .. im.id] then

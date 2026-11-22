@@ -54,7 +54,7 @@ function B.scan()
     end
   end
   local kinds = { water = {}, food = {}, gem = {}, hpot = {}, mpot = {}, stone = {}, scroll = {}, elixir = {}, bandage = {},
-    imbue = {}, nuke = {}, antiElem = {}, defense = {}, buffFood = {}, shard = {}, soulstone = {} }
+    imbue = {}, nuke = {}, antiElem = {}, defense = {}, buffFood = {}, shard = {}, soulstone = {}, familiar = {} }
   local pending = false
   local myLevel = safeNum(UnitLevel('player')) or 60
   for id, it in pairs(items) do
@@ -102,8 +102,12 @@ function B.scan()
           table.insert(kinds.food, it)
           if it.buff then table.insert(kinds.buffFood, it) end
         elseif sp == 'First Aid' or name:find('Bandage') then table.insert(kinds.bandage, it)
+        -- Forever: mage scrolly s familiarem (1 h, +Intellect; kocka 12 > zaba 6 > krysa 2)
+        elseif name:find('^Scroll [Oo]f') and name:find('Familiar') then
+          it.rank = (name:find('Cat') and 3) or (name:find('Frog') and 2) or 1
+          table.insert(kinds.familiar, it)
         else
-          local stat = name:match('^Scroll of (%a+)')
+          local stat = name:match('^Scroll [Oo]f (%a+)')
           if stat and B.SCROLL_STATS[stat] and sp then
             it.stat = stat
             table.insert(kinds.scroll, it)
@@ -189,6 +193,23 @@ function B.missingScroll()
       if not blocked then return it end
     end
   end
+end
+-- Familiar (scroll): nejlepsi z batohu, kdyz zadny nebezi. Buff hledame podle jmena kouzla
+-- i prochazenim buffu ("...Familiar"); zaloha = cas pouziti (1 h).
+function B.missingFamiliar()
+  local it = B.list('familiar')[1]
+  if not it then return nil end
+  if GetTime() - (ns.itemUsedAt.familiar or -9999) < 3600 then return nil end
+  if it.spell and ns.playerAura(it.spell) ~= false then return nil end
+  if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    for i = 1, 40 do
+      local a = pc(C_UnitAuras.GetAuraDataByIndex, 'player', i, 'HELPFUL')
+      if type(a) ~= 'table' then break end
+      local n = safe(a.name)
+      if type(n) == 'string' and n:find('Familiar') then return nil end
+    end
+  end
+  return it
 end
 -- Zbran bez docasneho vylepseni? (mimo boj citelne)
 function B.missingImbue()

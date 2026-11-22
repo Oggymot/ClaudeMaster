@@ -1094,6 +1094,7 @@ local function onCast(spellID)
   elseif name == 'Arcane Intellect' then ns.aiUntil = now + 1800
   elseif name == 'Restore Mana' then ns.itemUsedAt.gem = now
   elseif name == 'Healing Potion' then ns.itemUsedAt.potion = now
+  elseif name:find('Familiar') then ns.itemUsedAt.familiar = now
   end
   if DAMAGE[name] then
     if T.frozenUntil > now then
