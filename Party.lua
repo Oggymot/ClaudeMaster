@@ -133,10 +133,19 @@ function P.kickState()
       add(u, def)
     end
   end
-  -- na rade: z tech, co maji interrupt ready, ten, kdo ho pouzil nejdrive (rotace)
+  -- na rade: z tech, co maji interrupt ready, ten, kdo ho pouzil nejdrive (rotace).
+  -- Pri shode (napr. nikdo jeste neprerusoval) musi oba addony vybrat STEJNE, jinak vyhraje ten,
+  -- jehoz addon zareaguje driv (typicky mag) a druhy nedostane radu nikdy: prednost ma pet
+  -- (Spell Lock nestoji hrace nic), pak abecedne jmeno.
+  local function before(a, b)
+    if a.usedAt ~= b.usedAt then return a.usedAt < b.usedAt end
+    local pa, pb = a.spell == 'Spell Lock', b.spell == 'Spell Lock'
+    if pa ~= pb then return pa end
+    return a.name < b.name
+  end
   local nextUp
   for _, k in ipairs(list) do
-    if k.ready and (not nextUp or k.usedAt < nextUp.usedAt or (k.usedAt == nextUp.usedAt and k.me)) then nextUp = k end
+    if k.ready and (not nextUp or before(k, nextUp)) then nextUp = k end
   end
   -- parťák s addonem prave hlasi "prerusuji ja": je na rade on
   local claimedBy = ns.Duo and ns.Duo.claimedBy and ns.Duo.claimedBy() or nil
