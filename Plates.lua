@@ -249,10 +249,11 @@ local function make(plate)
   o.dots:SetPoint('LEFT', o.aggro, 'RIGHT', 4, 0)
   o.dots:SetTextColor(0.75, 0.5, 1)
   -- CC (ovce): vlevo od pismen
-  -- questovy mob (mas ho zabit / dropuje questovy item): zluty vykricnik vpravo od health baru
+  -- questovy mob (mas ho zabit / dropuje questovy item): maly zluty vykricnik nad pravym koncem
+  -- health baru (vpravo vedle baru je ukazatel levelu, vlevo nahore debuffy)
   o.quest = o:CreateTexture(nil, 'OVERLAY')
-  o.quest:SetSize(14, 14)
-  o.quest:SetPoint('LEFT', hb, 'RIGHT', 2, 0)
+  o.quest:SetSize(11, 11)
+  o.quest:SetPoint('BOTTOMRIGHT', hb, 'TOPRIGHT', 0, 1)
   o.quest:SetTexture('Interface\\GossipFrame\\AvailableQuestIcon')
   o.quest:Hide()
   o.cc = o:CreateTexture(nil, 'OVERLAY')
