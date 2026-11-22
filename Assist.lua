@@ -77,7 +77,7 @@ end
 -- viditelnost ridi hra sama (state driver funguje i v boji): jen ve skupine a kdyz je zapnuta
 function AS.applyVisibility()
   if not AS.bar or InCombatLockdown() then return end
-  if ns.db.markBar == false then
+  if not ns.db.markBarOn then
     UnregisterStateDriver(AS.bar, 'visibility')
     AS.bar:Hide()
   else
