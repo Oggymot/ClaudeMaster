@@ -483,9 +483,10 @@ local function decide(c, s)
 
   ---------------------------------------------------------------- mimo boj
   if not c.inCombat then
+    local town = c.resting and not c.hostile   -- ve meste: zadne buffy ani pet (az venku)
     local armor = ns.known('Demon Armor') and 'Demon Armor' or (ns.known('Demon Skin') and 'Demon Skin' or nil)
-    if armor and not c.lockArmor and not s.used.armor then s.used.armor = true return A(armor, 'Chybi ti ' .. armor) end
-    if not c.pet and not s.used.pet then
+    if armor and not c.lockArmor and not s.used.armor and not town then s.used.armor = true return A(armor, 'Chybi ti ' .. armor) end
+    if not c.pet and not s.used.pet and not town then
       local p = wantPet(c)
       if p then
         s.used.pet = true
@@ -518,7 +519,7 @@ local function decide(c, s)
           { item = ssItem, unit = c.healer.unit })
       end
     end
-    local sc = ns.Bags.missingScroll()
+    local sc = not town and ns.Bags.missingScroll()
     if sc and not s.used['item:' .. sc.id] then
       return A('item:' .. sc.id, ('Chybi buff: %s'):format(sc.name), 'item', { item = sc.id })
     end
@@ -527,7 +528,7 @@ local function decide(c, s)
         { icon = 'Interface\\Icons\\Spell_Nature_Purge' })
     end
     -- Firestone na zbran (+1 % crit a ohen; s Ruin crity boli dvojnasob)
-    local im = ns.Bags.missingImbue()
+    local im = not town and ns.Bags.missingImbue()
     if im and not s.used['item:' .. im.id] then
       s.used['item:' .. im.id] = true
       return A('item:' .. im.id, ('Zbran bez kamene: %s'):format(im.name), 'item', { item = im.id, slot = 16 })

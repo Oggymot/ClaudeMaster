@@ -53,6 +53,8 @@ function E.context()
   c.inCombat = ns.inCombat()
   c.lead = ns.queueLead()
   c.group = IsInGroup and IsInGroup() or false
+  -- mesto / hostinec (rested zona): buffy tu nedavaji smysl, vyprsi nez vyrazis
+  c.resting = IsResting and safeBool(pc(IsResting)) == true or false
   c.moving = (safeNum(pc(GetUnitSpeed, 'player')) or 0) > 0
 
   c.mana, c.manaExact, c.manaLo, c.manaHi = ns.mana()
@@ -258,23 +260,24 @@ local function decide(c, s)
   ---------------------------------------------------------------- mimo boj
   if not c.inCombat then
     local want, why = bestArmor(c)
-    if not c.armor and want and not s.used.armor then
+    local town = c.resting and not c.hostile   -- ve meste: zadne buffy (az venku)
+    if not c.armor and want and not s.used.armor and not town then
       s.used.armor = true
       return A(want, 'Chybi ti armor' .. (why and (' (' .. why .. ')') or ''))
     end
     -- situace se od nahozeni zmenila (pripojil se tank / parta se rozpadla): vymenit.
     -- Kdyz si jinou armor das sam ve stejne situaci, addon to respektuje.
     local cur = currentArmor()
-    if c.armor and want and cur and cur ~= want and ns.armorSitu and ns.armorSitu ~= armorSitu(c)
+    if c.armor and want and cur and cur ~= want and ns.armorSitu and ns.armorSitu ~= armorSitu(c) and not town
       and not c.drinking and not c.eating and (not c.manaKnown or c.mana >= 0.4) and not s.used.armor then
       s.used.armor = true
       return A(want, ('Vymen %s za %s (%s)'):format(cur, want, why or ''))
     end
-    if not c.ai and ns.known('Arcane Intellect') and not s.used['Arcane Intellect'] then
+    if not c.ai and ns.known('Arcane Intellect') and not s.used['Arcane Intellect'] and not town then
       return A('Arcane Intellect', 'Chybi Arcane Intellect', 'spell', { unit = 'player' }) end
     -- parta: Arcane Intellect a curse
     local pt = c.party
-    if pt.needAI and not s.used['Arcane Intellect'] and ready('Arcane Intellect') then
+    if pt.needAI and not s.used['Arcane Intellect'] and ready('Arcane Intellect') and not town then
       return A('Arcane Intellect', ('Arcane Intellect na %s'):format(pt.needAI.name), 'spell', { unit = pt.needAI.unit })
     end
     local decurse = ns.known('Remove Curse') and 'Remove Curse' or 'Remove Lesser Curse'
@@ -282,16 +285,16 @@ local function decide(c, s)
       return A(decurse, ('Curse na %s - odstran ho'):format(pt.curse.name), 'spell', { unit = pt.curse.unit })
     end
     -- pred pullem i bez cile: scrolly z inventare (chybejici buff)
-    local sc = ns.Bags.missingScroll()
+    local sc = not town and ns.Bags.missingScroll()
     if sc and not s.used['item:' .. sc.id] then
       return A('item:' .. sc.id, ('Chybi buff: %s'):format(sc.name), 'item', { item = sc.id })
     end
-    local fam = ns.Bags.missingFamiliar()
+    local fam = not town and ns.Bags.missingFamiliar()
     if fam and not s.used['item:' .. fam.id] then
       return A('item:' .. fam.id, ('Bez familiara: %s (+Intellect na 1 h)'):format(fam.name), 'item', { item = fam.id })
     end
     -- docasne vylepseni zbrane (slot 16 = hlavni ruka)
-    local im = ns.Bags.missingImbue()
+    local im = not town and ns.Bags.missingImbue()
     if im and not s.used['item:' .. im.id] then
       return A('item:' .. im.id, ('Zbran bez vylepseni: %s'):format(im.name), 'item', { item = im.id, slot = 16 })
     end
@@ -354,7 +357,7 @@ local function decide(c, s)
     end
     if c.drinking or c.eating then return nil end
     -- buffovaci jidlo jen ve skupine / dungeonu
-    if (c.group or c.instance) and s.step == 1 then
+    if (c.group or c.instance) and s.step == 1 and not town then
       local wf = ns.Bags.missingWellFed()
       if wf then return A('item:' .. wf.id, ('Chybi Well Fed: %s'):format(wf.name), 'item', { item = wf.id }) end
     end
