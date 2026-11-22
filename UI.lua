@@ -449,10 +449,20 @@ end
 
 local SEP = '  |cff556070-|r  '
 -- kazda skupina na vlastnim radku: moby / cil / stavy
+-- co vime o mobovi: jen to dulezite (kouzli cim, utika - jiste, ne odhad)
+function UI.mobText(c)
+  local m = c.mob
+  if not m then return nil end
+  local p = {}
+  if m.caster then p[#p + 1] = '|cff9aa6b8kouzli' .. (m.school == 'fire' and ' ohnem' or (m.school == 'frost' and ' mrazem'
+    or (m.school == 'shadow' and ' stinem' or ''))) .. '|r' end
+  if m.flees and not m.fleeGuess then p[#p + 1] = '|cffffcc00utika|r' end
+  return #p > 0 and table.concat(p, ', ') or nil
+end
 local function infoLines(c)
   local lines = {}
   local e = c.enemies
-  if c.inCombat or e.combat > 0 then
+  if (c.inCombat or e.combat > 0) and (e.combat > 1 or (e.cc or 0) > 0 or e.onMe > 1) then
     local t = ('Moby v boji |cffffffff%d|r'):format(e.combat)
     if e.near > 0 then t = t .. ('  (u tebe %d)'):format(e.near) end
     if e.onMe > 0 then t = t .. ('  |cffff7070na tobe %d|r'):format(e.onMe) end
@@ -480,7 +490,7 @@ local function infoLines(c)
   local peer = ns.Duo and ns.Duo.peer()
   if peer and c.inCombat and ns.Duo.encounter then
     lines[#lines + 1] = '|cffffcc00Boss: hra blokuje zpravy, s partakem nic nesdilime|r'
-  elseif peer and c.inCombat then
+  elseif peer and c.inCombat and ((peer.hp and peer.hp < 70) or (peer.mana and peer.mana < 0.3) or peer.drink) then
     local hp = peer.hp and ('HP ' .. peer.hp .. ' %') or 'HP ?'
     local m = peer.mana and (', mana ' .. math.floor(peer.mana * 100) .. ' %') or ''
     local col = (peer.hp and peer.hp < 35 and '|cffff5555') or (peer.hp and peer.hp < 60 and '|cffffcc00') or '|cffcfd8e3'
@@ -509,25 +519,20 @@ local function infoLines(c)
       else t = ('Cil |cffffffff%d-%d%%|r'):format(c.thpLo or 0, c.thpHi or 100) end
     else t = 'Cil ?' end
     if c.elite then t = t .. ' |cffffd100elite|r' end
-    if c.group and c.threatPct then
+    if c.tankUp and c.threatPct then
       local tp = math.floor(c.threatPct)
       t = t .. SEP .. (tp >= 85 and '|cffff5555' or (tp >= 60 and '|cffffcc00' or '|cff9aa6b8')) .. 'threat ' .. tp .. '%|r'
     end
-    if c.ctype and c.ctype ~= 'Not specified' then t = t .. ' |cff9aa6b8' .. c.ctype .. '|r' end
     if c.ttd then t = t .. SEP .. (c.ttd < 1 and '|cffffffffpadne kazdou chvili|r' or ('padne za |cffffffff%ds|r'):format(math.floor(c.ttd + 0.5)))
     elseif c.ttdMem then t = t .. SEP .. ('padne za ~%ds'):format(math.floor(c.ttdMem)) end
+    local mt = UI.mobText(c)
+    if mt then t = t .. SEP .. mt end
     lines[#lines + 1] = t
   end
   if c.hostile then
-    -- co vime o tomto mobovi: jen to dulezite (kouzli cim, utika - jiste, ne odhad)
-    local m = c.mob
-    if m then
-      local p = {}
-      if m.caster then p[#p + 1] = 'kouzli' .. (m.school == 'fire' and ' ohnem' or (m.school == 'frost' and ' mrazem'
-        or (m.school == 'shadow' and ' stinem' or ''))) end
-      if m.flees and not m.fleeGuess then p[#p + 1] = '|cffffcc00utika|r' end
-      if #p > 0 then lines[#lines + 1] = '|cff9aa6b8Mob: ' .. table.concat(p, ', ') .. '|r' end
-    end
+    -- mimo boj: co vime o mobovi samostatne (v boji je to na radku s cilem)
+    local mt = not c.inCombat and UI.mobText(c)
+    if mt then lines[#lines + 1] = '|cff9aa6b8Mob:|r ' .. mt end
     -- kiting (solo, mob na tobe): kdy je co pripravene
     if ns.class == 'MAGE' and c.inCombat and not c.group and c.aggro and (c.near or c.frozen > 0 or c.novaAgo < 12) then
       local function cdt(n)
@@ -563,7 +568,7 @@ local function infoLines(c)
   if c.hostile and c.frozen > 0 then st[#st + 1] = ('|cff7fd8ffZmrazen %.1fs|r'):format(c.frozen) end
   if c.fof and c.fof > 0 then st[#st + 1] = ('|cff7fd8ffFoF %d|r'):format(c.fof) end
   if c.barrierUp then st[#st + 1] = '|cff99c8ffBarrier|r' end
-  if c.php and c.inCombat then
+  if c.php and c.inCombat and c.php < 75 then
     local col = c.hpLow35 and '|cffff4444' or (c.hpLow50 and '|cffffcc00' or '|cff66ee77')
     st[#st + 1] = col .. 'HP ~' .. math.floor(c.php) .. '%|r'
   end

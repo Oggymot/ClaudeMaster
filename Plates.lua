@@ -183,29 +183,32 @@ end
 -- Ramecek u jmenovky
 ------------------------------------------------------------------------------------------
 local function make(plate)
+  local hb = plate.UnitFrame and (plate.UnitFrame.healthBar or plate.UnitFrame.HealthBar) or plate
   local o = CreateFrame('Frame', nil, plate)
-  o:SetSize(1, 1)
-  o:SetPoint('BOTTOM', plate, 'TOP', 0, -6)
+  o:SetAllPoints(hb)
   o:SetFrameStrata('HIGH')
+  -- kdo ho bije: pismena tesne vlevo od health baru, svisle na stred
   o.who = o:CreateFontString(nil, 'OVERLAY')
-  o.who:SetFont(FONT, 11, 'OUTLINE')
-  o.who:SetPoint('BOTTOMRIGHT', o, 'BOTTOM', -2, 0)
+  o.who:SetFont(FONT, 12, 'OUTLINE')
+  o.who:SetPoint('RIGHT', hb, 'LEFT', -4, 0)
+  o.who:SetJustifyH('RIGHT')
+  -- na koho jde: pod barem vlevo
   o.aggro = o:CreateFontString(nil, 'OVERLAY')
-  o.aggro:SetFont(FONT, 11, 'OUTLINE')
-  o.aggro:SetPoint('BOTTOMLEFT', o, 'BOTTOM', 2, 0)
+  o.aggro:SetFont(FONT, 10, 'OUTLINE')
+  o.aggro:SetPoint('TOPLEFT', hb, 'BOTTOMLEFT', 0, -2)
   o.dots = o:CreateFontString(nil, 'OVERLAY')
   o.dots:SetFont(FONT, 10, 'OUTLINE')
-  o.dots:SetPoint('BOTTOMLEFT', o.aggro, 'BOTTOMRIGHT', 4, 0)
+  o.dots:SetPoint('LEFT', o.aggro, 'RIGHT', 4, 0)
   o.dots:SetTextColor(0.75, 0.5, 1)
+  -- CC (ovce): vlevo od pismen
   o.cc = o:CreateTexture(nil, 'OVERLAY')
   o.cc:SetSize(18, 18)
-  o.cc:SetPoint('RIGHT', plate, 'LEFT', 2, 0)
+  o.cc:SetPoint('RIGHT', o.who, 'LEFT', -3, 0)
   o.cc:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   o.ccq = o:CreateFontString(nil, 'OVERLAY')
   o.ccq:SetFont(FONT, 12, 'OUTLINE')
   o.ccq:SetPoint('CENTER', o.cc, 'CENTER', 0, 0)
   o.kick = {}
-  local hb = plate.UnitFrame and (plate.UnitFrame.healthBar or plate.UnitFrame.HealthBar) or plate
   for i = 1, 4 do
     local t = o:CreateTexture(nil, 'OVERLAY')
     t:SetTexture(WHITE)
