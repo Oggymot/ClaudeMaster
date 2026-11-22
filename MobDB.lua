@@ -131,6 +131,24 @@ function MD.dropText(r, level)
   return txt
 end
 
+-- dropy jako radky { jmeno (barevne), sance } + zda level nesedi
+function MD.dropRows(r, level)
+  if not r or #r.drops == 0 then return nil end
+  local off = level and r.lmin and (level < r.lmin - 3 or level > r.lmax + 3)
+  local rows = {}
+  for _, d in ipairs(r.drops) do
+    if not off or d.kind == 'q' then
+      local nm = d.name
+      local gi = C_Item and C_Item.GetItemInfo and safe(pc(C_Item.GetItemInfo, d.id)) or safe(pc(GetItemInfo, d.id))
+      if type(gi) == 'string' and gi ~= '' then nm = gi end
+      local ch = d.kind == 'q' and 'quest' or (d.chance >= 1 and ('%d %%'):format(math.floor(d.chance + 0.5)) or ('%.1f %%'):format(d.chance))
+      rows[#rows + 1] = { ('|c%s%s|r'):format(QCOL[d.kind] or 'ffffffff', nm), ch }
+    end
+  end
+  if #rows == 0 then return nil end
+  return rows, off
+end
+
 -- kratky popis pro tooltip / info
 function MD.describe(r)
   if not r then return nil end

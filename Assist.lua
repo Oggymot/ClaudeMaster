@@ -120,47 +120,66 @@ end)
 -- 3) Tooltip nepritele: pamet addonu
 ------------------------------------------------------------------------------------------
 local SCHOOL = { fire = 'ohnem', frost = 'mrazem', shadow = 'stinem' }
+local LBL = { 0.55, 0.62, 0.72 }   -- barva popisku vlevo
+-- radky "popisek  hodnota" (vlastni pozorovani + databaze, bez duplicit)
 local function addMobLines(tt, unit)
   if ns.db.tipMob == false or type(unit) ~= 'string' then return end
   if safeBool(pc(UnitCanAttack, 'player', unit)) ~= true or safeBool(pc(UnitIsPlayer, unit)) == true then return end
   local name = safe(pc(UnitName, unit))
   if type(name) ~= 'string' then return end   -- v instanci muze byt jmeno skryte
-  local lines = {}
+  local order, vals = {}, {}
+  local function put(label, v)
+    if not v or v == '' then return end
+    if not vals[label] then vals[label] = {} order[#order + 1] = label end
+    for _, x in ipairs(vals[label]) do if x == v then return end end
+    vals[label][#vals[label] + 1] = v
+  end
+  local rec = ns.MobDB and ns.MobDB.forUnit(unit)
   local m = ns.Mem and ns.Mem.info and ns.Mem.info(name, safe(pc(UnitCreatureType, unit)), IsInGroup and IsInGroup())
-  if m then
-    if m.caster then lines[#lines + 1] = 'kouzli' .. (SCHOOL[m.school] and (' ' .. SCHOOL[m.school]) or '') end
-    if m.flees and not m.fleeGuess then lines[#lines + 1] = '|cffffcc00utika|r' end
-    if m.nb and m.nb > 0 and m.ttd then lines[#lines + 1] = ('~%d s na zabiti'):format(math.floor(m.ttd + 0.5)) end
-  end
+  -- pozor: vlastnosti, na ktere se hodi myslet pred pullem
+  if rec and (rec.rank == 1 or rec.rank == 2) then put('Pozor', '|cffffcc00elite|r') end
+  if rec and rec.rank == 3 then put('Pozor', '|cffff5555boss|r') end
+  if m and m.flees and not m.fleeGuess then put('Pozor', '|cffffcc00utika|r') end
+  if rec and #rec.summon > 0 then put('Pozor', 'privolava pomoc') end
+  if m and m.caster then put('Kouzli', SCHOOL[m.school] or 'ano') end
+  -- leceni a CC (naucene + databaze)
   local casts = ns.db.mobCasts and ns.db.mobCasts[name]
-  if casts then
-    local heal, cc = {}, {}
-    for sp, k in pairs(casts) do
-      if k == 'heal' then heal[#heal + 1] = sp elseif k == 'CC' then cc[#cc + 1] = sp end
-    end
-    if #heal > 0 then lines[#lines + 1] = '|cff66ee77leci:|r ' .. table.concat(heal, ', ') end
-    if #cc > 0 then lines[#lines + 1] = '|cffff7070CC:|r ' .. table.concat(cc, ', ') end
+  for sp, k in pairs(casts or {}) do
+    if k == 'heal' then put('Leci', sp) elseif k == 'CC' then put('CC', sp) end
   end
-  local nk = {}
-  if casts and ns.db.noKick then
-    for sp in pairs(casts) do if ns.db.noKick[sp] then nk[#nk + 1] = sp end end
-  end
-  if #nk > 0 then lines[#lines + 1] = '|cff999999nejde prerusit:|r ' .. table.concat(nk, ', ') end
-  -- naucene imunity (jen to, co jsme sami zjistili)
+  for _, sp in ipairs(rec and rec.heal or {}) do put('Leci', sp) end
+  for _, sp in ipairs(rec and rec.cc or {}) do put('CC', sp) end
+  for sp in pairs(casts or {}) do if ns.db.noKick and ns.db.noKick[sp] then put('Neprerusis', sp) end end
+  -- imunity: naucene + databaze
   local e = ns.db.immune and ns.db.immune[name]
   if e and ns.Immune and ns.Immune.describe then
     local ok, im = pcall(ns.Immune.describe, { schools = e.schools or {}, spells = e.spells or {} })
-    if ok and type(im) == 'table' and #im > 0 then lines[#lines + 1] = '|cffff7070imunni:|r ' .. table.concat(im, ', ') end
+    if ok and type(im) == 'table' then for _, x in ipairs(im) do put('Imunni', x) end end
   end
-  -- databaze (classic): jen jako doplnek, vlastni pozorovani je nahore
-  local rec = ns.MobDB and ns.MobDB.forUnit(unit)
-  local dbl = rec and ns.MobDB.describe(rec)
+  if rec then
+    local CZ = ns.MobDB.CZ
+    for sc in pairs(rec.immSchool) do put('Imunni', CZ[sc]) end
+    if rec.immPoly then put('Imunni', 'ovce') end
+    if rec.immFear then put('Imunni', 'fear') end
+    if rec.immRoot then put('Imunni', 'root') end
+    if rec.immStun then put('Imunni', 'stun') end
+    for sc in pairs(rec.res) do if not rec.immSchool[sc] then put('Odolny', CZ[sc]) end end
+  end
+  if m and m.nb and m.nb > 0 and m.ttd then put('Zabiti', ('~%d s'):format(math.floor(m.ttd + 0.5))) end
   local lv = safeNum(pc(UnitLevel, unit))
-  local drop = rec and ns.MobDB.dropText(rec, lv and lv > 0 and lv or nil)
-  if #lines == 0 and not dbl and not drop then return end
-  if #lines > 0 then tt:AddLine('|cff4fa3ffClaudeMaster:|r ' .. table.concat(lines, ', '), 0.85, 0.85, 0.85, true) end
-  if dbl then tt:AddLine('|cff4fa3ffDatabaze:|r ' .. dbl, 0.75, 0.75, 0.75, true) end
-  if drop then tt:AddLine('|cff4fa3ffDrop:|r ' .. drop, 0.75, 0.75, 0.75, true) end
+  local drops, off = nil, nil
+  if rec then drops, off = ns.MobDB.dropRows(rec, lv and lv > 0 and lv or nil) end
+  if #order == 0 and not drops then return end
+  local COL = { Pozor = 'ffffcc00', Leci = 'ff66ee77', CC = 'ffff7070', Imunni = 'ffff7070', Neprerusis = 'ff999999' }
+  for _, label in ipairs(order) do
+    local v = table.concat(vals[label], ', ')
+    if COL[label] and not v:find('|c') then v = ('|c%s%s|r'):format(COL[label], v) end
+    tt:AddDoubleLine(label, v, LBL[1], LBL[2], LBL[3], 1, 1, 1)
+  end
+  if drops then
+    tt:AddLine(off and ('Drop |cff777777(classic lvl %d-%d)|r'):format(rec.lmin, rec.lmax) or 'Drop', LBL[1], LBL[2], LBL[3])
+    for _, d in ipairs(drops) do tt:AddDoubleLine('  ' .. d[1], d[2], 1, 1, 1, 0.65, 0.65, 0.65) end
+  end
   tt:Show()
 end
 
