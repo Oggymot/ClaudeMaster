@@ -596,6 +596,19 @@ local PUSH_ERR = {
   { 'ERR_QUEST_PUSH_LOG_FULL_S', 1800, 'ma plny quest log' },
   { 'ERR_QUEST_PUSH_LOG_FULL_TO_RECIPIENT_S', 1800, 'ma plny quest log' },
 }
+local PUSH_TEXT = {
+  { 'wrong class for that quest', 365 * 86400, 'ma spatnou tridu na tenhle quest' },
+  { 'wrong race for that quest', 365 * 86400, 'ma spatnou rasu na tenhle quest' },
+  { 'wrong faction for that quest', 365 * 86400, 'ma spatnou frakci na tenhle quest' },
+  { 'too low level for that quest', 86400, 'ma na tenhle quest maly level' },
+  { 'too high level for that quest', 365 * 86400, 'ma na tenhle quest moc vysoky level' },
+  { 'is not eligible for that quest', 30 * 86400, 'quest vzit nemuze' },
+  { 'does not meet the requirements', 30 * 86400, 'nesplnuje podminky questu' },
+  { 'has completed that quest', 365 * 86400, 'quest uz splnil' },
+  { 'is already on that quest', 86400, 'quest uz ma' },
+  { 'declined your quest', 86400, 'quest odmitl' },
+  { 'quest log is full', 1800, 'ma plny quest log' },
+}
 local pushPats
 local function pats()
   if pushPats then return pushPats end
@@ -616,14 +629,28 @@ pe:SetScript('OnEvent', function(_, ev, a1, a2)
   local msg = ev == 'UI_INFO_MESSAGE' and a2 or a1
   msg = safe(msg)
   if type(msg) ~= 'string' or not Q.lastPush or GetTime() - Q.lastPush.at > 20 then return end
+  -- kdo: jmeno partaka obsazene ve zprave (hra nekdy pridava dalsi slova, napr. "Cherri Doom")
+  local function whoIn(text)
+    for name in pairs(Q.wants) do if text:find(name, 1, true) then return name end end
+    for i = 1, 4 do
+      local n = safe(pc(UnitName, 'party' .. i))
+      if type(n) == 'string' and text:find(n, 1, true) then return n end
+    end
+  end
+  local function hit(who, secs, why)
+    who = whoIn(msg) or (who and who:gsub('%-.*$', ''))
+    if not who then return end
+    markNo(who, Q.lastPush.id, secs)
+    ns.say(('Quest: %s %s - uz ti ho nebudu nabizet.'):format(who, why))
+  end
   for _, p in ipairs(pats()) do
     local who = msg:match(p.p)
-    if who then
-      who = who:gsub('%-.*$', '')
-      markNo(who, Q.lastPush.id, p.secs)
-      ns.say(('Quest: %s %s - uz ti ho nebudu nabizet.'):format(who, p.why))
-      return
-    end
+    if who then hit(who, p.secs, p.why) return end
+  end
+  -- Forever ma i vlastni hlasky (spatna trida / rasa / level) - podle textu
+  local low = msg:lower()
+  for _, f in ipairs(PUSH_TEXT) do
+    if low:find(f[1], 1, true) then hit(nil, f[2], f[3]) return end
   end
 end)
 _G.ClaudeMaster_ShareQuest = function(id) pcall(Q.push, tonumber(id)) end
