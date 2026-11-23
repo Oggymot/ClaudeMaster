@@ -437,7 +437,8 @@ end
 ------------------------------------------------------------------------------------------
 local PROFMAT = {
   Cloth = { 'Tailoring', 'First Aid' }, Leather = { 'Leatherworking' },
-  ['Metal & Stone'] = { 'Blacksmithing', 'Engineering', 'Jewelcrafting' }, Herb = { 'Alchemy', 'Inscription' },
+  -- ruda: Mining ji tavi na pruty (Smelting) -> pro hornika to neni zbytecny material
+  ['Metal & Stone'] = { 'Mining', 'Blacksmithing', 'Engineering', 'Jewelcrafting' }, Herb = { 'Alchemy', 'Inscription' },
   Cooking = { 'Cooking' }, Meat = { 'Cooking' }, Enchanting = { 'Enchanting' }, Parts = { 'Engineering' },
   Devices = { 'Engineering' }, Explosives = { 'Engineering' }, Jewelcrafting = { 'Jewelcrafting' },
 }
