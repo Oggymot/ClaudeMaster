@@ -317,7 +317,7 @@ local function onItemTip(tt, data)
   fl = fl or {}
   if st then pcall(G.myTip, tt, link, st, blocked, req, fl) end
   -- itemy na quest (hra u nich nic nepise)
-  local qn = G.questNeed and G.questNeed(link)
+  local qn = (G.questByLink and G.questByLink[link]) or (G.questNeed and G.questNeed(link))
   if qn then
     local cnt = (qn.need and qn.need > 0) and (' %d/%d'):format(qn.have or 0, qn.need) or ''
     tt:AddLine('|T' .. QUEST_TEX .. ':14:14|t |cffffd100Quest:|r ' .. qn.title .. cnt .. ' |cff9aa6b8- neprodavat|r')
@@ -403,9 +403,34 @@ function G.questItems()
   qiCache, qiAt = t, GetTime()
   return t
 end
+-- jmeno itemu vs. text cile questu: cil byva v mnozne cisle ("Gnoll Paws" vs item "Gnoll Paw")
+local function qiLookup(n)
+  local t = G.questItems()
+  n = n:lower()
+  return t[n] or t[n .. 's'] or t[n .. 'es'] or t[(n:gsub('y$', 'ies'))] or t[(n:gsub('fe?$', 'ves'))]
+end
+local QUEST_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Questitem) or 12
 function G.questNeed(link)
   local n = type(link) == 'string' and link:match('%[(.-)%]')
-  return n and G.questItems()[n:lower()]
+  if not n then return nil end
+  local q = qiLookup(n)
+  if q then return q end
+  -- item tridy Quest (hra ho tak oznacuje) - i kdyz ho nejde sparovat s cilem v logu
+  local gi = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+  local classID = gi and select(6, pc(gi, link))
+  if safeNum(classID) == QUEST_CLASS then return { title = 'quest item' } end
+end
+-- quest item podle hry (bag + slot): spolehlivejsi nez jmeno
+local function bagQuest(bag, slot, link)
+  local q = G.questNeed(link)
+  if q then return q end
+  local f = C_Container and C_Container.GetContainerItemQuestInfo
+  local qi = f and pc(f, bag, slot)
+  if type(qi) == 'table' and (safeBool(qi.isQuestItem) or safeNum(qi.questID)) then
+    local id = safeNum(qi.questID)
+    local title = id and C_QuestLog and C_QuestLog.GetTitleForQuestID and safe(pc(C_QuestLog.GetTitleForQuestID, id))
+    return { title = title or 'quest item' }
+  end
 end
 
 -- batohy (0-4, 5 = reagent bag) + banka, kdyz je otevrena (-1 hlavni banka, -3 reagent banka, 6-16 bankovni
@@ -430,6 +455,7 @@ function G.upgrades(force)
   G.sellByLink = {}
   G.giftMap = {}
   G.questMap = {}
+  G.questByLink = {}
   if not (getNum and getInfo) then return list end
   local lvl = safeNum(UnitLevel('player')) or 60
   local specLabel = (G.SPECS[G.spec()] or {}).label or 'tvuj spec'
@@ -491,7 +517,8 @@ function G.upgrades(force)
       end
       if gift then G.giftMap[key] = gift sell = nil end
       -- potrebujes na quest: neprodavat, vykricnik
-      if type(link) == 'string' and G.questNeed(link) then G.questMap[key] = G.questNeed(link) sell = nil G.giftMap[key] = nil end
+      local qn = type(link) == 'string' and bagQuest(bag, slot, link)
+      if qn then G.questMap[key] = qn sell = nil G.giftMap[key] = nil G.questByLink[link] = qn end
       if sell then G.sellMap[key] = sell G.sellByLink[link] = sell end
     end
   end
@@ -506,7 +533,7 @@ end
 -- duvod prodeje pro tooltip (podle tlacitka v batohu, jinak podle odkazu)
 function G.sellWhy(tt, link)
   if not G.sellMap then pcall(G.upgrades) end
-  if G.questNeed(link) then return nil end
+  if G.questNeed(link) or (G.questByLink and G.questByLink[link]) then return nil end
   local ok, owner = pcall(tt.GetOwner, tt)
   if ok and owner and owner.GetID then
     -- jen tlacitka batohu (ne sloty postavy: tam GetID = cislo slotu)
@@ -873,6 +900,32 @@ local function questMark(btn, on)
   end
   if btn.cmQuest then btn.cmQuest:SetShown(on and true or false) end
 end
+-- tlacitka itemu z batohu jinych addonu: jednou za cas projit vsechny framy (EnumerateFrames)
+local other, otherAt = setmetatable({}, { __mode = 'k' }), -99
+local function isBlizzBag(b)
+  local p = b:GetParent()
+  local n = p and p.GetName and p:GetName()
+  return type(n) == 'string' and (n:find('^ContainerFrame') or n == 'BankFrame' or n:find('^BankPanel')) ~= nil
+end
+function G.otherButtons(force)
+  local now = GetTime()
+  if (force or now - otherAt > 5) and EnumerateFrames then
+    otherAt = now
+    local f = EnumerateFrames()
+    local n = 0
+    while f and n < 20000 do
+      n = n + 1
+      if not other[f] and not (f.IsForbidden and f:IsForbidden()) then
+        local ok, yes = pcall(function()
+          return type(f.GetBagID) == 'function' and f:IsObjectType('Button') and not isBlizzBag(f)
+        end)
+        if ok and yes then other[f] = true end
+      end
+      f = EnumerateFrames(f)
+    end
+  end
+  return other
+end
 local function eachButton(frame, fn)
   if not frame or not frame:IsShown() then return end
   if frame.EnumerateValidItems then
@@ -910,6 +963,14 @@ function G.refreshBags()
   end
   eachButton(_G.ContainerFrameCombinedBags, upd)
   for i = 1, 13 do eachButton(_G['ContainerFrame' .. i], upd) end
+  -- batohy jinych addonu (GW2 UI apod.): tlacitka z ContainerFrameItemButtonTemplate maji GetBagID
+  local okO, ob = pcall(G.otherButtons)
+  for b in pairs(okO and ob or {}) do
+    if b:IsVisible() then
+      local okB, bag = pcall(b.GetBagID, b)
+      if okB and type(bag) == 'number' and (bag >= 0 and bag <= 5 or G.bank) then pcall(upd, b) end
+    end
+  end
   -- banka: novy panel (zalozky) nebo stara okna BankFrameItem1..28 (= bag -1)
   if G.bank then
     local bp = _G.BankPanel
@@ -929,6 +990,22 @@ local function hookFrame(fr)
     fr:HookScript('OnShow', function() if C_Timer then C_Timer.After(0.05, function() pcall(G.refreshBags) end) end end)
   end
 end
+local function soon() if C_Timer then C_Timer.After(0.15, function() pcall(G.otherButtons, true) pcall(G.refreshBags) end) end end
+for _, fn in ipairs({ 'ToggleAllBags', 'OpenAllBags', 'ToggleBackpack', 'OpenBackpack', 'ToggleBag', 'OpenBag' }) do
+  if type(_G[fn]) == 'function' then hooksecurefunc(fn, soon) end
+end
+-- batoh jineho addonu je otevreny: obcas prekreslit (jeho tlacitka se recykluji)
+local tickAcc = 0
+local tk = CreateFrame('Frame')
+tk:SetScript('OnUpdate', function(_, el)
+  tickAcc = tickAcc + el
+  if tickAcc < 1.5 then return end
+  tickAcc = 0
+  if InCombatLockdown() or not ns.db or ns.db.gearTips == false then return end
+  for b in pairs(other) do
+    if b:IsVisible() then pcall(G.refreshBags) return end
+  end
+end)
 local hk = CreateFrame('Frame')
 hk:RegisterEvent('PLAYER_LOGIN')
 hk:SetScript('OnEvent', function()

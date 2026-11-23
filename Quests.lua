@@ -558,6 +558,18 @@ function Q.push(id)
   elseif SelectQuestLogEntry and GetQuestLogIndexByID then pc(SelectQuestLogEntry, GetQuestLogIndexByID(id)) end
   if QuestLogPushQuest then pc(QuestLogPushQuest) end
   Q.sharedAt[id] = GetTime()
+  -- zapamatovat (i po /reload), komu uz jsem ho nabidl - hra mu ho ukazala, dal ho neotravovat
+  if ns.db then
+    ns.db.qShared = ns.db.qShared or {}
+    local now = time()
+    for k, t in pairs(ns.db.qShared) do if now - t > 3600 then ns.db.qShared[k] = nil end end
+    for name, w in pairs(Q.wants) do if w.ids[id] then ns.db.qShared[name .. ':' .. id] = now end end
+  end
+end
+-- uz nabidnuto tomuhle partakovi v posledni hodine?
+local function offered(name, id)
+  local t = ns.db and ns.db.qShared and ns.db.qShared[name .. ':' .. id]
+  return t and time() - t < 3600
 end
 _G.ClaudeMaster_ShareQuest = function(id) pcall(Q.push, tonumber(id)) end
 -- vsechny questy, ktere nekdo z party chce: { {id, title, who = {jmena}} }
@@ -570,7 +582,7 @@ function Q.toShare()
     local p = ns.Duo and ns.Duo.peers and ns.Duo.peers[name]
     if p and now - p.at < 30 and now - w.at < 600 then
       for id in pairs(w.ids) do
-        if mine[id] and canPush(id) then
+        if mine[id] and canPush(id) and not offered(name, id) then
           if not byId[id] then
             byId[id] = { id = id, title = mine[id].title or ('#' .. id), who = {} }
             out[#out + 1] = byId[id]
@@ -586,7 +598,7 @@ end
 -- tip do panelu (mimo boj): prvni quest, ktery jsem v posledni minute nesdilel
 function Q.shareHint()
   for _, q in ipairs(Q.toShare()) do
-    if GetTime() - (Q.sharedAt[q.id] or -99) > 60 then
+    if GetTime() - (Q.sharedAt[q.id] or -99) > 120 then
       return { name = 'TARGET', kind = 'hint', icon = 'Interface\\GossipFrame\\AvailableQuestIcon',
         reason = ('Sdilej quest %s (%s nema) - klik'):format(q.title, table.concat(q.who, ', ')),
         macro = '/run ClaudeMaster_ShareQuest(' .. q.id .. ')', macroLabel = 'sdilet quest: ' .. q.title }
