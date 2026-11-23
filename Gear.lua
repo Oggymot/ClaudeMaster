@@ -320,7 +320,8 @@ local function onItemTip(tt, data)
   local qn = (G.questByLink and G.questByLink[link]) or (G.questNeed and G.questNeed(link))
   if qn then
     local cnt = (qn.need and qn.need > 0) and (' %d/%d'):format(qn.have or 0, qn.need) or ''
-    tt:AddLine('|T' .. QUEST_TEX .. ':14:14|t |cffffd100Quest:|r ' .. qn.title .. cnt .. ' |cff9aa6b8- neprodavat|r')
+    local qt = qn.title or 'k zadnemu questu v logu |cff9aa6b8(asi uz splneny)|r'
+    tt:AddLine('|T' .. QUEST_TEX .. ':14:14|t |cffffd100Quest:|r ' .. qt .. cnt .. ' |cff9aa6b8- neprodavat|r')
   end
   -- u vendora: proc to radime prodat
   if (G.merchant or G.bank) and G.sellWhy then
@@ -381,12 +382,24 @@ local qiCache, qiAt = nil, -99
 function G.questItems()
   if qiCache and GetTime() - qiAt < 5 then return qiCache end
   local t = {}
+  local texts = {}   -- { title, text } - popis a cile questu (pro itemy, ktere nejsou "seber X")
   local QL = C_QuestLog
   if QL and QL.GetNumQuestLogEntries and QL.GetInfo and QL.GetQuestObjectives then
     for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
       local info = pc(QL.GetInfo, i)
       local id = type(info) == 'table' and not info.isHeader and safeNum(info.questID)
       local objs = id and pc(QL.GetQuestObjectives, id)
+      if id then
+        local parts = {}
+        if GetQuestLogQuestText then
+          local d, o = pc(GetQuestLogQuestText, i)
+          parts[#parts + 1] = safe(d) parts[#parts + 1] = safe(o)
+        end
+        for _, ob in ipairs(type(objs) == 'table' and objs or {}) do parts[#parts + 1] = safe(ob.text) end
+        local all = {}
+        for _, x in pairs(parts) do if type(x) == 'string' then all[#all + 1] = x end end
+        texts[#texts + 1] = { title = safe(info.title) or '?', text = table.concat(all, ' '):lower() }
+      end
       for _, o in ipairs(type(objs) == 'table' and objs or {}) do
         local txt = safe(o.text)
         if safe(o.type) == 'item' and type(txt) == 'string' then
@@ -401,6 +414,7 @@ function G.questItems()
     end
   end
   qiCache, qiAt = t, GetTime()
+  G.questTexts = texts
   return t
 end
 -- jmeno itemu vs. text cile questu: cil byva v mnozne cisle ("Gnoll Paws" vs item "Gnoll Paw")
@@ -418,7 +432,26 @@ function G.questNeed(link)
   -- item tridy Quest (hra ho tak oznacuje) - i kdyz ho nejde sparovat s cilem v logu
   local gi = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
   local classID = gi and select(6, pc(gi, link))
-  if safeNum(classID) == QUEST_CLASS then return { title = 'quest item' } end
+  if safeNum(classID) == QUEST_CLASS then return { title = G.questByText(n), unknown = true } end
+end
+-- ke kteremu questu item patri podle textu questu (cele jmeno, jinak vyrazne slovo jako "Rog'mar")
+local GENERIC = { report = 1, letter = 1, note = 1, orders = 1, journal = 1, book = 1, head = 1, key = 1, sample = 1,
+  package = 1, crate = 1, box = 1, scroll = 1, map = 1, ring = 1, satchel = 1, supplies = 1, the = 1 }
+function G.questByText(name)
+  G.questItems()
+  local texts = G.questTexts or {}
+  local low = name:lower()
+  for _, q in ipairs(texts) do if q.text:find(low, 1, true) then return q.title end end
+  local best, hits
+  for w in name:gmatch("[%a']+") do
+    local lw = w:lower()
+    if #w >= 4 and w:sub(1, 1):match('%u') and not GENERIC[lw] then
+      local found, n = nil, 0
+      for _, q in ipairs(texts) do if q.text:find(lw, 1, true) then found, n = q.title, n + 1 end end
+      if n == 1 and (not hits or #w > #best) then best, hits = w, found end
+    end
+  end
+  return hits and (hits .. ' (asi)') or nil
 end
 -- quest item podle hry (bag + slot): spolehlivejsi nez jmeno
 local function bagQuest(bag, slot, link)
@@ -429,7 +462,9 @@ local function bagQuest(bag, slot, link)
   if type(qi) == 'table' and (safeBool(qi.isQuestItem) or safeNum(qi.questID)) then
     local id = safeNum(qi.questID)
     local title = id and C_QuestLog and C_QuestLog.GetTitleForQuestID and safe(pc(C_QuestLog.GetTitleForQuestID, id))
-    return { title = title or 'quest item' }
+    local starts = safeBool(qi.isActive) == false and id
+    if starts then return { title = (title or 'novy quest') .. ' |cff9aa6b8(zacina quest)|r' } end
+    return { title = title or G.questByText(link:match('%[(.-)%]') or ''), unknown = not title }
   end
 end
 
