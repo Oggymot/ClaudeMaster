@@ -11,7 +11,7 @@ local PA = {}
 ns.Paladin = PA
 
 local SEALS = { 'Seal of Righteousness', 'Seal of Command', 'Seal of the Crusader', 'Seal of Wisdom', 'Seal of Light',
-  'Seal of Justice', 'Seal of Vengeance', 'Seal of Blood', 'Seal of Martyrdom' }
+  'Seal of Justice', 'Seal of Vengeance', 'Seal of Blood', 'Seal of Martyrdom', 'Seal of Fury' }
 local AURAS = { 'Devotion Aura', 'Retribution Aura', 'Concentration Aura', 'Sanctity Aura', 'Crusader Aura',
   'Shadow Resistance Aura', 'Frost Resistance Aura', 'Fire Resistance Aura' }
 local BLESS = { 'Blessing of Might', 'Blessing of Wisdom', 'Blessing of Kings', 'Blessing of Sanctuary',
@@ -97,10 +97,28 @@ local function shielded()
 end
 
 -- Ktery seal: nastaveny rucne > malo many (Wisdom) > Command (talent) > Righteousness > Crusader
+-- mas stit v ruce? (Seal of Fury dava se stitem absorb, Righteous Fury jen pro tanka)
+local function hasShield()
+  local id = safeNum(pc(GetInventoryItemID, 'player', 17))
+  if not id then return false end
+  local f = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+  local _, _, _, loc = pc(f, id)
+  return safe(loc) == 'INVTYPE_SHIELD'
+end
+-- ma unit neco, co umim odstranit (filtr RAID = jen co ja dispellnu)? true / false / nil (v boji)
+local function dispellable(u)
+  if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return nil end
+  local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, u, 1, 'HARMFUL|RAID')
+  if not ok then return nil end
+  if a ~= nil then return true end
+  return not ns.inCombat() and false or nil
+end
 local function wantSeal(c)
   local pref = c.db.palSeal
   if pref and pref ~= 'auto' and ns.known(pref) then return pref end
   if c.manaKnown and c.mana < 0.2 and ns.known('Seal of Wisdom') and not c.tough then return 'Seal of Wisdom', 'malo many' end
+  -- se stitem: Seal of Fury (Holy dmg + absorb stit z kazdeho uderu)
+  if c.shield and ns.known('Seal of Fury') then return 'Seal of Fury' end
   -- engine: ret i prot drzi Righteousness (nemuze minout, skaluje se spell power i rychlosti zbrane)
   if ns.known('Seal of Righteousness') then return 'Seal of Righteousness' end
   if ns.known('Seal of Command') then return 'Seal of Command' end
@@ -140,6 +158,8 @@ E.context = function()
     if m.healer and m.alive and not m.unit:find('pet') then c.healerUp = true end
   end
   c.undead = c.ctype == 'Undead' or c.ctype == 'Demon'
+  c.shield = hasShield()
+  c.rf = ns.known('Righteous Fury') and activeOf({ 'Righteous Fury' }) or nil
   -- dosah: Attack (6603) nema dosah, takze melee merime pres Strike, Judgement ma 10 yd
   local function inR(n)
     local id = ns.id(n)
@@ -187,6 +207,19 @@ local function decide(c, s)
     if c.palAura == false and aura and not s.used.aura then
       s.used.aura = true
       return A(aura, 'Chybi aura')
+    end
+    -- tank se stitem ve skupine: Righteous Fury (vic threatu)
+    if c.rf == false and c.shield and c.group and not town and ready('Righteous Fury') then
+      return A('Righteous Fury', 'Tankujes se stitem: Righteous Fury (vic aggra)')
+    end
+    -- jed / nemoc na tobe nebo na partakovi: Purify
+    if ready('Purify') then
+      if dispellable('player') then return A('Purify', 'Mas na sobe jed/nemoc: Purify', 'spell', { unit = 'player' }) end
+      for _, m in ipairs((c.party and c.party.members) or {}) do
+        if m.alive and not m.unit:find('pet') and dispellable(m.unit) then
+          return A('Purify', ('%s ma jed/nemoc: Purify'):format(m.name or '?'), 'spell', { unit = m.unit })
+        end
+      end
     end
     local bl = wantBless(c)
     if c.bless == false and bl and not town and not s.used.bless and ready(bl) then
@@ -247,6 +280,20 @@ local function decide(c, s)
     s.shield = true
     return A('Divine Protection', 'Malo HP: Divine Protection, pak se vylec', 'spell', { urgent = true })
   end
+  -- malo HP a mob te bije: omrac ho Hammer of Justice a vylec se (stun = 3+ s klidu na Holy Light)
+  if s.step == 1 and danger and php < 40 and not c.healerUp and c.hostile and c.hojR and ready('Hammer of Justice')
+    and not shielded() and bestHeal(false) then
+    s.used['Hammer of Justice'] = true
+    s.stunned = true
+    return A('Hammer of Justice', 'Malo HP: omrac moba (Hammer of Justice) a hned se vylec', 'spell', { urgent = true })
+  end
+  if s.stunned and php < 80 then
+    local h = bestHeal(false)
+    if h and ready(h) then
+      s.used[h] = true
+      return A(h, 'Mob je omraceny: ' .. h .. ' na sebe', 'spell', { unit = 'player' })
+    end
+  end
   -- pod stitem: lec se (nic te neprerusi)
   if (shielded() or s.shield) and php < 80 then
     local h = bestHeal(false)
@@ -262,6 +309,17 @@ local function decide(c, s)
       return A(h, ('HP ~%d%%: %s'):format(math.floor(php), h), 'spell', { unit = 'player', urgent = php < 25 })
     end
   end
+  -- spoluhrac (ne tank) umira a bije ho mob: Blessing of Protection (fyzicke utoky mu neublizi)
+  if c.group then
+    local tank = c.party and c.party.tank
+    for _, m in ipairs((c.party and c.party.members) or {}) do
+      if m.alive and m.veryLow and (m.mobs or 0) > 0 and m ~= tank and not m.unit:find('pet') and ready('Blessing of Protection') then
+        s.used['Blessing of Protection'] = true
+        return A('Blessing of Protection', ('%s umira a mob ho bije: Blessing of Protection'):format(m.name or '?'), 'spell',
+          { unit = m.unit, urgent = true })
+      end
+    end
+  end
   -- party bez lecitele: zachran spoluhrace
   if c.group and not c.healerUp then
     for _, m in ipairs((c.party and c.party.members) or {}) do
@@ -273,6 +331,10 @@ local function decide(c, s)
         end
       end
     end
+  end
+  -- jed / nemoc v boji (kdyz to hra prozradi)
+  if s.step == 1 and ready('Purify') and dispellable('player') == true and php < 70 then
+    return A('Purify', 'Jed/nemoc na tobe: Purify', 'spell', { unit = 'player' })
   end
   if not c.hostile then return nil end
   -- preruseni / stun kouzlici mobky

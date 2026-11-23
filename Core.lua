@@ -107,10 +107,10 @@ local WARLOCK_SPELLS = {
 }
 local PALADIN_SPELLS = {
   'Attack', 'Seal of Righteousness', 'Seal of Command', 'Seal of the Crusader', 'Seal of Wisdom', 'Seal of Light',
-  'Seal of Justice', 'Seal of Vengeance', 'Seal of Blood', 'Seal of Martyrdom', 'Judgement', 'Holy Strike', 'Crusader Strike',
+  'Seal of Justice', 'Seal of Vengeance', 'Seal of Blood', 'Seal of Martyrdom', 'Seal of Fury', 'Judgement', 'Holy Strike', 'Crusader Strike',
   'Hammer of Justice', 'Hammer of Wrath', 'Exorcism', 'Consecration', 'Holy Shock', 'Holy Wrath', "Avenger's Shield",
   'Holy Shield', 'Righteous Fury', 'Repentance', 'Turn Undead', 'Holy Light', 'Flash of Light', 'Lay on Hands',
-  'Divine Protection', 'Divine Shield', 'Blessing of Protection', 'Blessing of Freedom', 'Divine Favor', 'Purify', 'Cleanse',
+  'Divine Protection', 'Divine Shield', 'Blessing of Protection', 'Blessing of Freedom', 'Divine Favor', 'Purify', 'Cleanse', 'Hammer of the Righteous', 'Swift Judgement', "Templar's Bulwark",
   'Devotion Aura', 'Retribution Aura', 'Concentration Aura', 'Sanctity Aura', 'Crusader Aura', 'Shadow Resistance Aura',
   'Frost Resistance Aura', 'Fire Resistance Aura', 'Blessing of Might', 'Blessing of Wisdom', 'Blessing of Kings',
   'Blessing of Sanctuary', 'Blessing of Light', 'Blessing of Salvation', 'Greater Blessing of Might',
