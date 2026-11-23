@@ -18,7 +18,7 @@ local function accent(a) local c = th().ui return c[1], c[2], c[3], a or 1 end
 
 local function label(parent, text, size, r, g, b, flags)
   local fs = parent:CreateFontString(nil, 'OVERLAY')
-  fs:SetFont(FONT, size or 11, flags or '')
+  fs:SetFont(FONT, size or 11, type(flags) == 'string' and flags or '')
   fs:SetShadowOffset(1, -1) fs:SetShadowColor(0, 0, 0, 0.9)
   fs:SetTextColor(r or 0.88, g or 0.9, b or 0.95)
   fs:SetJustifyH('LEFT')
@@ -76,7 +76,8 @@ local function slider(parent, text, desc, minV, maxV, step, get, set, fmt)
   local h = CreateFrame('Frame', nil, parent)
   h:SetSize(CW, 38) h:EnableMouse(true)
   h.text = label(h, text, 12) h.text:SetPoint('TOPLEFT', 0, -2)
-  h.val = label(h, '', 12, accent()) h.val:SetPoint('TOPRIGHT', 0, -2)
+  local ar, ag, ab = accent()
+  h.val = label(h, '', 12, ar, ag, ab) h.val:SetPoint('TOPRIGHT', 0, -2) h.val:SetJustifyH('RIGHT')
   local s = CreateFrame('Slider', nil, h, 'BackdropTemplate')
   s:SetOrientation('HORIZONTAL')
   s:SetPoint('TOPLEFT', 0, -20) s:SetPoint('TOPRIGHT', 0, -20) s:SetHeight(10)
@@ -589,7 +590,11 @@ local function build()
       tb.sel:SetShown(on) tb.bar:SetShown(on)
       tb.text:SetTextColor(on and 1 or 0.72, on and 1 or 0.74, on and 1 or 0.8)
       if on then
-        if not pages[key] then pages[key] = newPage(host) pg.build(pages[key], db) end
+        if not pages[key] then
+          pages[key] = newPage(host)
+          local ok, err = pcall(pg.build, pages[key], db)
+          if not ok then ns.say('chyba v nastaveni (' .. pg.name .. '): ' .. tostring(err)) end
+        end
         pages[key].sf:Show() pages[key].refresh()
       elseif pages[pg.key] then pages[pg.key].sf:Hide() end
     end
