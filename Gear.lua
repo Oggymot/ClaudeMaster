@@ -303,7 +303,7 @@ local function onItemTip(tt, data)
   fl = fl or {}
   if st then pcall(G.myTip, tt, link, st, blocked, req, fl) end
   -- u vendora: proc to radime prodat
-  if G.merchant and G.sellWhy then
+  if (G.merchant or G.bank) and G.sellWhy then
     local why = G.sellWhy(tt, link)
     if why then tt:AddLine('|T' .. COIN_TEX .. ':14:14|t |cffffd100Prodat:|r |cffdddddd' .. why .. '|r', 1, 1, 1, true) end
   end
@@ -356,6 +356,17 @@ end
 ------------------------------------------------------------------------------------------
 -- Vylepseni v batohu
 ------------------------------------------------------------------------------------------
+-- batohy (0-4, 5 = reagent bag) + banka, kdyz je otevrena (-1 hlavni banka, -3 reagent banka, 6-16 bankovni
+-- tasky / zalozky; neexistujici id vrati 0 slotu)
+local BANK_IDS = { -1, -3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }
+local BANKSET = {}
+for _, b in ipairs(BANK_IDS) do BANKSET[b] = true end
+function G.isBankBag(bag) return BANKSET[bag] == true end
+function G.bagIds()
+  local t = { 0, 1, 2, 3, 4, 5 }
+  if G.bank then for _, b in ipairs(BANK_IDS) do t[#t + 1] = b end end
+  return t
+end
 local upCache, upAt = nil, -99
 function G.upgrades(force)
   if not force and upCache and GetTime() - upAt < 3 then return upCache end
@@ -369,7 +380,9 @@ function G.upgrades(force)
   if not (getNum and getInfo) then return list end
   local lvl = safeNum(UnitLevel('player')) or 60
   local specLabel = (G.SPECS[G.spec()] or {}).label or 'tvuj spec'
-  for bag = 0, 4 do
+  local bankUps = {}
+  for _, bag in ipairs(G.bagIds()) do
+    local inBank = G.isBankBag(bag)
     for slot = 1, safeNum(pc(getNum, bag)) or 0 do
       local info = pc(getInfo, bag, slot)
       local link = type(info) == 'table' and safe(info.hyperlink)
@@ -411,7 +424,9 @@ function G.upgrades(force)
         end
         if not why then
           if pct > 0.03 and new > 1 then
-            list[#list + 1] = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot }
+            local u = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot }
+            -- z banky nejde nasadit klikem: jen sipka, ne tip v panelu
+            if inBank then bankUps[#bankUps + 1] = u else list[#list + 1] = u end
           end
         end
       end
@@ -428,6 +443,7 @@ function G.upgrades(force)
   upCache, upAt = list, GetTime()
   G.upMap = {}
   for _, u in ipairs(list) do G.upMap[u.bag .. ':' .. u.bslot] = u end
+  for _, u in ipairs(bankUps) do G.upMap[u.bag .. ':' .. u.bslot] = u end
   return list
 end
 
@@ -735,11 +751,14 @@ end
 
 -- zmena gearu / batohu -> prepocitat
 local f = CreateFrame('Frame')
-for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_LEVEL_UP', 'MERCHANT_SHOW', 'MERCHANT_CLOSED' }) do
+for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_LEVEL_UP', 'MERCHANT_SHOW', 'MERCHANT_CLOSED',
+  'BANKFRAME_OPENED', 'BANKFRAME_CLOSED', 'PLAYERBANKSLOTS_CHANGED', 'PLAYERREAGENTBANKSLOTS_CHANGED' }) do
   pcall(f.RegisterEvent, f, e)
 end
 f:SetScript('OnEvent', function(_, ev)
   if ev == 'MERCHANT_SHOW' then G.merchant = true elseif ev == 'MERCHANT_CLOSED' then G.merchant = false end
+  if ev == 'BANKFRAME_OPENED' then G.bank = true elseif ev == 'BANKFRAME_CLOSED' then G.bank = false end
+  if ev == 'BANKFRAME_OPENED' and C_Timer then C_Timer.After(0.6, function() pcall(G.refreshBags) end) end
   G.invalidate() upCache = nil bbCache = nil
   if C_Timer and G.refreshBags then C_Timer.After(0.2, function() pcall(G.refreshBags) end) end
 end)
@@ -795,17 +814,35 @@ function G.refreshBags()
   if not ns.db or ns.db.gearTips == false or InCombatLockdown() then return end
   pcall(G.upgrades)
   local map = G.upMap or {}
-  local function upd(b)
-    local bag = b.GetBagID and b:GetBagID() or (b:GetParent() and b:GetParent():GetID())
-    local slot = b:GetID()
+  local show = G.merchant or G.bank   -- mince / postavicka jen u vendora nebo v bance
+  local function upd(b, forceBag)
+    local okB, bag = pcall(function()
+      if forceBag then return forceBag end
+      if b.GetBagID then return b:GetBagID() end
+      if b.GetBankTabID then return b:GetBankTabID() end
+      return b:GetParent() and b:GetParent():GetID()
+    end)
+    bag = okB and bag or nil
+    local okS, slot = pcall(function() return b.GetContainerSlotID and b:GetContainerSlotID() or b:GetID() end)
+    slot = okS and slot or nil
     local key = bag and slot and (bag .. ':' .. slot)
     local up = key and map[key] ~= nil
     mark(b, up)
-    sellMark(b, G.merchant and key and not up and G.sellMap and G.sellMap[key])
-    giftMark(b, G.merchant and key and not up and G.giftMap and G.giftMap[key])
+    sellMark(b, show and key and not up and G.sellMap and G.sellMap[key])
+    giftMark(b, show and key and not up and G.giftMap and G.giftMap[key])
   end
   eachButton(_G.ContainerFrameCombinedBags, upd)
   for i = 1, 13 do eachButton(_G['ContainerFrame' .. i], upd) end
+  -- banka: novy panel (zalozky) nebo stara okna BankFrameItem1..28 (= bag -1)
+  if G.bank then
+    local bp = _G.BankPanel
+    if bp and bp:IsShown() and bp.EnumerateValidItems then pcall(function() for _, b in bp:EnumerateValidItems() do upd(b) end end) end
+    for i = 1, 36 do
+      local b = _G['BankFrameItem' .. i]
+      if not b then break end
+      if b:IsVisible() then upd(b, -1) end
+    end
+  end
 end
 -- prekreslit, kdyz se batoh otevre / zmeni (hook = bez taintu)
 local function hookFrame(fr)
@@ -820,6 +857,8 @@ hk:RegisterEvent('PLAYER_LOGIN')
 hk:SetScript('OnEvent', function()
   pcall(hookFrame, _G.ContainerFrameCombinedBags)
   for i = 1, 13 do pcall(hookFrame, _G['ContainerFrame' .. i]) end
+  pcall(hookFrame, _G.BankFrame)
+  pcall(hookFrame, _G.BankPanel)
 end)
 
 ------------------------------------------------------------------------------------------
