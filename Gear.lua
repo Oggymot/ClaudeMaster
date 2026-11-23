@@ -172,6 +172,36 @@ end
 function G.invalidate() eqCache = nil end
 
 -- Porovnani: skore noveho vs. to, co by nahradil. -> pct (0.12 = +12 %), nahrazovany item, slot
+-- nejlepsi jednorucni zbran a offhand/stit v batohu (k porovnani s obouruckou)
+local MH1 = { INVTYPE_WEAPON = true, INVTYPE_WEAPONMAINHAND = true }
+local OHT = { INVTYPE_WEAPONOFFHAND = true, INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true }
+local bbCache, bbAt = nil, -99
+local function bagBest()
+  if bbCache and GetTime() - bbAt < 3 then return bbCache end
+  local r = {}
+  local getNum = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+  local getInfo = C_Container and C_Container.GetContainerItemInfo
+  local lvl = safeNum(UnitLevel('player')) or 60
+  if getNum and getInfo then
+    for bag = 0, 4 do
+      for slot = 1, safeNum(pc(getNum, bag)) or 0 do
+        local info = pc(getInfo, bag, slot)
+        local link = type(info) == 'table' and safe(info.hyperlink)
+        local loc = type(link) == 'string' and equipLocOf(link)
+        local kind = loc and (MH1[loc] and 'mh' or (OHT[loc] and 'oh'))
+        if kind then
+          local st, blocked, req = G.parse(tipData('bag', bag, slot, link))
+          if st and not blocked and not (req and req > lvl) then
+            local sc = G.score(st)
+            if not r[kind] or sc > r[kind].score then r[kind] = { score = sc, link = link } end
+          end
+        end
+      end
+    end
+  end
+  bbCache, bbAt = r, GetTime()
+  return r
+end
 function G.compare(link, st)
   local loc = equipLocOf(link)
   local slots = loc and SLOTS[loc]
@@ -190,12 +220,19 @@ function G.compare(link, st)
       if e and e.link == link then return nil end      -- to uz mas na sobe
       if old == nil or sc < old then old, oldLink, slot = sc, e and e.link, s end
     end
-    -- jednorucni zbran / offhand misto obourucni: porovnat s celou obouruckou
+    -- jednorucni zbran / stit misto obouruckly: porovnat dvojici (s nejlepsim parakem z batohu) s obouruckou
     local mh = eq[16]
+    local partner
     if (slot == 16 or slot == 17) and mh and mh.loc == 'INVTYPE_2HWEAPON' then
-      if slot == 17 then return nil end   -- offhand k obourucce nejde
+      local bb = bagBest()
+      partner = (slot == 17) and bb.mh or bb.oh
+      if slot == 17 and not partner then return nil end   -- stit bez jednorucni zbrane nejde nosit
+      new = new + (partner and partner.score or 0)
       old, oldLink = mh.score, mh.link
     end
+    if new <= 0 and old <= 0 then return nil end
+    local pct = old > 0 and (new - old) / old or 1
+    return pct, oldLink, slot, new, old, partner and partner.link
   end
   if new <= 0 and old <= 0 then return nil end
   local pct = old > 0 and (new - old) / old or 1
@@ -216,9 +253,10 @@ local function onItemTip(tt, data)
   local st, blocked, req = G.parse(data)
   if not st and C_TooltipInfo and C_TooltipInfo.GetHyperlink then st, blocked, req = G.parse(pc(C_TooltipInfo.GetHyperlink, link)) end
   if not st then return end
-  local pct, oldLink = G.compare(link, st)
+  local pct, oldLink, _, _, _, partner = G.compare(link, st)
   if not pct then return end
   local oldName = oldLink and oldLink:match('%[(.-)%]') or 'prazdny slot'
+  if partner then oldName = oldName .. ' |cffffffff(s ' .. (partner:match('%[(.-)%]') or '?') .. ')|r' end
   local lvl = safeNum(UnitLevel('player')) or 60
   local txt
   if blocked then
@@ -320,7 +358,7 @@ end
 local f = CreateFrame('Frame')
 for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_LEVEL_UP' }) do pcall(f.RegisterEvent, f, e) end
 f:SetScript('OnEvent', function()
-  G.invalidate() upCache = nil
+  G.invalidate() upCache = nil bbCache = nil
   if C_Timer and G.refreshBags then C_Timer.After(0.2, function() pcall(G.refreshBags) end) end
 end)
 
