@@ -790,7 +790,7 @@ local function decide(c, s)
   end
   -- 7) dorazeni
   local dying = c.tLow10 or (c.tLow20 and (ttd == nil or ttd < 4)) or (ttd and ttd < 3)
-  if c.tLow20 and c.shards < (db.shardWant or 6) and can('Drain Soul') and not c.moving and not c.boss
+  if c.tLow20 and c.shards < math.min(db.shardWant or 6, db.shardTrim ~= false and (db.shardMax or 10) or 99) and can('Drain Soul') and not c.moving and not c.boss
     and not c.tPlayer and (ttd == nil or ttd < 15) then
     return A('Drain Soul', ('Dorazit Drain Soulem: shard navic (mas %d)'):format(c.shards))
   end
@@ -1054,3 +1054,62 @@ function E.infoLine(c)
   if ns.Bags.count('stone') == 0 then p[#p + 1] = '|cffffcc00bez Healthstone|r' end
   return table.concat(p, '  |cff556070-|r  ')
 end
+
+
+------------------------------------------------------------------------------------------
+-- Soul shardy nad maximum: mimo boj zahodit (nastaveni: shardTrim, shardMax; vychozi 10)
+------------------------------------------------------------------------------------------
+local trimQueued, trimWarned = false, false
+local function shardSlots()
+  local getNum = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+  local getInfo = C_Container and C_Container.GetContainerItemInfo
+  local out, total = {}, 0
+  if not (getNum and getInfo) then return out, 0 end
+  for bag = 0, 5 do
+    for slot = 1, safeNum(pc(getNum, bag)) or 0 do
+      local info = pc(getInfo, bag, slot)
+      local link = type(info) == 'table' and safe(info.hyperlink)
+      if type(link) == 'string' and (safeNum(info.itemID) == 6265 or link:find('%[Soul Shard%]')) then
+        local n = safeNum(info.stackCount) or 1
+        out[#out + 1] = { bag = bag, slot = slot, n = n }
+        total = total + n
+      end
+    end
+  end
+  return out, total
+end
+function W.trimShards()
+  local db = ns.db
+  if not db or db.shardTrim == false then return end
+  if InCombatLockdown() or ns.inCombat() or (CursorHasItem and CursorHasItem()) then return end
+  local max = db.shardMax or 10
+  local slots, total = shardSlots()
+  local excess = total - max
+  if excess <= 0 then return end
+  local s = slots[#slots]   -- od posledniho slotu (nejspis v Soul Bagu az na konci)
+  local pick = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
+  local split = (C_Container and C_Container.SplitContainerItem) or SplitContainerItem
+  local ok
+  if s.n > excess and split then ok = pcall(split, s.bag, s.slot, excess)
+  else ok = pcall(pick, s.bag, s.slot) end
+  if ok and CursorHasItem and CursorHasItem() then ok = pcall(DeleteCursorItem) end
+  if CursorHasItem and CursorHasItem() then   -- hra mazani nedovolila: vratit a rict hraci
+    if ClearCursor then ClearCursor() end
+    if not trimWarned then
+      trimWarned = true
+      ns.say(('Mas %d soul shardu (max %d) - zahodit je automaticky hra nedovolila, zahod je rucne.'):format(total, max))
+    end
+    return
+  end
+  if ok then
+    ns.say(('Soul shardy: zahozeno %d (mas %d, max %d - zmenis v /cm config)'):format(math.min(excess, s.n), total - math.min(excess, s.n), max))
+    if C_Timer then C_Timer.After(0.6, function() pcall(W.trimShards) end) end
+  end
+end
+local tq = CreateFrame('Frame')
+for _, e in ipairs({ 'BAG_UPDATE_DELAYED', 'PLAYER_REGEN_ENABLED', 'PLAYER_ENTERING_WORLD' }) do pcall(tq.RegisterEvent, tq, e) end
+tq:SetScript('OnEvent', function()
+  if trimQueued or not C_Timer then return end
+  trimQueued = true
+  C_Timer.After(1.5, function() trimQueued = false pcall(W.trimShards) end)
+end)

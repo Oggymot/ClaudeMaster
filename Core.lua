@@ -65,6 +65,8 @@ local DEFAULTS = {
   aoeDelay = 3,        -- v parte s tankem: AoE az po tolika sekundach (uci se: strhnes aggro -> delsi)
   shardKeep = 3,       -- warlock: tolik soul shardu si drz (Shadowburn/Soul Fire jen nad tim)
   shardWant = 6,       -- warlock: Drain Soul na dorazeni, dokud nemas tolik shardu
+  shardTrim = true,    -- warlock: shardy nad maximum mimo boj zahodit
+  shardMax = 10,       -- warlock: maximum soul shardu
 }
 function ns.initDB()
   ClaudeMasterDB = ClaudeMasterDB or {}

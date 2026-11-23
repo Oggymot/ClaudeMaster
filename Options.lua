@@ -354,6 +354,11 @@ PAGES[#PAGES + 1] = { key = 'combat', name = 'Boj a mana', icon = 'Interface\\Ic
       function() return db.multiDot ~= false end, function(v) db.multiDot = v end), 8)
     p.add(slider(p.c, 'Drzet aspon soul shardu', 'Shadowburn / Soul Fire jen nad timto poctem.', 0, 10, 1,
       function() return db.shardKeep end, function(v) db.shardKeep = v end, '%d'))
+    p.add(checkbox(p.c, 'Zahazovat soul shardy nad maximum', 'Mimo boj zahodi shardy navic, at nezabiraji batoh.',
+      function() return db.shardTrim ~= false end, function(v) db.shardTrim = v
+        if v and ns.Warlock and ns.Warlock.trimShards then pcall(ns.Warlock.trimShards) end end), 8)
+    p.add(slider(p.c, 'Maximum soul shardu', 'Vic shardu addon mimo boj zahodi (kdyz je volba vyse zapnuta).', 1, 40, 1,
+      function() return db.shardMax or 10 end, function(v) db.shardMax = v end, '%d'), 6, 24)
     p.add(slider(p.c, 'Drain Soul na dorazeni do', 'Dokud nemas tolik shardu, dorazej Drain Soulem.', 0, 20, 1,
       function() return db.shardWant end, function(v) db.shardWant = v end, '%d'))
   elseif ns.class == 'PALADIN' then
