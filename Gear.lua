@@ -168,6 +168,7 @@ function G.parse(data)
         if t:find('^Equip:') and total(st) == before then fl.unk = true end
       end
       if t == 'Soulbound' then fl.bound = true end
+      if t == 'Binds when equipped' then fl.boe = true end
       fl.classes = fl.classes or t:match('^Classes: (.+)')
       if isRed(l.leftColor) or isRed(l.rightColor) then
         local lv = t:match('^Requires Level (%d+)')
@@ -452,9 +453,9 @@ function G.upgrades(force)
         if not st then why = 'nejde precist'
         elseif blocked then why = 'neumis nosit'
         elseif req and req > lvl then why = 'od lvl ' .. req end
-        local pct, oldLink, eqSlot, new, old
+        local pct, oldLink, eqSlot, new, old, partner
         if not why then
-          pct, oldLink, eqSlot, new, old = G.compare(link, st)
+          pct, oldLink, eqSlot, new, old, partner = G.compare(link, st)
           if not pct then why = 'uz mas na sobe' end
         end
         G.lastAll[#G.lastAll + 1] = { link = link, pct = pct, why = why, est = fl.est, unk = fl.unk }
@@ -476,7 +477,8 @@ function G.upgrades(force)
         end
         if not why then
           if pct > 0.03 and new > 1 then
-            local u = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot }
+            local u = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot,
+              partner = partner, boe = fl.boe and not fl.bound, unk = fl.unk }
             -- z banky nejde nasadit klikem: jen sipka, ne tip v panelu
             if inBank then bankUps[#bankUps + 1] = u else list[#list + 1] = u end
           end
@@ -934,6 +936,73 @@ hk:SetScript('OnEvent', function()
   for i = 1, 13 do pcall(hookFrame, _G['ContainerFrame' .. i]) end
   pcall(hookFrame, _G.BankFrame)
   pcall(hookFrame, _G.BankPanel)
+end)
+
+------------------------------------------------------------------------------------------
+-- Automaticke nasazeni lepsiho kusu (volba v /cm config -> Veci a questy)
+--  * jen mimo boj, ne pri castu, ne mrtvy; jeden kus za druhym
+--  * jen kdyz je lepsi aspon o nastavena % a nema neznamy efekt ("Chance on hit" apod.)
+--  * BoE (navaze se nasazenim) jen kdyz to hrac povoli - pak potvrdi i dotaz hry
+------------------------------------------------------------------------------------------
+local tried, pendingBind = {}, 0
+local function canAuto()
+  local db = ns.db
+  if not db or not db.autoEquip or db.gearTips == false then return false end
+  if InCombatLockdown() or ns.inCombat() then return false end
+  if safeBool(pc(UnitIsDeadOrGhost, 'player')) then return false end
+  if UnitCastingInfo and safe(pc(UnitCastingInfo, 'player')) then return false end
+  if UnitChannelInfo and safe(pc(UnitChannelInfo, 'player')) then return false end
+  if CursorHasItem and CursorHasItem() then return false end
+  return true
+end
+function G.autoEquip()
+  if not canAuto() then return end
+  local db = ns.db
+  local thr = (db.autoEquipPct or 5) / 100
+  local now = GetTime()
+  for k, t in pairs(tried) do if now - t > 60 then tried[k] = nil end end
+  local ok, list = pcall(G.upgrades, true)
+  if not ok or type(list) ~= 'table' then return end
+  for _, u in ipairs(list) do
+    local key = u.link .. '@' .. tostring(u.slot)
+    if u.pct >= thr and not u.unk and (not u.boe or db.autoEquipBoE) and u.slot and not tried[key] then
+      tried[key] = now
+      if u.boe then pendingBind = now end
+      local okE = pcall(EquipItemByName, u.link, u.slot)
+      if okE then
+        ns.say(('Nasazeno: %s%s (+%d %%)'):format(u.link, u.old and (' misto ' .. u.old) or '', math.floor(u.pct * 100 + 0.5)))
+        -- jednorucka / stit misto obouruckly: nasadit i parak
+        if u.partner and C_Timer then
+          local other = (u.slot == 16) and 17 or 16
+          C_Timer.After(0.4, function() if canAuto() then pcall(EquipItemByName, u.partner, other) end end)
+        end
+      end
+      if C_Timer then C_Timer.After(1.5, function() pcall(G.autoEquip) end) end   -- dalsi kus
+      return
+    end
+  end
+end
+local aeQueued = false
+local function queueAuto(delay)
+  if aeQueued or not (ns.db and ns.db.autoEquip) or not C_Timer then return end
+  aeQueued = true
+  C_Timer.After(delay or 1, function() aeQueued = false pcall(G.autoEquip) end)
+end
+G.queueAuto = queueAuto
+local ae = CreateFrame('Frame')
+for _, e in ipairs({ 'BAG_UPDATE_DELAYED', 'PLAYER_REGEN_ENABLED', 'PLAYER_LEVEL_UP', 'PLAYER_ENTERING_WORLD',
+  'EQUIP_BIND_CONFIRM', 'EQUIP_BIND_TRADEABLE_CONFIRM' }) do pcall(ae.RegisterEvent, ae, e) end
+ae:SetScript('OnEvent', function(_, ev, a1)
+  if ev == 'EQUIP_BIND_CONFIRM' or ev == 'EQUIP_BIND_TRADEABLE_CONFIRM' then
+    -- dotaz "navaze se" jen na nase vlastni nasazeni BoE kusu (a jen kdyz to hrac povolil)
+    if ns.db and ns.db.autoEquip and ns.db.autoEquipBoE and GetTime() - pendingBind < 3 and EquipPendingItem then
+      pendingBind = 0
+      pcall(EquipPendingItem, a1)
+      if StaticPopup_Hide then pcall(StaticPopup_Hide, 'EQUIP_BIND') pcall(StaticPopup_Hide, 'EQUIP_BIND_TRADEABLE') end
+    end
+    return
+  end
+  queueAuto(ev == 'PLAYER_ENTERING_WORLD' and 5 or (ev == 'PLAYER_LEVEL_UP' and 2 or 1))
 end)
 
 ------------------------------------------------------------------------------------------

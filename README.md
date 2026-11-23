@@ -16,7 +16,7 @@ Prikazy: `/cm help`.
 
 Tlacitko u minimapy (levy klik = nastaveni, pravy klik = panel, tahem ho posunes) nebo `/cm config`.
 Zalozky: **Panel** (vzhled, velikost, kompaktni rezim), **Boj a mana**, **Parta** (cekani na tanka, AoE),
-**Build**, **Veci a questy** (oprava, prodej, seznam questu), **Pamet a uceni**. Kazda volba ma tooltip s vysvetlenim.
+**Build**, **Veci a questy** (automaticke nasazovani lepsich veci, oprava, prodej, seznam questu), **Pamet a uceni**. Kazda volba ma tooltip s vysvetlenim.
 
 **Build** = smer talentu a vahy statu pro gear. Pro kazdou classu jsou pripravene tri smery
 (Mag: Frost / Fire / Arcane, Warlock: Destruction / Affliction / Demonology, Paladin: Retribution / Protection / Holy,

@@ -205,6 +205,7 @@ local function newPage(host)
     c:SetHeight(-y + 10)
   end
   function p.add(w, gap, indent)
+    if indent then w:SetWidth(CW - indent) end
     p.flow[#p.flow + 1] = { w = w, gap = gap or 6, indent = indent }
     p.items[#p.items + 1] = w
     p.layout()
@@ -522,6 +523,19 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
     function() return db.autoRepair ~= false end, function(v) db.autoRepair = (not v) and false or nil end))
   p.add(checkbox(p.c, 'Automaticky prodat sede veci', 'U obchodnika proda sedy junk. Ostatni oznacene veci prodas minci na okne obchodnika.',
     function() return db.autoSell ~= false end, function(v) db.autoSell = (not v) and false or nil end))
+  p.section('Vybaveni', 'Addon hodnoti itemy podle vah statu tveho buildu (zalozka Build).')
+  p.add(checkbox(p.c, 'Sipky a hodnoceni v batohu a tooltipu', 'Zelena sipka = lepsi pro tebe, v tooltipu o kolik %.',
+    function() return db.gearTips ~= false end, function(v) db.gearTips = (not v) and false or nil
+      if ns.Gear and ns.Gear.refreshBags then pcall(ns.Gear.refreshBags) end end))
+  p.add(checkbox(p.c, 'Automaticky nasazovat lepsi veci', 'Mimo boj nasadi lepsi kus z batohu a napise do chatu, co vymenil. '
+    .. 'Veci s neznamym efektem (Chance on hit apod.) necha na tobe.',
+    function() return db.autoEquip end, function(v) db.autoEquip = v if v and ns.Gear and ns.Gear.queueAuto then ns.Gear.queueAuto(0.2) end end))
+  p.add(slider(p.c, 'Jen kdyz je lepsi aspon o', 'Mala zlepseni nech byt - zabrani zbytecnemu prehazovani.', 1, 25, 1,
+    function() return db.autoEquipPct or 5 end, function(v) db.autoEquipPct = v end, '%d %%'), 8, 24)
+  p.add(checkbox(p.c, 'Nasazovat i BoE (navaze se)', 'Veci "Binds when equipped" se nasazenim navazou na postavu a uz je neprodas '
+    .. 'na aukci ani nedas partakovi. Vypnuto = takove veci jen oznaci sipkou.',
+    function() return db.autoEquipBoE end, function(v) db.autoEquipBoE = v end), 6, 24)
+
   p.section('Questy pod minimapou')
   p.add(checkbox(p.c, 'Jen questy z aktualni oblasti', 'Seznam ukaze jen questy z mista, kde jsi.',
     function() return db.questZone == true end, function(v) db.questZone = v questsUpd() end))
