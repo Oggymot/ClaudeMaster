@@ -705,14 +705,17 @@ end
 local function newProbe(n, def)
   local P = { bars = {}, fired = {}, below = {}, phase = 0, ok = nil, at = 0, valid = false }
   for k, v in pairs(def) do P[k] = v end
-  for i = 1, n do
+  -- +1 kontrolni bar: v kazdem cteni se MUSI zmenit (1 -> 2). Kdyz se nezmeni (schovane UI, hra
+  -- neprekreslila, chyba), cteni neplati - jinak by "nic se nezmenilo" vypadalo jako "HP pod vsemi carami".
+  local CTRL = n + 1
+  for i = 1, n + 1 do
     local b = CreateFrame('StatusBar', nil, probeRoot)
     b:SetSize(64, 1) b:SetPoint('BOTTOMLEFT', probeRoot, 'BOTTOMLEFT', 0, probeRow) probeRow = probeRow + 1
     b:SetStatusBarTexture('Interface\\Buttons\\WHITE8X8') b:SetMinMaxValues(0, 2) b:SetValue(1)
     local clip = CreateFrame('Frame', nil, b)
     clip:SetPoint('TOPLEFT', b, 'TOPLEFT') clip:SetPoint('BOTTOMRIGHT', b:GetStatusBarTexture(), 'BOTTOMRIGHT')
     clip:SetScript('OnSizeChanged', function() P.fired[i] = true end)
-    P.bars[i] = b
+    if i == CTRL then P.ctrl = b else P.bars[i] = b end
   end
   function P.reset() P.valid = false P.phase = 0 end
   function P.step()
@@ -729,15 +732,27 @@ local function newProbe(n, def)
       if not okB or not go then P.valid = false return end
       P.tok = ns.T and ns.T.token
       for i, b in ipairs(P.bars) do pcall(P.prep, P, i, b) end
+      P.ctrl:SetMinMaxValues(0, 2) P.ctrl:SetValue(1)
       P.phase = 1
     elseif P.phase == 1 then
       wipe(P.fired)
-      for i, b in ipairs(P.bars) do pcall(P.apply, P, i, b) end
+      P.applyFail = false
+      for i, b in ipairs(P.bars) do
+        if not pcall(P.apply, P, i, b) then P.applyFail = true end
+      end
+      P.ctrl:SetValue(2)
       P.phase = 2
     else
       P.phase = 0
       -- mezitim se zmenil cil: cteni patri staremu cili, zahodit
       if P.tok ~= (ns.T and ns.T.token) then return end
+      -- kontrolni bar se nezmenil nebo hra odmitla hodnotu predat: cteni zahodit (a stare zneplatnit)
+      if not P.fired[CTRL] or P.applyFail then
+        P.bad2 = (P.bad2 or 0) + 1
+        if P.bad2 >= 2 then P.valid = false end
+        return
+      end
+      P.bad2 = 0
       local okR, good = pcall(P.read, P)
       if okR and good then
         P.valid = true P.at = GetTime()
