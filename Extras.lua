@@ -332,6 +332,11 @@ dev:SetScript('OnEvent', function(_, _, prefix, msg, _, sender)
   if k2 == 'G^' then if ns.Gear and ns.Gear.recv then pcall(ns.Gear.recv, name, msg) end return end
   -- questy partaka (QL^ = zabil moba s mym questovym lootem)
   if msg:sub(1, 3) == 'QL^' then if ns.Quests and ns.Quests.recvLoot then ns.Quests.recvLoot(name, msg) end return end
+  -- sdileni questu (QI^ = moje questy, QW^ = ktere chci)
+  if msg:sub(1, 3) == 'QI^' or msg:sub(1, 3) == 'QW^' then
+    if ns.Quests and ns.Quests.recvShare then pcall(ns.Quests.recvShare, name, msg) end
+    return
+  end
   if msg == 'Q' or k2 == 'Q^' then if ns.Quests and ns.Quests.recvPeer then ns.Quests.recvPeer(name, msg) end return end
   if msg:sub(1, 2) == 'M^' then
     local f = {}

@@ -200,6 +200,8 @@ function UI.setClick(key, a)
     if a.unit then label = label .. ' -> ' .. (safe(pc(UnitName, a.unit)) or a.unit) end
   elseif a and a.trade and a.trade.name and a.trade.item then
     typ, val, label = 'macro', '/target ' .. a.trade.name, ('poslat %s: %s (otevre obchod)'):format(a.trade.name, a.trade.what or 'item')
+  elseif a and a.macro then
+    typ, val, label = 'macro', a.macro, a.macroLabel or 'klik'
   elseif a and (a.kind == 'spell' or a.kind == 'hint') and a.name and ns.known(a.name) then
     typ, val, unit, label = 'spell', (ns.S[a.name] and ns.S[a.name].realName) or a.name, a.unit, a.name
     if a.rank and ns.rankId(a.name, a.rank) then val = ns.rankId(a.name, a.rank) label = a.name .. ' (rank ' .. a.rank .. ')' end
@@ -957,6 +959,7 @@ local HELP = {
   '/cm compact - jen ikony bez textu (duvod v tooltipu)',
   '/cm talents - co addon vycetl z talentu',
   '/cm dump - ulozi talenty, spelly, itemy a staty do souboru (po /reload)',
+  '/cm sdilej - sdilet partakum questy, ktere nemaji (vidi to jejich addon)',
   '/cm gear [spec] - lepsi gear z batohu (vahy: frost/arcane/destro/ret/prot/holy/balance/feral), /cm vahy str=1 ... vlastni',
   '/cm macro - vytvori makra: utok sam vybere dalsiho nepritele' .. (ns.class == 'WARLOCK' and ', DoTy na jedno tlacitko' or ''),
   '/cm status - co addon zjistil (pro ladeni)',
@@ -1023,6 +1026,8 @@ SlashCmdList.CLAUDEMASTER = function(msg)
     if ns.Quests then ns.Quests.toggle(arg) end
   elseif cmd == 'duo' then
     if ns.Duo then ns.Duo.status() end
+  elseif cmd == 'sdilej' or cmd == 'share' then
+    if ns.Quests and ns.Quests.shareAll then ns.Quests.shareAll() end
   elseif cmd == 'zmeny' or cmd == 'patch' then
     if arg == 'reset' then ns.db.patchLog = {} ns.say('zaznam zmen smazan') else ns.showPatchLog() end
   elseif cmd == 'klikboj' or cmd == 'clicktest' then

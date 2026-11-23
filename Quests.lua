@@ -462,3 +462,166 @@ sf:SetScript('OnUpdate', function(_, el)
   sq = 0
   pcall(sendMine, false)
 end)
+
+------------------------------------------------------------------------------------------
+-- Sdileni questu v parte: kdo ma quest, ktery partak nema (a muze ho vzit) -> tip "Sdilej quest X"
+--  QI^id:lvl,id:lvl,...      moje sdilitelne questy (pri zmene logu / party, jinak max 1x za 60 s)
+--  QW^Jmeno^id,id,...        odpoved partaka: tyhle od tebe (Jmeno) bych vzal
+-- Partak si sam overi: quest nema v logu, nema ho odevzdany, level staci a quest neni sedy.
+------------------------------------------------------------------------------------------
+Q.wants = {}      -- [jmeno partaka] = { ids = { [id] = true }, at }
+Q.offers = {}     -- [jmeno partaka] = posledni jeho QI zprava (pro prepocet, kdyz se zmeni muj log)
+Q.sharedAt = {}   -- [id] = kdy jsem ho sdilel (at tip neopakuje porad dokola)
+local announced = {}
+local function meName() return safe(pc(UnitName, 'player')) end
+local function myQuests()
+  local out = {}
+  if not (QL and QL.GetNumQuestLogEntries and QL.GetInfo) then return out end
+  for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
+    local info = pc(QL.GetInfo, i)
+    local id = type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID)
+    if id then out[#out + 1] = { id = id, lvl = safeNum(info.level) or 0, title = safe(info.title) } end
+  end
+  return out
+end
+local function titleOf(id)
+  for _, q in ipairs(myQuests()) do if q.id == id then return q.title end end
+end
+local function canPush(id)
+  if not (QL and QL.IsPushableQuest) then return true end
+  return safeBool(pc(QL.IsPushableQuest, id)) ~= false
+end
+local lastQI, lastQIAt = nil, -99
+local function sendShareable(force)
+  local D = ns.Duo
+  if not (D and D.rawSend and D.ok and IsInGroup and IsInGroup()) or D.encounter then return end
+  local msg = 'QI^'
+  local first = true
+  for _, q in ipairs(myQuests()) do
+    if canPush(q.id) then
+      local p = q.id .. ':' .. q.lvl
+      if #msg + #p + 1 > 250 then break end
+      msg = msg .. (first and '' or ',') .. p
+      first = false
+    end
+  end
+  local now = GetTime()
+  if not force and msg == lastQI and now - lastQIAt < 60 then return end
+  lastQI, lastQIAt = msg, now
+  D.rawSend(msg)
+end
+-- partak mi poslal svoje questy -> ktere bych vzal ja
+local function answer(from, msg)
+  local D = ns.Duo
+  if not (D and D.rawSend) then return end
+  local have = {}
+  for _, q in ipairs(myQuests()) do have[q.id] = true end
+  local lvl = safeNum(UnitLevel('player')) or 1
+  local want = {}
+  for id, ql in msg:gmatch('(%d+):(%d+)') do
+    id, ql = tonumber(id), tonumber(ql)
+    local done = QL and QL.IsQuestFlaggedCompleted and safeBool(pc(QL.IsQuestFlaggedCompleted, id)) == true
+    -- level: quest jde vzit zhruba od (level questu - 5); sedy quest (o 10+ niz) nema cenu
+    if not have[id] and not done and lvl >= ql - 5 and ql + 10 > lvl then
+      local s = tostring(id)
+      if #table.concat(want, ',') + #s + #from + 6 < 250 then want[#want + 1] = s end
+    end
+  end
+  D.rawSend('QW^' .. from .. '^' .. table.concat(want, ','))
+end
+function Q.recvShare(name, msg)
+  local kind = msg:sub(1, 3)
+  if kind == 'QI^' then
+    Q.offers[name] = msg
+    pcall(answer, name, msg)
+  elseif kind == 'QW^' then
+    local to, list = msg:match('^QW%^([^%^]*)%^?(.*)$')
+    if to ~= meName() then return end
+    local ids = {}
+    for id in (list or ''):gmatch('%d+') do ids[tonumber(id)] = true end
+    Q.wants[name] = { ids = ids, at = GetTime() }
+    -- novy quest pro partaka: jednou do chatu
+    for id in pairs(ids) do
+      local k = name .. ':' .. id
+      if not announced[k] then
+        announced[k] = true
+        ns.say(('|cffffd100Quest:|r %s nema |cffffff00%s|r - sdilej (klik na tip v panelu nebo /cm sdilej)'):format(
+          name, titleOf(id) or ('#' .. id)))
+      end
+    end
+  end
+end
+-- sdilet quest (vybrat v logu + poslat parte); hra sama rekne, kdo ho vzit nemuze
+function Q.push(id)
+  if InCombatLockdown() or not id then return end
+  if QL and QL.SetSelectedQuest then pc(QL.SetSelectedQuest, id)
+  elseif SelectQuestLogEntry and GetQuestLogIndexByID then pc(SelectQuestLogEntry, GetQuestLogIndexByID(id)) end
+  if QuestLogPushQuest then pc(QuestLogPushQuest) end
+  Q.sharedAt[id] = GetTime()
+end
+_G.ClaudeMaster_ShareQuest = function(id) pcall(Q.push, tonumber(id)) end
+-- vsechny questy, ktere nekdo z party chce: { {id, title, who = {jmena}} }
+function Q.toShare()
+  local mine = {}
+  for _, q in ipairs(myQuests()) do mine[q.id] = q end
+  local byId, out = {}, {}
+  local now = GetTime()
+  for name, w in pairs(Q.wants) do
+    local p = ns.Duo and ns.Duo.peers and ns.Duo.peers[name]
+    if p and now - p.at < 30 and now - w.at < 600 then
+      for id in pairs(w.ids) do
+        if mine[id] and canPush(id) then
+          if not byId[id] then
+            byId[id] = { id = id, title = mine[id].title or ('#' .. id), who = {} }
+            out[#out + 1] = byId[id]
+          end
+          table.insert(byId[id].who, name)
+        end
+      end
+    end
+  end
+  table.sort(out, function(a, b) return #a.who > #b.who end)
+  return out
+end
+-- tip do panelu (mimo boj): prvni quest, ktery jsem v posledni minute nesdilel
+function Q.shareHint()
+  for _, q in ipairs(Q.toShare()) do
+    if GetTime() - (Q.sharedAt[q.id] or -99) > 60 then
+      return { name = 'TARGET', kind = 'hint', icon = 'Interface\\GossipFrame\\AvailableQuestIcon',
+        reason = ('Sdilej quest %s (%s nema) - klik'):format(q.title, table.concat(q.who, ', ')),
+        macro = '/run ClaudeMaster_ShareQuest(' .. q.id .. ')', macroLabel = 'sdilet quest: ' .. q.title }
+    end
+  end
+end
+-- /cm sdilej: poslat vsechny chtene questy (po 1.5 s, hra jinak zahazuje)
+function Q.shareAll()
+  local l = Q.toShare()
+  if #l == 0 then ns.say('Quest: nikdo z party (s addonem) nepotrebuje zadny z tvych questu.') return end
+  for i, q in ipairs(l) do
+    C_Timer.After((i - 1) * 1.5, function() pcall(Q.push, q.id) end)
+    ns.say(('Quest: sdilim %s (%s)'):format(q.title, table.concat(q.who, ', ')))
+  end
+end
+-- zmena logu / party: poslat svoje questy a prepocitat odpovedi partakum
+local shareDirty = true
+local qe = CreateFrame('Frame')
+for _, e in ipairs({ 'QUEST_ACCEPTED', 'QUEST_REMOVED', 'QUEST_TURNED_IN', 'GROUP_ROSTER_UPDATE', 'PLAYER_ENTERING_WORLD' }) do
+  pcall(qe.RegisterEvent, qe, e)
+end
+qe:SetScript('OnEvent', function() shareDirty = true end)
+local st = 0
+qe:SetScript('OnUpdate', function(_, el)
+  st = st + el
+  if st < 2 then return end
+  st = 0
+  if shareDirty then
+    shareDirty = false
+    pcall(sendShareable, true)
+    for name, msg in pairs(Q.offers) do
+      local p = ns.Duo and ns.Duo.peers and ns.Duo.peers[name]
+      if p and GetTime() - p.at < 30 then pcall(answer, name, msg) end
+    end
+  else
+    pcall(sendShareable, false)
+  end
+end)

@@ -839,6 +839,11 @@ if E and E.plan then
             math.floor(u.pct * 100 + 0.5)) }
       end
     end
+    -- parta: quest, ktery partak nema -> sdilet (klik)
+    if not util and not c.inCombat and ns.Quests and ns.Quests.shareHint then
+      local ok, h = pcall(ns.Quests.shareHint)
+      if ok and h then util = h end
+    end
     return plan, util
   end
 end
