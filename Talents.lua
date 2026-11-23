@@ -247,25 +247,39 @@ local function addAdvice(tt)
   local rec
   for _, it in ipairs(b.list) do if it[1] == e.name then rec = it end end
   local nxt = T.next(1)[1]
+  local function ic(path, s) return ('|T%s:%d:%d:0:0|t '):format(path, s or 14, s or 14) end
+  local OK, NO, WAIT = 'Interface\\RAIDFRAME\\ReadyCheck-Ready', 'Interface\\RAIDFRAME\\ReadyCheck-NotReady',
+    'Interface\\RAIDFRAME\\ReadyCheck-Waiting'
+  local LOCK = 'Interface\\LFGFrame\\UI-LFG-ICON-LOCK'
   tt:AddLine(' ')
+  tt:AddLine('|cff66ccffClaudeMaster|r |cff888888- ' .. b.label .. '|r')
   if rec then
     local cur = e.rank or 0
     if cur >= rec[2] then
-      tt:AddLine(('|cff66ccffClaudeMaster|r |cff00ff00hotovo %d/%d|r'):format(cur, rec[2]))
+      tt:AddLine(ic(OK) .. ('|cff00ff00Hotovo|r  %d/%d'):format(cur, rec[2]))
     elseif nxt and nxt.name == e.name and nxt.can then
-      tt:AddLine(('|cff66ccffClaudeMaster|r |cff00ff00TED TOHLE|r - ber %d bodu (mas %d)'):format(rec[2], cur))
+      tt:AddLine(ic(OK) .. ('|cff00ff00Ted tohle|r  %d/%d'):format(cur, rec[2]))
     else
-      tt:AddLine(('|cff66ccffClaudeMaster|r |cffffd200ber %d bodu|r (mas %d)'):format(rec[2], cur))
+      tt:AddLine(ic(WAIT) .. ('|cffffd200Ber|r  %d/%d'):format(cur, rec[2]))
     end
-    tt:AddLine(rec[3], 1, 1, 1, true)
+    tt:AddLine('     ' .. rec[3], 0.9, 0.9, 0.9, true)
   else
-    local why = b.no[e.name] or b.tree[band(e.x)]
-    tt:AddLine('|cff66ccffClaudeMaster|r |cffff6060pro ' .. b.label .. ' neber|r')
-    tt:AddLine(why, 0.85, 0.85, 0.85, true)
-    if nxt then tt:AddLine(('Lepsi: %s (%d/%d)'):format(nxt.name, nxt.cur, nxt.target), 0.6, 1, 0.6, true) end
+    tt:AddLine(ic(NO) .. '|cffff6060Neber|r')
+    tt:AddLine('     ' .. (b.no[e.name] or b.tree[band(e.x)]), 0.8, 0.8, 0.8, true)
+    if nxt then
+      local tex = nxt.e and nxt.e.spellId and C_Spell and C_Spell.GetSpellTexture and safe(pc(C_Spell.GetSpellTexture, nxt.e.spellId))
+      tt:AddLine(' ')
+      tt:AddLine('Lepsi:  ' .. (tex and ic(tex, 16) or '') .. ('|cff80ff80%s|r  %d/%d'):format(nxt.name, nxt.cur, nxt.target))
+    end
   end
+  -- zamky jen kdyz dava smysl: doporuceny talent, nebo skutecny zamek (vetev / sipka)
   if (e.rank or 0) < (e.max or 1) then
-    for _, w in ipairs(T.lockWhy(e)) do tt:AddLine(w, 1, 0.5, 0.25, true) end
+    local locks = T.lockWhy(e)
+    local onlyNoPoint = #locks == 1 and locks[1]:find('^Nemas volny')
+    if #locks > 0 and (rec or not onlyNoPoint) then
+      tt:AddLine(' ')
+      for _, w in ipairs(locks) do tt:AddLine(ic(LOCK, 12) .. w, 1, 0.6, 0.3, true) end
+    end
   end
   tt:Show()
   busy = false
