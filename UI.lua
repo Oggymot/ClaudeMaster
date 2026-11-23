@@ -957,7 +957,7 @@ local HELP = {
   '/cm spells - vypis celeho spellbooku (co addon zna a co ne)',
   '/cm items - nerozpoznane pouzitelne veci (pro ladeni)',
   '/cm immune - naucene imunity mobu (/cm immune reset = smazat vse)',
-  '/cm immune frost|fire|arcane|nova|poly - oznacit cil jako imunni',
+  '/cm immune frost/fire/arcane/nova/poly - oznacit cil jako imunni',
   '/cm config - okno s nastavenim',
   '/cm summary - ukazat posledni shrnuti boje',
   '/cm duo - stav vymeny dat s partakem (mag + warlock)',
@@ -970,10 +970,10 @@ local HELP = {
   '/cm reset - vratit pozici',
 }
 if ns.class == 'WARLOCK' then
-  table.insert(HELP, '/cm pet auto|imp|voidwalker|succubus|felhunter - ktery pet')
+  table.insert(HELP, '/cm pet auto/imp/voidwalker/succubus/felhunter - ktery pet')
   table.insert(HELP, '/cm curse auto|agony|elements|shadow|weakness|tongues|doom - ktera curse')
   table.insert(HELP, '/cm talents - prectene talenty a proc je filler takovy')
-  table.insert(HELP, '/cm filler auto|shadowbolt|searing - hlavni kouzlo')
+  table.insert(HELP, '/cm filler auto/shadowbolt/searing - hlavni kouzlo')
 end
 
 SLASH_CLAUDEMASTER1 = '/cm'
@@ -1063,7 +1063,7 @@ SlashCmdList.CLAUDEMASTER = function(msg)
     local map = { crusader = 'Seal of the Crusader', righteousness = 'Seal of Righteousness', wisdom = 'Seal of Wisdom',
       command = 'Seal of Command', light = 'Seal of Light', justice = 'Seal of Justice', auto = 'auto' }
     db.palSeal = map[arg] or 'auto'
-    ns.say('seal: ' .. db.palSeal .. '   (/cm seal auto|righteousness|crusader|wisdom|command|light)')
+    ns.say('seal: ' .. db.palSeal .. '   (/cm seal auto/righteousness/crusader/wisdom/command/light)')
   elseif cmd == 'gear' and ns.Gear then ns.Gear.setSpec(arg)
   elseif cmd == 'vahy' and ns.Gear then ns.Gear.setWeights(arg)
   elseif cmd == 'sound' then db.sound = not db.sound ns.say('zvuk: ' .. (db.sound and 'zap' or 'vyp'))

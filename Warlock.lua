@@ -432,7 +432,7 @@ function W.report()
       s.dmg and math.floor(s.dmg) or '?', s.mult, s.ct, s.cost or 0, s.ctEff or s.ct, s.dps and math.floor(s.dps) or '?')) end
   end
   local pref = ns.db.lockFiller
-  ns.say('Filler: ' .. ((pref and pref ~= 'auto') and (pref .. ' (nastaveno rucne)') or (W.order[1] or '?')) .. '   (/cm filler auto|shadowbolt|searing)')
+  ns.say('Filler: ' .. ((pref and pref ~= 'auto') and (pref .. ' (nastaveno rucne)') or (W.order[1] or '?')) .. '   (/cm filler auto/shadowbolt/searing)')
 end
 
 -- curse do makra (bez kontextu boje): nastavena, jinak CoE kdyz je v parte mag, jinak Agony
