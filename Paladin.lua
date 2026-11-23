@@ -67,12 +67,15 @@ local function activeOf(list, dur, pat)
     end
     return false
   end
-  local unknown = false
-  for _, n in ipairs(list) do
-    local a = ns.playerAura(n)
-    if a == nil then unknown = true elseif a then return n end
+  -- v boji hra o buffech lze ("neni"), takze jen podle castu / toho, co jsme videli mimo boj
+  if not ns.inCombat() then
+    local unknown = false
+    for _, n in ipairs(list) do
+      local a = ns.playerAura(n)
+      if a == nil then unknown = true elseif a then return n end
+    end
+    if not unknown then return false end
   end
-  if not unknown then return false end
   local best, at = nil, -1
   local function consider(n, t)
     if t and t > at and (not dur or GetTime() - t < dur) then best, at = n, t end
