@@ -68,7 +68,8 @@ local STAT = { Strength = 'str', Agility = 'agi', Stamina = 'sta', Intellect = '
   Defense = 'def' }
 local SCHOOL = { Frost = 'frostsp', Fire = 'firesp', Shadow = 'shadowsp', Holy = 'holysp', Arcane = 'arcanesp', Nature = 'natsp' }
 
-local function num(s) return tonumber((s or ''):gsub(',', '')) end
+-- pozor: gsub vraci 2 hodnoty a tonumber(x, 0) spadne -> nejdriv do promenne
+local function num(s) local x = (s or ''):gsub(',', '') return tonumber(x) end
 local function parseLine(t, st)
   local v, k = t:match('^%+(%d+) (%a+)$')
   if v and STAT[k] then st[STAT[k]] = (st[STAT[k]] or 0) + num(v) return end
@@ -213,6 +214,7 @@ local function onItemTip(tt, data)
   link = okL and safe(link) or nil
   if type(link) ~= 'string' then return end
   local st, blocked, req = G.parse(data)
+  if not st and C_TooltipInfo and C_TooltipInfo.GetHyperlink then st, blocked, req = G.parse(pc(C_TooltipInfo.GetHyperlink, link)) end
   if not st then return end
   local pct, oldLink = G.compare(link, st)
   if not pct then return end
@@ -280,7 +282,7 @@ end
 
 function G.report()
   local s = G.spec()
-  ns.say(('Gear: vahy %s   (/cm gear frost|arcane|fire|destro|ret|prot|holy|balance|feral|auto)'):format(
+  ns.say(('Gear: vahy %s   (/cm gear frost, arcane, fire, destro, ret, prot, holy, balance, feral, auto)'):format(
     s == 'custom' and 'vlastni' or G.SPECS[s].label))
   local l = G.upgrades(true)
   local all = G.lastAll or {}
