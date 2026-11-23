@@ -291,6 +291,7 @@ end
 ------------------------------------------------------------------------------------------
 local UP = '|TInterface\\AddOns\\ClaudeMaster\\Textures\\UpgradeArrow:14:14|t'
 local DOWN = '|TInterface\\AddOns\\ClaudeMaster\\Textures\\DowngradeArrow:14:14|t'
+local QUEST_TEX = 'Interface\\GossipFrame\\AvailableQuestIcon'
 local COIN_TEX = 'Interface\\MoneyFrame\\UI-GoldIcon'
 local function onItemTip(tt, data)
   if not ns.db or ns.db.gearTips == false then return end
@@ -302,6 +303,12 @@ local function onItemTip(tt, data)
   if not st and C_TooltipInfo and C_TooltipInfo.GetHyperlink then st, blocked, req, fl = G.parse(pc(C_TooltipInfo.GetHyperlink, link)) end
   fl = fl or {}
   if st then pcall(G.myTip, tt, link, st, blocked, req, fl) end
+  -- itemy na quest (hra u nich nic nepise)
+  local qn = G.questNeed and G.questNeed(link)
+  if qn then
+    local cnt = (qn.need and qn.need > 0) and (' %d/%d'):format(qn.have or 0, qn.need) or ''
+    tt:AddLine('|T' .. QUEST_TEX .. ':14:14|t |cffffd100Quest:|r ' .. qn.title .. cnt .. ' |cff9aa6b8- neprodavat|r')
+  end
   -- u vendora: proc to radime prodat
   if (G.merchant or G.bank) and G.sellWhy then
     local why = G.sellWhy(tt, link)
@@ -356,6 +363,38 @@ end
 ------------------------------------------------------------------------------------------
 -- Vylepseni v batohu
 ------------------------------------------------------------------------------------------
+-- itemy, ktere potrebujes na quest (cile typu "5/10 Linen Cloth") -> [nazev malymi] = { title, have, need }
+local qiCache, qiAt = nil, -99
+function G.questItems()
+  if qiCache and GetTime() - qiAt < 5 then return qiCache end
+  local t = {}
+  local QL = C_QuestLog
+  if QL and QL.GetNumQuestLogEntries and QL.GetInfo and QL.GetQuestObjectives then
+    for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
+      local info = pc(QL.GetInfo, i)
+      local id = type(info) == 'table' and not info.isHeader and safeNum(info.questID)
+      local objs = id and pc(QL.GetQuestObjectives, id)
+      for _, o in ipairs(type(objs) == 'table' and objs or {}) do
+        local txt = safe(o.text)
+        if safe(o.type) == 'item' and type(txt) == 'string' then
+          local name = txt:gsub('^%d+%s*/%s*%d+%s+', '')
+          name = name:gsub(':%s*%d+%s*/%s*%d+$', '')
+          name = name:gsub('%s+$', '')
+          if name ~= '' then
+            t[name:lower()] = { title = safe(info.title) or '?', have = safeNum(o.numFulfilled), need = safeNum(o.numRequired) }
+          end
+        end
+      end
+    end
+  end
+  qiCache, qiAt = t, GetTime()
+  return t
+end
+function G.questNeed(link)
+  local n = type(link) == 'string' and link:match('%[(.-)%]')
+  return n and G.questItems()[n:lower()]
+end
+
 -- batohy (0-4, 5 = reagent bag) + banka, kdyz je otevrena (-1 hlavni banka, -3 reagent banka, 6-16 bankovni
 -- tasky / zalozky; neexistujici id vrati 0 slotu)
 local BANK_IDS = { -1, -3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }
@@ -377,6 +416,7 @@ function G.upgrades(force)
   G.sellMap = {}
   G.sellByLink = {}
   G.giftMap = {}
+  G.questMap = {}
   if not (getNum and getInfo) then return list end
   local lvl = safeNum(UnitLevel('player')) or 60
   local specLabel = (G.SPECS[G.spec()] or {}).label or 'tvuj spec'
@@ -436,6 +476,8 @@ function G.upgrades(force)
         if mp then gift = mp.name end
       end
       if gift then G.giftMap[key] = gift sell = nil end
+      -- potrebujes na quest: neprodavat, vykricnik
+      if type(link) == 'string' and G.questNeed(link) then G.questMap[key] = G.questNeed(link) sell = nil G.giftMap[key] = nil end
       if sell then G.sellMap[key] = sell G.sellByLink[link] = sell end
     end
   end
@@ -450,6 +492,7 @@ end
 -- duvod prodeje pro tooltip (podle tlacitka v batohu, jinak podle odkazu)
 function G.sellWhy(tt, link)
   if not G.sellMap then pcall(G.upgrades) end
+  if G.questNeed(link) then return nil end
   local ok, owner = pcall(tt.GetOwner, tt)
   if ok and owner and owner.GetID then
     -- jen tlacitka batohu (ne sloty postavy: tam GetID = cislo slotu)
@@ -752,14 +795,15 @@ end
 -- zmena gearu / batohu -> prepocitat
 local f = CreateFrame('Frame')
 for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_LEVEL_UP', 'MERCHANT_SHOW', 'MERCHANT_CLOSED',
-  'BANKFRAME_OPENED', 'BANKFRAME_CLOSED', 'PLAYERBANKSLOTS_CHANGED', 'PLAYERREAGENTBANKSLOTS_CHANGED' }) do
+  'BANKFRAME_OPENED', 'BANKFRAME_CLOSED', 'PLAYERBANKSLOTS_CHANGED', 'PLAYERREAGENTBANKSLOTS_CHANGED',
+  'QUEST_ACCEPTED', 'QUEST_REMOVED', 'QUEST_TURNED_IN' }) do
   pcall(f.RegisterEvent, f, e)
 end
 f:SetScript('OnEvent', function(_, ev)
   if ev == 'MERCHANT_SHOW' then G.merchant = true elseif ev == 'MERCHANT_CLOSED' then G.merchant = false end
   if ev == 'BANKFRAME_OPENED' then G.bank = true elseif ev == 'BANKFRAME_CLOSED' then G.bank = false end
   if ev == 'BANKFRAME_OPENED' and C_Timer then C_Timer.After(0.6, function() pcall(G.refreshBags) end) end
-  G.invalidate() upCache = nil bbCache = nil
+  G.invalidate() upCache = nil bbCache = nil qiCache = nil
   if C_Timer and G.refreshBags then C_Timer.After(0.2, function() pcall(G.refreshBags) end) end
 end)
 
@@ -768,6 +812,7 @@ end)
 ------------------------------------------------------------------------------------------
 local ARROW = 'Interface\\AddOns\\ClaudeMaster\\Textures\\UpgradeArrow'   -- sipky z addonu Pawn (CC BY-NC-ND, viz Textures)
 local COIN_T = 'Interface\\MoneyFrame\\UI-GoldIcon'
+local QUEST_T = 'Interface\\GossipFrame\\AvailableQuestIcon'
 local GIFT_T = 'Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon'
 local function mark(btn, on)
   if not btn then return end
@@ -796,6 +841,16 @@ local function giftMark(btn, on)
     btn.cmGift = t
   end
   if btn.cmGift then btn.cmGift:SetShown(on and true or false) end
+end
+-- vykricnik = item na quest (neprodavat)
+local function questMark(btn, on)
+  if not btn then return end
+  if on and not btn.cmQuest then
+    local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
+    t:SetTexture(QUEST_T) t:SetSize(16, 16) t:SetPoint('BOTTOMRIGHT', btn, 'BOTTOMRIGHT', 0, 0)
+    btn.cmQuest = t
+  end
+  if btn.cmQuest then btn.cmQuest:SetShown(on and true or false) end
 end
 local function eachButton(frame, fn)
   if not frame or not frame:IsShown() then return end
@@ -830,6 +885,7 @@ function G.refreshBags()
     mark(b, up)
     sellMark(b, show and key and not up and G.sellMap and G.sellMap[key])
     giftMark(b, show and key and not up and G.giftMap and G.giftMap[key])
+    questMark(b, show and key and not up and G.questMap and G.questMap[key])
   end
   eachButton(_G.ContainerFrameCombinedBags, upd)
   for i = 1, 13 do eachButton(_G['ContainerFrame' .. i], upd) end
