@@ -550,7 +550,7 @@ function ns.playerHasBuff(name)
     if type(a) ~= 'table' then return ns.inCombat() and nil or false end
     if safe(a.name) == name then return true end
   end
-  return false
+  return ns.inCombat() and nil or false
 end
 -- jsem pod vodou? (plavu pod hladinou, nebo bezi ukazatel dechu)
 function ns.underwater()
@@ -909,21 +909,34 @@ end
 -- Moby kolem (z nameplatu - zapni si nameploty nepratel, klavesa V)
 ------------------------------------------------------------------------------------------
 -- Vzdalenost. CheckInteractDistance je v boji zakazany (hra by addon zablokovala),
--- takze v boji merime dosahem Auto Attacku (melee) a Frostboltu (~30 yd).
+-- takze v boji merime dosahem kouzel: melee = prvni znamy uder na blizko (Attack sam dosah nema
+-- a vraci nil), daleko (~30 yd) = prvni zname utocne kouzlo na dalku. Funguje pro castery i melee.
 local ATTACK_ID = 6603
+local MELEE_PROBE = { 'Crusader Strike', 'Holy Strike', 'Heroic Strike', 'Sinister Strike', 'Claw', 'Maul', 'Mangle',
+  'Hamstring', 'Rend' }
+local RANGED_PROBE = { 'Frostbolt', 'Fireball', 'Shadow Bolt', 'Searing Pain', 'Exorcism', 'Hammer of Wrath', 'Wrath',
+  'Moonfire', 'Smite', 'Lightning Bolt' }
+local function firstId(list)
+  for _, n in ipairs(list) do local id = ns.id(n) if id then return id end end
+end
+function ns.meleeId() return firstId(MELEE_PROBE) end
+function ns.rangeId() return firstId(RANGED_PROBE) end
+local function inRange(id, unit)
+  if not (id and C_Spell and C_Spell.IsSpellInRange) then return nil end
+  return safeBool(pc(C_Spell.IsSpellInRange, id, unit))
+end
 function ns.near(unit)
   if not InCombatLockdown() then return safeBool(pc(CheckInteractDistance, unit, 3)) end
-  if C_Spell and C_Spell.IsSpellInRange and safeBool(pc(UnitCanAttack, 'player', unit)) then
-    return safeBool(pc(C_Spell.IsSpellInRange, ATTACK_ID, unit))
+  if safeBool(pc(UnitCanAttack, 'player', unit)) then
+    local r = inRange(ns.meleeId(), unit)
+    if r == nil then r = inRange(ATTACK_ID, unit) end
+    return r
   end
   return nil
 end
 function ns.close(unit)
   if not InCombatLockdown() then return safeBool(pc(CheckInteractDistance, unit, 4)) end
-  local id = ns.id('Frostbolt') or ns.id('Fireball')
-  if id and C_Spell and C_Spell.IsSpellInRange and safeBool(pc(UnitCanAttack, 'player', unit)) then
-    return safeBool(pc(C_Spell.IsSpellInRange, id, unit))
-  end
+  if safeBool(pc(UnitCanAttack, 'player', unit)) then return inRange(ns.rangeId(), unit) end
   return nil
 end
 
@@ -998,7 +1011,7 @@ function ns.scanEnemies()
   local plates = pc(C_NamePlate.GetNamePlates)
   if type(plates) ~= 'table' then return r end
   local meIn = ns.inCombat()
-  local fbID = ns.id('Frostbolt') or ns.id('Fireball')
+  local fbID = ns.rangeId()
   for _, pl in ipairs(plates) do
     local u = pl.namePlateUnitToken or (pl.UnitFrame and pl.UnitFrame.unit)
     if u and not issecret(u) then

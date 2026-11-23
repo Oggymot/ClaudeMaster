@@ -50,7 +50,8 @@ local function readDebuffs(u)
   if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return out, true end
   for i = 1, 40 do
     local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, u, i, 'HARMFUL')
-    if not ok or type(a) ~= 'table' then break end
+    if not ok then hidden = true break end          -- v boji hra cteni zakaze: nevime, ne "nic"
+    if type(a) ~= 'table' then break end
     local n = safe(a.name)
     if type(n) ~= 'string' then hidden = true break end
     local sid = safeNum(a.spellId)

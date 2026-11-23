@@ -42,7 +42,8 @@ local function auraHas(unit, names)
   if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return nil end
   for i = 1, 40 do
     local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, 'HELPFUL')
-    if not ok or type(a) ~= 'table' then return false end
+    if not ok then return nil end
+    if type(a) ~= 'table' then return ns.inCombat() and nil or false end   -- v boji "konec seznamu" nic neznamena
     local n = safe(a.name)
     if type(n) ~= 'string' then return nil end
     for _, x in ipairs(names) do if n == x then return true end end

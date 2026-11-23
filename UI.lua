@@ -877,9 +877,12 @@ function UI.makeMacros()
   if InCombatLockdown() then ns.say('makra az po boji') return end
   local TGT = '/targetenemy [noharm][dead]\n'
   local list = {}
-  local attacks = ns.class == 'WARLOCK' and { 'Shadow Bolt', 'Searing Pain' } or { 'Frostbolt', 'Ice Lance', 'Fire Blast' }
+  local attacks = ns.class == 'WARLOCK' and { 'Shadow Bolt', 'Searing Pain' }
+    or ns.class == 'PALADIN' and { 'Judgement', 'Crusader Strike', 'Holy Strike', 'Exorcism' }
+    or { 'Frostbolt', 'Ice Lance', 'Fire Blast' }
+  local start = ns.class == 'PALADIN' and '/startattack\n' or ''   -- melee: zaroven zapne auto attack
   for _, sp in ipairs(attacks) do
-    if ns.known(sp) then list[#list + 1] = { 'CM ' .. sp, '#showtooltip\n' .. TGT .. '/cast ' .. sp } end
+    if ns.known(sp) then list[#list + 1] = { 'CM ' .. sp, '#showtooltip\n' .. TGT .. start .. '/cast ' .. sp } end
   end
   -- ovce na focus: prvni zmacknuti si moba "zapamatuje" (focus), dalsi ho ovci znovu i kdyz mas jiny cil
   if ns.known('Polymorph') then
