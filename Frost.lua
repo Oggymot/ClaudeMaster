@@ -613,6 +613,16 @@ local function decide(c, s)
     if can('Frostbolt') and not c.moving then return A('Frostbolt', 'FoF: Frostbolt a tesne pred dopadem Ice Lance') end
     if ready('Ice Lance') then return A('Ice Lance', 'FoF v pohybu: Ice Lance') end
   end
+  -- 9a) Fire Blast na cooldown: instant ~385 dmg za GCD (~1.8x vic za sekundu nez Frostbolt).
+  --     Sdili 8s cooldown s Ice Lance -> ne, kdyz cekame FoF / zmrazeni (tam ma Ice Lance 4x dmg),
+  --     a jen kdyz je dost many (je drazsi na manu nez Frostbolt).
+  local novaSoon = c.near and c.aggro and ready('Frost Nova')
+  if ready('Fire Blast') and s.fof == 0 and frozenLeft <= 0 and not novaSoon and c.manaKnown
+    and s.mana > math.max(db.conserveMana or 0.3, 0.35) and c.inRange ~= false
+    and (C_Spell and C_Spell.IsSpellInRange and ns.id('Fire Blast')
+      and safeBool(pc(C_Spell.IsSpellInRange, ns.id('Fire Blast'), 'target'))) ~= false then   -- Fire Blast ma kratsi dosah
+    return A('Fire Blast', 'Fire Blast: instant mezi Frostbolty (sdili CD s Ice Lance)')
+  end
   -- 9b) kiting solo: Nova dobehla a mob se zase blizi -> rychly Frostbolt rank 1 (zpomali) a ustupovat
   if s.step == 1 and not c.group and c.aggro and not c.near and frozenLeft <= 0 and c.novaAgo < 12
     and not (c.mob and c.mob.caster) and not c.tCasting
