@@ -1,5 +1,5 @@
 -- ClaudeMaster: radce pro talenty.
--- Build podle MythicSim (Forever) referencnich buildu; v tooltipu talentu napise, kolik bodu sem dat a proc,
+-- Buildy pro vsechny classy (3 smery + vlastni ulozeny); ret a resto podle MythicSim (Forever); v tooltipu talentu napise, kolik bodu sem dat a proc,
 -- u ostatnich proc ne a co ho zamyka (body ve vetvi, sipka). Pri volnem bodu napise do chatu, co vzit.
 -- /cm talent = dalsi 3 doporucene body.
 local ADDON, ns = ...
@@ -9,10 +9,15 @@ local pc, safe, safeNum, safeBool = ns.pc, ns.safe, ns.safeNum, ns.safeBool
 local T = {}
 ns.Talents = T
 
--- { jmeno, cilovy pocet bodu, proc } v poradi priority (ktery volny talent brat driv)
+-- { jmeno, cilovy pocet bodu, proc } v poradi priority (ktery volny talent brat driv).
+-- Talent, ktery ve hre neexistuje, se preskoci; cil se zkrati na max. rank talentu ve hre.
+-- band = hlavni vetev (1-3 zleva), gear = vahy statu v Gear.lua, druid = spec rotace druida.
+-- sim = build overeny simulatorem (MythicSim); ostatni jsou pripravene podle klasickych buildu.
 local BUILDS = {
+  ------------------------------------------------------------------ PALADIN
   ret = {
-    label = 'Retribution (2H)',
+    class = 'PALADIN', band = 3, gear = 'ret', sim = true,
+    label = 'Retribution (2H)', desc = 'Dvourucni zbran, Judgement a sealy. Nejlepsi na questovani solo.',
     trees = { 'Holy', 'Protection', 'Retribution' },
     list = {
       { 'Benediction', 5, 'Instantni kouzla (Judgement, sealy, Consecration) stoji min many - vydrzis bez piti dele.' },
@@ -48,8 +53,68 @@ local BUILDS = {
       'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
     },
   },
+  prot = {
+    class = 'PALADIN', band = 2, gear = 'prot',
+    label = 'Protection (tank)', desc = 'Stit, Holy Shield, Righteous Fury. Tankovani v dungeonech.',
+    trees = { 'Holy', 'Protection', 'Retribution' },
+    list = {
+      { 'Redoubt', 5, 'Po zasahu blokujes stitem mnohem casteji.' },
+      { 'Toughness', 5, '+armor z vybaveni = mensi rany.' },
+      { 'Improved Righteous Fury', 3, 'Vic threatu - moby se od tebe nepohnou.' },
+      { 'Precision', 3, '+1 % hit za bod: tvoje udery (a threat) netrefi vedle.' },
+      { 'Shield Specialization', 3, 'Blok stitem ti vraci manu.' },
+      { 'Anticipation', 5, '+defense: mene krit zasahu do tebe.' },
+      { 'Blessing of Kings', 1, '+10 % ke vsem statum pro celou partu.' },
+      { 'Improved Devotion Aura', 5, 'Vic armoru pro tebe i partu.' },
+      { 'One-Handed Weapon Specialization', 5, 'Silnejsi udery s jednorucni zbrani (i holy damage = threat).' },
+      { 'Holy Shield', 1, 'Blok + holy damage pri kazdem bloku - hlavni tankovaci kouzlo.' },
+      { "Templar's Bulwark", 1, 'Absorbcni stit na nebezpecne chvile.' },
+      { 'Hammer of the Righteous', 1, 'Uder do vice mobu - AoE threat.' },
+      { 'Improved Holy Shield', 3, 'Holy Shield vydrzi dele a bije vic.' },
+      { 'Blessing of Sanctuary', 1, 'Mene damage a holy damage pri bloku.' },
+      { 'Divine Strength', 5, '+Strength = vic blokovane hodnoty a threatu.' },
+      { 'Divine Intellect', 5, 'Vic many - tank s manou drzi aggro dele.' },
+      { 'Benediction', 5, 'Levnejsi Judgement a sealy.' },
+    },
+    no = {},
+    tree = {
+      'Leceni. Jako tank odsud jen Divine Strength a Divine Intellect.',
+      'Tvoje hlavni vetev, ale tenhle talent tankovi malo pomuze.',
+      'Damage s 2H zbrani - tank ma stit (vyjimka: Benediction).',
+    },
+  },
+  holy = {
+    class = 'PALADIN', band = 1, gear = 'holy',
+    label = 'Holy (lecitel)', desc = 'Holy Light, Flash of Light, Holy Shock. Leceni party.',
+    trees = { 'Holy', 'Protection', 'Retribution' },
+    list = {
+      { 'Divine Intellect', 5, 'Vic many = delsi leceni bez piti.' },
+      { 'Spiritual Focus', 5, 'Leceni se pri zasahu nezdrzuje.' },
+      { 'Healing Light', 3, 'Holy Light a Flash of Light leci vic.' },
+      { 'Illumination', 5, 'Krit leceni ti vrati manu.' },
+      { 'Improved Lay on Hands', 2, 'Lay on Hands da navic armor a casteji.' },
+      { 'Consecration', 1, 'AoE damage na pull, kdyz neni co lecit.' },
+      { 'Divine Favor', 1, 'Jisty krit pristiho leceni - nouzove tlacitko.' },
+      { 'Holy Power', 5, '+krit holy kouzel = vic Illumination many.' },
+      { 'Sanctified Light', 3, 'Holy Light casteji kritne.' },
+      { 'Holy Shock', 1, 'Okamzite leceni (nebo damage).' },
+      { 'Improved Blessing of Wisdom', 2, 'Vic many z Blessing of Wisdom.' },
+      { 'Holy Guidance', 5, 'Leceni sili s Intellectem.' },
+      { 'Divine Illumination', 1, 'Polovicni cena kouzel na chvili.' },
+      { 'Benediction', 5, 'Levnejsi instantni kouzla.' },
+      { 'Improved Devotion Aura', 5, 'Vic armoru pro partu.' },
+    },
+    no = {},
+    tree = {
+      'Tvoje hlavni vetev, ale tenhle talent lecitelovi malo pomuze.',
+      'Tankovani - jako lecitel odsud jen Improved Devotion Aura.',
+      'Damage - jako lecitel odsud jen Benediction.',
+    },
+  },
+  ------------------------------------------------------------------ DRUID
   resto = {
-    label = 'Restoration',
+    class = 'DRUID', band = 3, gear = 'resto', druid = 'resto', sim = true,
+    label = 'Restoration (lecitel)', desc = 'HoTy, Swiftmend, Wild Growth. Leceni party.',
     trees = { 'Balance', 'Feral', 'Restoration' },
     list = {
       { 'Heart of the Wild', 5, 'Vic Intellectu = vic many a silnejsi leceni.' },
@@ -76,18 +141,273 @@ local BUILDS = {
       'Tenhle talent ti jako lecitel malo pomuze.',
     },
   },
+  balance = {
+    class = 'DRUID', band = 1, gear = 'balance', druid = 'balance',
+    label = 'Balance (moonkin)', desc = 'Wrath, Starfire, Moonfire, Insect Swarm. Kouzelnik na dalku.',
+    trees = { 'Balance', 'Feral', 'Restoration' },
+    list = {
+      { 'Improved Wrath', 5, 'Wrath se castuje rychleji - tvuj hlavni filler.' },
+      { "Nature's Reach", 2, 'Delsi dosah kouzel - bezpecnejsi pull.' },
+      { 'Improved Moonfire', 5, 'Moonfire bije vic a casteji kritne.' },
+      { 'Vengeance', 5, 'Silnejsi krity kouzel.' },
+      { 'Moonglow', 3, 'Levnejsi kouzla - mene piti.' },
+      { "Nature's Grace", 1, 'Po kritu je pristi kouzlo rychlejsi.' },
+      { 'Improved Starfire', 5, 'Starfire se castuje rychleji.' },
+      { 'Moonfury', 5, '+damage Wrath, Starfire a Moonfire.' },
+      { 'Moonkin Form', 1, 'Armor, krit pro partu a levnejsi kouzla.' },
+      { 'Insect Swarm', 1, 'Dalsi DoT na cil.' },
+      { 'Genesis', 5, 'DoTy a HoTy sili.' },
+      { "Nature's Majesty", 2, '+krit Wrath a Starfire.' },
+      { 'Eclipse', 3, 'Stridani Wrath/Starfire posiluje dalsi kouzlo.' },
+      { "Nature's Splendor", 1, 'DoTy vydrzi dele.' },
+      { 'Overgrowth', 1, 'Talent Foreveru z Balance - vem, az zbydou body.' },
+      { 'Furor', 5, 'Mana/energie pri premene (z Restoration).' },
+    },
+    no = {},
+    tree = {
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Medved a kocka - jako moonkin je nepotrebujes.',
+      'Leceni - jako moonkin odsud jen Furor.',
+    },
+  },
+  feral = {
+    class = 'DRUID', band = 2, gear = 'feral', druid = 'feral',
+    label = 'Feral (kocka / medved)', desc = 'Kocka na damage, medved na tankovani.',
+    trees = { 'Balance', 'Feral', 'Restoration' },
+    list = {
+      { 'Ferocity', 5, 'Levnejsi Maul, Swipe, Claw, Rake - vic uderu.' },
+      { 'Furor', 5, 'Rage/energie hned po premene.' },
+      { 'Feral Instinct', 5, 'Vic threatu v medvedovi a lepsi plizeni kocky.' },
+      { 'Thick Hide', 5, 'Vic armoru - mensi rany.' },
+      { 'Sharpened Claws', 3, '+krit ve forme.' },
+      { 'Feral Charge', 1, 'Skok k cili a preruseni kouzla.' },
+      { 'Shredding Attacks', 2, 'Levnejsi Shred a Lacerate.' },
+      { 'Predatory Strikes', 3, '+utok ve forme podle levelu.' },
+      { 'Blood Frenzy', 2, 'Krit kocky = extra combo bod.' },
+      { 'Savage Fury', 2, 'Silnejsi Claw, Rake, Maul, Swipe.' },
+      { 'Heart of the Wild', 5, '+Strength v kocce, +Stamina v medvedovi.' },
+      { 'Leader of the Pack', 1, '+krit pro celou partu.' },
+      { 'Brutal Impact', 2, 'Delsi omraceni (Bash).' },
+      { 'Primal Bite', 1, 'Talent Foreveru: silny uder ve forme.' },
+      { 'Rend and Tear', 5, 'Silnejsi Maul a Shred na krvacejici cil.' },
+      { 'Natural Instinct', 5, 'Talent Foreveru z Feral.' },
+      { 'Predatory Discipline', 3, 'Talent Foreveru z Feral.' },
+      { 'Natural Reaction', 3, 'Vic dodge v medvedovi.' },
+      { 'Lacerate', 1, 'Krvaceni a threat v medvedovi.' },
+      { 'Shifting Power', 1, 'Talent Foreveru z Feral.' },
+    },
+    no = {},
+    tree = {
+      'Kouzla na dalku - ve forme je nepouzijes.',
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Leceni - jako feral odsud jen Furor.',
+    },
+  },
+  ------------------------------------------------------------------ MAGE
+  frost = {
+    class = 'MAGE', band = 3, gear = 'frost',
+    label = 'Frost', desc = 'Frostbolt, zpomaleni, Shatter s Frost Novou. Nejbezpecnejsi na questy i dungeony.',
+    trees = { 'Arcane', 'Fire', 'Frost' },
+    list = {
+      { 'Improved Frostbolt', 5, 'Frostbolt se castuje rychleji - tvuj hlavni damage.' },
+      { 'Ice Shards', 5, 'Silnejsi krity mrazivych kouzel.' },
+      { 'Frostbite', 3, 'Sance zmrazit moba na miste - Shatter a bezpeci.' },
+      { 'Elemental Precision', 3, 'Mene minuti - mene zbytecne utracene many.' },
+      { 'Permafrost', 3, 'Zpomaleni vydrzi dele a zpomali vic.' },
+      { 'Piercing Ice', 3, '+2 % mrazivy damage za bod.' },
+      { 'Improved Blizzard', 3, 'Blizzard zpomaluje - AoE kiting.' },
+      { 'Cold Snap', 1, 'Obnovi mrazive cooldowny (Nova, Ice Block, Barrier).' },
+      { 'Frost Channeling', 3, 'Levnejsi mrazova kouzla.' },
+      { 'Shatter', 5, 'Zmrazeny mob = +krit: Frost Nova + Frostbolt/Ice Lance.' },
+      { 'Fingers of Frost', 3, 'Proc: pristi kouzlo jako na zmrazeneho moba (Ice Lance).' },
+      { 'Ice Barrier', 1, 'Absorbcni stit - klidne castovani.' },
+      { 'Arctic Reach', 2, 'Delsi dosah Frostboltu a Blizzardu.' },
+      { 'Improved Frost Nova', 2, 'Frost Nova casteji.' },
+      { "Winter's Chill", 5, 'Cil dostava vic mraziveho kritu.' },
+      { 'Icy Veins', 1, 'Rychlejsi castovani na chvili.' },
+      { 'Ice Block', 1, 'Nouzove: imunita na 10 s.' },
+      { 'Improved Cone of Cold', 3, 'Silnejsi Cone of Cold na AoE.' },
+      { 'Arcane Subtlety', 2, 'Mene threatu (z Arcane).' },
+      { 'Arcane Focus', 3, 'Mene minuti (z Arcane).' },
+      { 'Arcane Concentration', 5, 'Obcas kouzlo zdarma (z Arcane).' },
+    },
+    no = {},
+    tree = {
+      'Arcane - jako Frost odsud jen Arcane Subtlety, Arcane Focus a Arcane Concentration.',
+      'Ohen - body tady chybi ve Frostu.',
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+    },
+  },
+  fire = {
+    class = 'MAGE', band = 2, gear = 'fire',
+    label = 'Fire', desc = 'Fireball, Pyroblast, Ignite, Combustion. Nejvic damage, ale mene kontroly.',
+    trees = { 'Arcane', 'Fire', 'Frost' },
+    list = {
+      { 'Improved Fireball', 5, 'Fireball se castuje rychleji.' },
+      { 'Ignite', 5, 'Krit ohnem zapali cil - hodne damage navic.' },
+      { 'Flame Throwing', 2, 'Delsi dosah ohnivych kouzel.' },
+      { 'Improved Scorch', 3, 'Scorch zvysuje ohnivy damage na cili.' },
+      { 'Incineration', 2, '+krit Scorch a Fire Blast.' },
+      { 'Impact', 5, 'Ohniva kouzla obcas omraci.' },
+      { 'Pyroblast', 1, 'Velky uvodni uder.' },
+      { 'Burning Soul', 2, 'Ohniva kouzla se mene zdrzuji a delaji mene threatu.' },
+      { 'Master of Elements', 3, 'Krit vraci manu.' },
+      { 'Critical Mass', 3, '+krit ohnivych kouzel.' },
+      { 'Blast Wave', 1, 'AoE uder a zpomaleni kolem tebe.' },
+      { 'Fire Power', 5, '+2 % ohnivy damage za bod.' },
+      { 'Combustion', 1, 'Krit na nekolik kouzel za sebou.' },
+      { 'Improved Flamestrike', 3, 'Flamestrike casteji kritne.' },
+      { 'Arcane Subtlety', 2, 'Mene threatu (z Arcane).' },
+      { 'Arcane Focus', 3, 'Mene minuti (z Arcane).' },
+      { 'Arcane Concentration', 5, 'Obcas kouzlo zdarma (z Arcane).' },
+    },
+    no = {},
+    tree = {
+      'Arcane - jako Fire odsud jen Arcane Subtlety, Arcane Focus a Arcane Concentration.',
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Mraz - jako Fire body tady chybi.',
+    },
+  },
+  arcane = {
+    class = 'MAGE', band = 1, gear = 'arcane',
+    label = 'Arcane', desc = 'Arcane Missiles, Missile Barrage, Arcane Power. Hodne many a velke vybuchy.',
+    trees = { 'Arcane', 'Fire', 'Frost' },
+    list = {
+      { 'Arcane Focus', 5, 'Mene minuti arcane kouzel.' },
+      { 'Arcane Subtlety', 2, 'Mene threatu.' },
+      { 'Improved Arcane Missiles', 5, 'Arcane Missiles se nezdrzuji pri zasahu.' },
+      { 'Arcane Concentration', 5, 'Obcas kouzlo zdarma.' },
+      { 'Magic Absorption', 5, 'Odolnost a mana z odolanych kouzel.' },
+      { 'Arcane Meditation', 3, 'Regenerace many i pri castovani.' },
+      { 'Improved Arcane Explosion', 3, 'Arcane Explosion casteji kritne.' },
+      { 'Presence of Mind', 1, 'Pristi kouzlo okamzite.' },
+      { 'Arcane Mind', 5, 'Vic Intellectu = vic many.' },
+      { 'Arcane Instability', 3, '+damage a krit vsech kouzel.' },
+      { 'Missile Barrage', 3, 'Proc: rychle Arcane Missiles zdarma.' },
+      { 'Arcane Power', 1, '+30 % damage na chvili.' },
+      { 'Wand Specialization', 2, 'Silnejsi wand pri setreni many.' },
+      { 'Improved Mana Shield', 2, 'Mana Shield stoji mene.' },
+      { 'Improved Counterspell', 2, 'Counterspell i umlci.' },
+      { 'Improved Frostbolt', 5, 'Rychlejsi Frostbolt (z Frost).' },
+    },
+    no = {},
+    tree = {
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Ohen - jako Arcane body tady chybi.',
+      'Mraz - jako Arcane odsud jen Improved Frostbolt.',
+    },
+  },
+  ------------------------------------------------------------------ WARLOCK
+  destro = {
+    class = 'WARLOCK', band = 3, gear = 'destro',
+    label = 'Destruction', desc = 'Searing Pain / Incinerate, Immolate, Conflagrate, Shadowburn. Rychly primy damage.',
+    trees = { 'Affliction', 'Demonology', 'Destruction' },
+    list = {
+      { 'Bane', 5, 'Rychlejsi Shadow Bolt, Immolate a Soul Fire.' },
+      { 'Devastation', 5, '+krit Destruction kouzel.' },
+      { 'Cataclysm', 5, 'Levnejsi Destruction kouzla - mene Life Tapu.' },
+      { 'Improved Searing Pain', 5, 'Searing Pain casteji kritne.' },
+      { 'Agonizing Flames', 3, 'Talent Foreveru: +Destruction damage a krit Searing Pain.' },
+      { 'Ruin', 5, 'Silnejsi krity Destruction kouzel.' },
+      { 'Emberstorm', 5, '+2 % ohnivy damage za bod.' },
+      { 'Improved Immolate', 5, 'Silnejsi uvodni uder Immolate.' },
+      { 'Conflagrate', 1, 'Okamzity uder pres Immolate.' },
+      { 'Shadow and Flame', 5, 'Talent Foreveru: Conflagrate nespotrebuje Immolate.' },
+      { 'Shadowburn', 1, 'Okamzite dorazeni + soul shard.' },
+      { 'Intensity', 2, 'Ohniva kouzla se mene zdrzuji pri zasahu.' },
+      { 'Destructive Reach', 2, 'Delsi dosah a mene threatu.' },
+      { 'Improved Shadow Bolt', 5, 'Shadow Bolt krit zvysi stinovy damage na cili.' },
+      { 'Improved Corruption', 5, 'Okamzita Corruption (z Affliction).' },
+      { 'Improved Life Tap', 2, 'Vic many z Life Tapu (z Affliction).' },
+    },
+    no = {},
+    tree = {
+      'Affliction - jako Destro odsud jen Improved Corruption a Improved Life Tap.',
+      'Demoni - jako Destro body tady chybi.',
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+    },
+  },
+  affli = {
+    class = 'WARLOCK', band = 1, gear = 'affli',
+    label = 'Affliction', desc = 'DoTy na vice mobu, Drain Life, Nightfall. Malo piti, skvele na questy.',
+    trees = { 'Affliction', 'Demonology', 'Destruction' },
+    list = {
+      { 'Improved Corruption', 5, 'Okamzita Corruption - DoT bez castu.' },
+      { 'Suppression', 5, 'Mene minuti DoTu a curse.' },
+      { 'Improved Life Tap', 2, 'Vic many z Life Tapu.' },
+      { 'Improved Curse of Agony', 3, 'Silnejsi Agony.' },
+      { 'Improved Drain Soul', 2, 'Drain Soul vraci manu.' },
+      { 'Fel Concentration', 5, 'Drain kouzla se nezdrzuji.' },
+      { 'Nightfall', 2, 'Proc: okamzity Shadow Bolt zdarma.' },
+      { 'Grim Reach', 2, 'Delsi dosah Affliction kouzel.' },
+      { 'Siphon Life', 1, 'DoT, ktery te leci.' },
+      { 'Shadow Mastery', 5, '+2 % stinovy damage za bod.' },
+      { 'Amplify Curse', 1, 'Silnejsi curse.' },
+      { 'Curse of Exhaustion', 1, 'Zpomaleni moba - kiting.' },
+      { 'Improved Drain Life', 5, 'Silnejsi Drain Life.' },
+      { 'Dark Pact', 1, 'Mana z peta.' },
+      { 'Demonic Embrace', 5, 'Vic Stamina (z Demonology).' },
+    },
+    no = {},
+    tree = {
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Demoni - jako Affliction odsud jen Demonic Embrace.',
+      'Destruction - jako Affliction body tady chybi.',
+    },
+  },
+  demo = {
+    class = 'WARLOCK', band = 2, gear = 'demo',
+    label = 'Demonology', desc = 'Silny pet (Voidwalker / Felguard), Soul Link. Nejodolnejsi solo.',
+    trees = { 'Affliction', 'Demonology', 'Destruction' },
+    list = {
+      { 'Demonic Embrace', 5, 'Vic Stamina = vic HP pro Life Tap.' },
+      { 'Fel Intellect', 5, 'Vic many tobe i petovi.' },
+      { 'Improved Voidwalker', 3, 'Voidwalker vydrzi vic.' },
+      { 'Fel Domination', 1, 'Rychle privolani peta v boji.' },
+      { 'Fel Stamina', 5, 'Vic HP petovi.' },
+      { 'Master Summoner', 2, 'Rychlejsi a levnejsi privolani.' },
+      { 'Unholy Power', 5, 'Silnejsi utoky peta.' },
+      { 'Improved Imp', 3, 'Silnejsi Imp.' },
+      { 'Demonic Sacrifice', 1, 'Obetuj peta za silny buff.' },
+      { 'Master Demonologist', 5, 'Buff podle peta.' },
+      { 'Soul Link', 1, 'Cast damage jde na peta.' },
+      { 'Demonic Brand', 3, 'Talent Foreveru z Demonology.' },
+      { 'Improved Corruption', 5, 'Okamzita Corruption (z Affliction).' },
+      { 'Improved Life Tap', 2, 'Vic many z Life Tapu (z Affliction).' },
+    },
+    no = {},
+    tree = {
+      'Affliction - jako Demo odsud jen Improved Corruption a Improved Life Tap.',
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Destruction - jako Demo body tady chybi.',
+    },
+  },
 }
+T.BUILDS = BUILDS
+local DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'resto' }
+local ORDER = { 'frost', 'fire', 'arcane', 'destro', 'affli', 'demo', 'ret', 'prot', 'holy', 'balance', 'feral', 'resto' }
 
-function T.buildKey()
-  if ns.db and ns.db.talentBuild and BUILDS[ns.db.talentBuild] then return ns.db.talentBuild end
-  if ns.class == 'PALADIN' then return 'ret' end
-  if ns.class == 'DRUID' then
-    local sp = ns.Druid and ns.Druid.spec and ns.Druid.spec()
-    if sp == nil or sp == 'resto' then return 'resto' end
-  end
-  return nil
+-- vlastni build = ulozene talenty postavy (poradi: vetev s nejvic body, pak shora dolu)
+function T.custom()
+  local c = ns.db and ns.db.customBuild
+  if type(c) ~= 'table' or type(c.list) ~= 'table' then return nil end
+  local first = BUILDS[DEFAULT[ns.class] or ''] or {}
+  c.class, c.no = ns.class, {}
+  c.tree = { 'Neni v tvem ulozenem buildu.', 'Neni v tvem ulozenem buildu.', 'Neni v tvem ulozenem buildu.' }
+  c.trees = first.trees or { '1', '2', '3' }
+  return c
 end
-function T.build() local k = T.buildKey() return k and BUILDS[k] end
+-- buildy pro moji classu (+ vlastni ulozeny)
+function T.list()
+  local out = {}
+  for _, k in ipairs(ORDER) do if BUILDS[k].class == ns.class then out[#out + 1] = k end end
+  if T.custom() then out[#out + 1] = 'custom' end
+  return out
+end
+function T.get(k)
+  if k == 'custom' then return T.custom() end
+  return k and BUILDS[k]
+end
 
 -- talenty ze skenu (Core.lua): jmeno -> zaznam s nejvyssim rankem
 local function byName()
@@ -105,6 +425,102 @@ local function spentIn(b)
     if band(e.x) == b and not seen[e.node] then seen[e.node] = true n = n + (e.rank or 0) end
   end
   return n
+end
+T.band, T.spentIn = band, spentIn
+
+-- vetev s nejvic body (nil = zadne body)
+function T.mainBand()
+  local best, bn = nil, 0
+  for b = 1, 3 do local n = spentIn(b) if n > bn then best, bn = b, n end end
+  return best
+end
+-- automaticky: druid podle specu rotace, ostatni podle vetve s nejvic body, jinak vychozi
+function T.autoKey()
+  if ns.class == 'DRUID' and ns.Druid and ns.Druid.spec then
+    local sp = ns.Druid.spec()
+    if sp and BUILDS[sp] then return sp end
+  end
+  local mb = T.mainBand()
+  if mb then
+    for k, b in pairs(BUILDS) do if b.class == ns.class and b.band == mb then return k end end
+  end
+  return DEFAULT[ns.class]
+end
+function T.buildKey()
+  local k = ns.db and ns.db.talentBuild
+  if k == 'custom' and T.custom() then return 'custom' end
+  if k and BUILDS[k] and BUILDS[k].class == ns.class then return k end
+  return T.autoKey()
+end
+function T.build() return T.get(T.buildKey()) end
+
+-- vybrat build: talenty + vahy gearu + spec druida (nil = automaticky)
+function T.select(k)
+  local db = ns.db
+  if k ~= nil and not T.get(k) then return end
+  if k == nil and ns.class == 'DRUID' then db.druidSpec = nil end   -- auto: spec znovu podle talentu
+  db.talentBuild = k
+  local b = T.get(k or T.autoKey())
+  if ns.class == 'DRUID' and k then db.druidSpec = b and b.druid or nil end
+  if db.gearSpec ~= 'custom' and ns.Gear and ns.Gear.applySpec then pcall(ns.Gear.applySpec, (k and b and b.gear) or 'auto') end
+end
+
+-- ulozit soucasne talenty jako vlastni build
+function T.saveCustom()
+  pcall(ns.scanTalents)
+  local seen, list = {}, {}
+  for _, e in ipairs(ns.talentList or {}) do
+    if (e.rank or 0) > 0 and e.name and not seen[e.name] then
+      seen[e.name] = true
+      list[#list + 1] = { e.name, e.rank, 'Ulozeno z tveho buildu.', b = band(e.x), y = e.y or 0 }
+    end
+  end
+  if #list == 0 then return false end
+  local mb = T.mainBand() or 1
+  table.sort(list, function(a, b)
+    if (a.b == mb) ~= (b.b == mb) then return a.b == mb end
+    if a.b ~= b.b then return a.b < b.b end
+    return a.y < b.y
+  end)
+  local out = {}
+  for _, it in ipairs(list) do out[#out + 1] = { it[1], it[2], it[3] } end
+  ns.db.customBuild = { label = 'Vlastni (' .. date('%d.%m.') .. ')',
+    desc = ('Tvoje talenty ulozene %s (%d talentu). Kdyz prestavis talenty, addon ti je poradi znovu.'):format(date('%d.%m.%Y'), #out),
+    band = mb, gear = ns.Gear and ns.Gear.spec and ns.Gear.spec() or nil, list = out }
+  return true
+end
+
+local function byNameMax()
+  local tl = {}
+  for _, e in ipairs(ns.talentList or {}) do
+    if e.name and (not tl[e.name] or (e.rank or 0) > (tl[e.name].rank or 0)) then tl[e.name] = e end
+  end
+  return tl
+end
+-- kolik bodu mam mimo build (= kolik by se predelavalo u trenera)
+function T.offBuild(k)
+  local b = T.get(k or T.buildKey())
+  if not b then return 0 end
+  local want = {}
+  for _, it in ipairs(b.list) do want[it[1]] = it[2] end
+  local n = 0
+  for name, e in pairs(byNameMax()) do n = n + math.max(0, (e.rank or 0) - (want[name] or 0)) end
+  return n
+end
+-- kolik bodu build chce celkem (z talentu, ktere ve hre existuji) a kolik uz mam
+function T.progress(k)
+  local b = T.get(k or T.buildKey())
+  if not b then return 0, 0 end
+  local tl, have, total = byNameMax(), 0, 0
+  for _, it in ipairs(b.list) do
+    local e = tl[it[1]]
+    if e then
+      local tgt = math.min(it[2], e.max or it[2])
+      total = total + tgt
+      have = have + math.min(tgt, e.rank or 0)
+    end
+  end
+  return have, total
 end
 
 function T.freePoints()
@@ -184,9 +600,10 @@ function T.next(limit)
   for _, it in ipairs(b.list) do
     local e = tl[it[1]]
     local cur = e and e.rank or 0
-    if e and cur < it[2] then
+    local tgt = e and math.min(it[2], e.max or it[2]) or it[2]
+    if e and cur < tgt then
       local can = canBuy(e)
-      local r = { name = it[1], cur = cur, target = it[2], why = it[3], can = can, e = e }
+      local r = { name = it[1], cur = cur, target = tgt, why = it[3], can = can, e = e }
       out[#out + 1] = r
       if can and not firstCan then firstCan = r end
     end
@@ -255,16 +672,18 @@ local function addAdvice(tt)
   tt:AddLine('|cff66ccffClaudeMaster|r |cff888888- ' .. b.label .. '|r')
   if rec then
     local cur = e.rank or 0
-    if cur >= rec[2] then
-      tt:AddLine(ic(OK) .. ('|cff00ff00Hotovo|r  %d/%d'):format(cur, rec[2]))
+    local tgt = math.min(rec[2], e.max or rec[2])
+    if cur >= tgt then
+      tt:AddLine(ic(OK) .. ('|cff00ff00Hotovo|r  %d/%d'):format(cur, tgt))
     elseif nxt and nxt.name == e.name and nxt.can then
-      tt:AddLine(ic(OK) .. ('|cff00ff00Ted tohle|r  %d/%d'):format(cur, rec[2]))
+      tt:AddLine(ic(OK) .. ('|cff00ff00Ted tohle|r  %d/%d'):format(cur, tgt))
     else
-      tt:AddLine(ic(WAIT) .. ('|cffffd200Ber|r  %d/%d'):format(cur, rec[2]))
+      tt:AddLine(ic(WAIT) .. ('|cffffd200Ber|r  %d/%d'):format(cur, tgt))
     end
     tt:AddLine('     ' .. rec[3], 0.9, 0.9, 0.9, true)
   else
-    tt:AddLine(ic(NO) .. '|cffff6060Neber|r')
+    if b.sim or b.no[e.name] then tt:AddLine(ic(NO) .. '|cffff6060Neber|r')
+    else tt:AddLine(ic(WAIT) .. '|cffff9933Mimo build|r') end
     tt:AddLine('     ' .. (b.no[e.name] or b.tree[band(e.x)]), 0.8, 0.8, 0.8, true)
     if nxt then
       local tex = nxt.e and nxt.e.spellId and C_Spell and C_Spell.GetSpellTexture and safe(pc(C_Spell.GetSpellTexture, nxt.e.spellId))
@@ -323,7 +742,14 @@ tf:SetScript('OnEvent', function(_, ev)
 end)
 
 function T.cmd(arg)
-  if arg and BUILDS[arg] then ns.db.talentBuild = arg ns.say('Talent build: ' .. BUILDS[arg].label)
-  elseif arg == 'auto' then ns.db.talentBuild = nil end
+  local b = arg and arg ~= '' and T.get(arg)
+  if b and b.class == ns.class then T.select(arg) ns.say('Build: ' .. b.label)
+  elseif arg == 'auto' then T.select(nil) ns.say('Build: automaticky (' .. T.get(T.autoKey()).label .. ')')
+  elseif arg == 'uloz' or arg == 'save' then
+    if T.saveCustom() then T.select('custom') ns.say('Tvoje talenty ulozeny jako vlastni build.')
+    else ns.say('Nemas zadne talenty k ulozeni.') end
+  elseif arg and arg ~= '' then
+    ns.say('Buildy: ' .. table.concat(T.list(), ', ') .. ', auto, uloz   (nebo /cm config -> Build)')
+  end
   T.say(true)
 end

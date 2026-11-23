@@ -966,9 +966,9 @@ local HELP = {
   '/cm sdilej - sdilet partakum questy, ktere nemaji (vidi to jejich addon)',
   '/cm prodej on/off - sede veci se u vendora prodaji samy; /cm oprava on/off - automaticka oprava',
   '/cm threat on/off - threat metr nad panelem (druid v medvedovi)',
-  '/cm talent - co si vzit v talentech (a proc); taky v tooltipu talentu',
+  '/cm talent [build|auto|uloz] - co si vzit v talentech (a proc); taky v tooltipu talentu; build vyberes i v /cm config build',
   '/cm auto - nova kouzla (rozpoznana z popisu); /cm auto <jmeno> attack/aoe/heal/buff/stop/defense/ignore; /cm auto off',
-  '/cm gear [spec] - lepsi gear z batohu (vahy: frost/arcane/destro/ret/prot/holy/resto/balance/feral), /cm vahy str=1 ... vlastni',
+  '/cm gear [spec] - lepsi gear z batohu (vahy: frost/fire/arcane/destro/affli/demo/ret/prot/holy/resto/balance/feral), /cm vahy str=1 ... vlastni',
   '/cm macro - vytvori makra: utok sam vybere dalsiho nepritele' .. (ns.class == 'WARLOCK' and ', DoTy na jedno tlacitko' or ''),
   '/cm status - co addon zjistil (pro ladeni)',
   '/cm rescan - znovu nacist kouzla a zkratky',
@@ -977,7 +977,7 @@ local HELP = {
   '/cm items - nerozpoznane pouzitelne veci (pro ladeni)',
   '/cm immune - naucene imunity mobu (/cm immune reset = smazat vse)',
   '/cm immune frost/fire/arcane/nova/poly - oznacit cil jako imunni',
-  '/cm config - okno s nastavenim',
+  '/cm config [panel|combat|party|build|items|memory] - okno s nastavenim (taky tlacitko u minimapy)',
   '/cm summary - ukazat posledni shrnuti boje',
   '/cm duo - stav vymeny dat s partakem (mag + warlock)',
   '/cm zmeny - co hra zmenila na kouzlech (patch) od minule',
@@ -1003,8 +1003,7 @@ SlashCmdList.CLAUDEMASTER = function(msg)
   local cmd, arg = (msg or ''):lower():match('^%s*(%S*)%s*(.-)%s*$')
   local num = tonumber(arg)
   if cmd == '' then
-    db.shown = not db.shown
-    if UI.frame and not InCombatLockdown() then UI.frame:SetShown(db.shown) UI.reanchor() end
+    if ns.Options then ns.Options.togglePanel() else db.shown = not db.shown end
     ns.say(db.shown and 'zobrazeno' or 'skryto (/cm pro zobrazeni)')
   elseif cmd == 'lock' or cmd == 'unlock' then
     db.locked = cmd == 'lock'
@@ -1025,7 +1024,7 @@ SlashCmdList.CLAUDEMASTER = function(msg)
   elseif cmd == 'debug' then db.debug = not db.debug ns.say('debug: ' .. tostring(db.debug))
   elseif cmd == 'status' then status()
   elseif cmd == 'config' or cmd == 'options' or cmd == 'nastaveni' then
-    if ns.Options then ns.Options.toggle() end
+    if ns.Options then ns.Options.toggle(arg ~= '' and arg or nil) end
   elseif cmd == 'sonda' or cmd == 'probe' then
     if ns.apiProbe then ns.apiProbe() end
   elseif cmd == 'test' then

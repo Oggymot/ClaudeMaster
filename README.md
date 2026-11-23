@@ -12,6 +12,17 @@ vymenuji data (cile, aggro, ovce, ready check).
 
 Prikazy: `/cm help`.
 
+## Nastaveni
+
+Tlacitko u minimapy (levy klik = nastaveni, pravy klik = panel, tahem ho posunes) nebo `/cm config`.
+Zalozky: **Panel** (vzhled, velikost, kompaktni rezim), **Boj a mana**, **Parta** (cekani na tanka, AoE),
+**Build**, **Veci a questy** (oprava, prodej, seznam questu), **Pamet a uceni**. Kazda volba ma tooltip s vysvetlenim.
+
+**Build** = smer talentu a vahy statu pro gear. Pro kazdou classu jsou pripravene tri smery
+(Mag: Frost / Fire / Arcane, Warlock: Destruction / Affliction / Demonology, Paladin: Retribution / Protection / Holy,
+Druid: Balance / Feral / Restoration) a jde ulozit vlastni build z aktualnich talentu. Automaticky rezim bere vetev,
+do ktere davas body. Pri zmene smeru addon ukaze, kolik bodu mas mimo build (reset u trenera) a radi dalsi body.
+
 ## Vydani nove verze
 
 ```

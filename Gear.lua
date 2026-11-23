@@ -22,6 +22,10 @@ G.SPECS = {
     spcrit = { 4, 9 }, sphit = { 4.5, 12 }, mp5 = 1.2, armor = 0.003 },
   fire = { label = 'Fire Mage', sp = 1, firesp = 1, int = { 0.15, 0.25 }, spi = 0.05, sta = 0.2,
     spcrit = { 5, 11 }, sphit = { 4.8, 13 }, mp5 = 1, armor = 0.003 },
+  affli = { label = 'Affliction Warlock', sp = 1, shadowsp = 1, int = { 0.1, 0.2 }, spi = { 0.2, 0.25 }, sta = 0.4,
+    spcrit = { 1.5, 4 }, sphit = { 3.5, 11 }, mp5 = 0.6, armor = 0.003 },
+  demo = { label = 'Demonology Warlock', sp = 1, shadowsp = 0.9, firesp = 0.2, int = { 0.15, 0.25 }, spi = 0.15, sta = 0.5,
+    spcrit = { 2.5, 6 }, sphit = { 3.3, 11 }, mp5 = 0.6, armor = 0.005 },
   destro = { label = 'Destruction Warlock', sp = 1, shadowsp = 0.85, firesp = 0.35, int = { 0.1, 0.25 },
     spi = { 0.15, 0.2 }, sta = 0.35, spcrit = { 2.9, 8 }, sphit = { 3.3, 11 }, mp5 = 0.6, armor = 0.003 },
   -- ret (sila = 1 = 2 AP): spell power ~ 2 AP (Righteousness, Holy Strike, Judgement, Consecration)
@@ -792,11 +796,18 @@ function G.setWeights(arg)
   G.invalidate() upCache = nil
   ns.say(('Vlastni vahy ulozeny (%d statu). Zpet: /cm gear auto'):format(n))
 end
-function G.setSpec(arg)
-  if arg == 'auto' or arg == '' then ns.db.gearSpec = nil
+-- nastavit vahy bez vypisu (okno nastaveni); vraci true, kdyz se zmenily
+function G.applySpec(arg)
+  if arg == 'auto' or arg == '' or arg == nil then ns.db.gearSpec = nil
+  elseif arg == 'custom' and ns.db.gearWeights then ns.db.gearSpec = 'custom'
   elseif G.SPECS[arg] then ns.db.gearSpec = arg
-  else G.report() return end
+  else return false end
   G.invalidate() upCache = nil
+  if C_Timer and G.refreshBags then C_Timer.After(0.1, function() pcall(G.refreshBags) end) end
+  return true
+end
+function G.setSpec(arg)
+  if not G.applySpec(arg) then G.report() return end
   G.report()
 end
 
