@@ -307,6 +307,14 @@ local function onItemTip(tt, data)
     local why = G.sellWhy(tt, link)
     if why then tt:AddLine('|T' .. COIN_TEX .. ':14:14|t |cffffd100Prodat:|r |cffdddddd' .. why .. '|r', 1, 1, 1, true) end
   end
+  -- material / recept pro profesi partaka
+  if G.matPeers and not fl.bound then
+    local mp = G.matPeers(link, data)
+    for i, p in ipairs(mp) do
+      if i > 3 then break end
+      tt:AddLine(('%s |cff66ccff%s|r |cff40ff60vyuzije (%s)|r'):format(UP, p.name, p.prof))
+    end
+  end
   -- parta s addonem: komu by se to hodilo (jen kdyz to neni Soulbound)
   if st and not fl.bound and G.peerUps then
     for i, p in ipairs(G.peerUps(link, st, req, fl)) do
@@ -435,6 +443,13 @@ end
 ------------------------------------------------------------------------------------------
 -- Profese: materialy / recepty, ktere nevyuzijes
 ------------------------------------------------------------------------------------------
+local function inParty(name)
+  if not UnitInParty then return true end
+  local ok, r = pcall(UnitInParty, name)
+  if not ok then return true end
+  r = safeBool(r)
+  return r ~= false
+end
 local PROFMAT = {
   Cloth = { 'Tailoring', 'First Aid' }, Leather = { 'Leatherworking' },
   -- ruda: Mining ji tavi na pruty (Smelting) -> pro hornika to neni zbytecny material
@@ -472,6 +487,35 @@ local function itemInfo(link)
   local _, typ, sub, loc, _, cls = pc(f, link)
   return safe(typ), safe(sub), safe(loc), safeNum(cls)
 end
+-- kdo z party (s addonem) ma nekterou z profesi -> { {name, prof}, ... }
+G.peerProfs = {}
+function G.profPeers(list)
+  local out, now = {}, GetTime()
+  for name, pp in pairs(G.peerProfs) do
+    if now - pp.at < 900 and inParty(name) then
+      for _, p in ipairs(list) do
+        if pp.set[p] then out[#out + 1] = { name = name, prof = p } break end
+      end
+    end
+  end
+  return out
+end
+-- tooltip: material / recept, ktery vyuzije partak
+function G.matPeers(link, data)
+  local typ, sub, _, cls = itemInfo(link)
+  if cls == 7 or typ == 'Trade Goods' or typ == 'Tradeskill' then
+    local need = sub and PROFMAT[sub]
+    return need and G.profPeers(need) or {}
+  end
+  if (cls == 9 or typ == 'Recipe') and type(data) == 'table' and type(data.lines) == 'table' then
+    for _, l in ipairs(data.lines) do
+      local t = safe(l.leftText)
+      local p = type(t) == 'string' and t:match('^Requires ([%a ]+) %(%d+%)')
+      if p then return G.profPeers({ p }) end
+    end
+  end
+  return {}
+end
 function G.tradeWhy(link, bag, slot)
   local typ, sub, _, cls = itemInfo(link)
   local pr = myProfs()
@@ -480,6 +524,7 @@ function G.tradeWhy(link, bag, slot)
     local need = sub and PROFMAT[sub]
     if not need then return nil end
     for _, p in ipairs(need) do if pr[p] then return nil end end
+    if G.profPeers(need)[1] then return nil end
     return ('material pro %s - tu profesi nemas (na AH vic)'):format(table.concat(need, ' / '))
   end
   if cls == 9 or typ == 'Recipe' then
@@ -490,6 +535,7 @@ function G.tradeWhy(link, bag, slot)
       if type(t) == 'string' and isRed(l.leftColor) then
         if t == 'Already known' then return 'recept uz umis' end
         local p = t:match('^Requires ([%a ]+) %(%d+%)')
+        if p and not pr[p] and G.profPeers({ p })[1] then return nil end
         if p and not pr[p] then return 'recept pro ' .. p .. ' - tu profesi nemas (na AH vic)' end
         if t:find('^Classes:') then return 'recept pro jinou tridu' end
       end
@@ -545,13 +591,6 @@ local function canUse(cls, lvl, link, loc, fl)
   end
   return true
 end
-local function inParty(name)
-  if not UnitInParty then return true end
-  local ok, r = pcall(UnitInParty, name)
-  if not ok then return true end
-  r = safeBool(r)
-  return r ~= false
-end
 -- komu z party je item vylepsenim -> { {name, pct, req, empty}, ... } (nejvetsi prvni)
 function G.peerUps(link, st, req, fl)
   local out = {}
@@ -586,6 +625,13 @@ end
 function G.recv(name, msg)
   local f = {}
   for v in (msg .. '^'):gmatch('([^%^]*)%^') do f[#f + 1] = v end
+  if f[2] == 'P' then
+    local set = {}
+    for pr in (f[3] or ''):gmatch('[^,]+') do set[pr] = true end
+    G.peerProfs[name] = { set = set, at = GetTime() }
+    upCache = nil
+    return
+  end
   local old = G.peers[name]
   local p = { cls = f[2], spec = f[3], lvl = tonumber(f[4]) or 60, two = f[5] == '1', sc = {}, at = GetTime() }
   for s, v in (f[6] or ''):gmatch('(%d+):([%d%.]+)') do p.sc[tonumber(s)] = tonumber(v) end
@@ -616,6 +662,13 @@ function G.share()
   local msg = ('G^%s^%s^%d^%s^%s'):format(ns.class or '?', s, lvl, (mh and mh.loc == 'INVTYPE_2HWEAPON') and '1' or '0',
     table.concat(parts, ','))
   pcall(ns.Duo.rawSend, msg:sub(1, 250))
+  -- profese (pro materialy / recepty)
+  local pr = myProfs()
+  if pr then
+    local names = {}
+    for n in pairs(pr) do if n:find('^%a[%a ]*$') then names[#names + 1] = n end end
+    pcall(ns.Duo.rawSend, ('G^P^' .. table.concat(names, ',')):sub(1, 250))
+  end
 end
 local shareAt, sharePend = -99, false
 function G.shareSoon(delay)
