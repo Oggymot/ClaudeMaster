@@ -107,7 +107,7 @@ end
 -- + HP: kdyz je u mne takovy mob jediny, nebo kdyz HP sedi (a nejsou oba na plnem HP).
 local npcCount, guidCount = {}, {}
 -- true / false / nil (nelze rozhodnout)
-local function match3(u, id, myId, peerHp)
+local function match3(u, id, myId, peerHp, loose)
   if not id then return false end
   myId = myId or idOf(u)
   if not myId then return nil end
@@ -117,14 +117,22 @@ local function match3(u, id, myId, peerHp)
   if id.n ~= myId.n then return false end
   local myHp = ns.healthPct(u)
   if not myHp and safeBool(pc(UnitIsUnit, u, 'target')) == true then myHp = ns.healthPct('target') end
+  -- nedotceny mob (plne HP) nebo mob mimo boj: stejny druh + plne HP NIC nedokazuje - partak muze
+  -- klikat na uplne jine zvire se stejnym jmenem (tagovani). Shoda jen pres znacku / GUID / prime overeni.
+  local fresh = (peerHp == nil or peerHp >= 98) and (myHp == nil or myHp >= 98)
+  local fighting = safeBool(pc(UnitAffectingCombat, u)) == true
+  if (fresh or not fighting) and not loose then
+    if peerHp and myHp and math.abs(peerHp - myHp) > 8 then return false end
+    return nil
+  end
+  if loose and not (peerHp and myHp) then return npcCount[id.n] == 1 or nil end
   if peerHp and myHp then
     local d = math.abs(peerHp - myHp)
     if d > 8 then return false end
-    if npcCount[id.n] == 1 then return true end
-    if d <= 3 and not (peerHp >= 98 and myHp >= 98) then return true end
+    if npcCount[id.n] == 1 and d <= 5 then return true end
+    if d <= 3 then return true end
     return nil
   end
-  if npcCount[id.n] == 1 then return true end
   return nil
 end
 -- Prime porovnani "je tohle cil partaka?" (UnitIsUnit s party1target) - presne, kdyz ho hra dovoli
@@ -139,7 +147,7 @@ local function direct(u, pu)
   return r
 end
 PL.direct = direct
-local function match(u, id, myId, peerHp) return match3(u, id, myId, peerHp) == true end
+local function match(u, id, myId, peerHp, loose) return match3(u, id, myId, peerHp, loose) == true end
 PL.idOf, PL.match, PL.match3 = idOf, match, match3
 function PL.guidOk(g) return g ~= nil and (guidCount[g] or 1) == 1 end
 
@@ -243,7 +251,7 @@ function PL.sharedCC(u)
     if s.untilT <= now then table.remove(PL.sheep, i)
     else
       myId = myId or idOf(u)
-      if match(u, s.id, myId) then return s.untilT - now, s end
+      if match(u, s.id, myId, nil, true) then return s.untilT - now, s end   -- ovce: jediny takovy mob staci
     end
   end
 end
