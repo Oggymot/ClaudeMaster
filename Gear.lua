@@ -903,7 +903,7 @@ local function onRoll(rollID)
   if not (loc and SLOTS[loc]) then return end
   local d = C_TooltipInfo and C_TooltipInfo.GetLootRollItem and pc(C_TooltipInfo.GetLootRollItem, rollID)
   if type(d) ~= 'table' then d = tipData(nil, nil, nil, link) end
-  local st, blocked, req = G.parse(d)
+  local st, blocked, req, fl = G.parse(d)
   if not st then return end
   local pct, oldLink = G.compare(link, st)
   local lvl = safeNum(UnitLevel('player')) or 60
@@ -917,6 +917,22 @@ local function onRoll(rollID)
   elseif pct then
     txt = ('%s |cffff6060%d %%|r - Greed'):format(DOWN, math.floor(pct * 100 - 0.5))
   else return end
+  -- parta s addonem: komu jinemu je to vylepsenim (o hod se jeste nehraje, Soulbound neresime)
+  local ok, ups = pcall(G.peerUps, link, st, req, fl or {})
+  if ok and ups and ups[1] then
+    local mine = (not blocked and pct and pct > 0.02) and pct or 0
+    for i, p in ipairs(ups) do
+      if i > 2 then break end
+      local s = p.empty and ('|cff66ccff%s|r |cff40ff60prazdny slot|r'):format(p.name)
+        or ('|cff66ccff%s|r |cff40ff60+%d %%|r'):format(p.name, math.floor(p.pct * 100 + 0.5))
+      if p.req then s = s .. (' |cffffcc00(od lvl %d)|r'):format(p.req) end
+      txt = txt .. '\n' .. UP .. ' ' .. s
+    end
+    local best = ups[1]
+    if best.pct > mine * 1.5 + 0.02 then
+      txt = txt .. ('\n|cffffcc00Vic se hodi: %s - zvaz Greed / Pass|r'):format(best.name)
+    end
+  end
   local shown = false
   for _, fr in ipairs(rollFrames()) do
     if fr.cmUp and fr.rollID == rollID then fr.cmUp:Hide() end
