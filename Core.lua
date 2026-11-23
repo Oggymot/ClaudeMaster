@@ -822,6 +822,16 @@ local function healthProbe(unit, lines)
       local hi = 100
       for i, line in ipairs(P.lines) do if P.below[i] then hi = math.min(hi, line) end end
       P.hiPrev, P.hiCur = P.hiCur, hi
+      -- vlastni HP: horni mez = nejvyssi cteni za posledni 0.4 s (nizke HP musi drzet, ne problikout)
+      if unit == 'player' then
+        local now = GetTime()
+        P.hist = P.hist or {}
+        table.insert(P.hist, { t = now, hi = hi })
+        while P.hist[1] and now - P.hist[1].t > 0.4 do table.remove(P.hist, 1) end
+        local mx = hi
+        for _, h in ipairs(P.hist) do if h.hi > mx then mx = h.hi end end
+        P.hiMax = mx
+      end
       return true
     end,
   })
@@ -880,8 +890,9 @@ function ns.healthPct(unit)
       if P.below[i] then hi = math.min(hi, line) else lo = math.max(lo, line) end
     end
     -- vlastni HP: "pod carou" jen kdyz to potvrdi dve cteni za sebou
-    if unit == 'player' and P.hiPrev and P.hiPrev > hi then
-      hi = P.hiPrev
+    local hold = (unit == 'player') and math.max(P.hiPrev or 0, P.hiMax or 0) or 0
+    if hold > hi then
+      hi = hold
       if lo > hi then lo = hi end
     end
     return (lo + hi) / 2, false, lo, hi
