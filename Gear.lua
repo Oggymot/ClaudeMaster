@@ -365,6 +365,7 @@ function G.upgrades(force)
   G.lastAll = {}
   G.sellMap = {}
   G.sellByLink = {}
+  G.giftMap = {}
   if not (getNum and getInfo) then return list end
   local lvl = safeNum(UnitLevel('player')) or 60
   local specLabel = (G.SPECS[G.spec()] or {}).label or 'tvuj spec'
@@ -374,7 +375,7 @@ function G.upgrades(force)
       local link = type(info) == 'table' and safe(info.hyperlink)
       local key = bag .. ':' .. slot
       local value = type(link) == 'string' and not safeBool(info.hasNoValue)
-      local sell
+      local sell, gift
       -- seda vec (junk) = na prodej
       if value and safeNum(info.quality) == 0 then sell = 'seda vec (junk)' end
       -- materialy a recepty pro profese, ktere nemas
@@ -404,13 +405,22 @@ function G.upgrades(force)
           end
         end
         -- partak v parte by to vyuzil (a jde to predat) -> neprodavat, tooltip rekne komu
-        if sell and st and not fl.bound and G.peerUps and G.peerUps(link, st, req, fl)[1] then sell = nil end
+        if st and not fl.bound and G.peerUps and not (not why and pct and pct > 0.03) then
+          local pu = G.peerUps(link, st, req, fl)[1]
+          if pu then sell, gift = nil, pu.name end
+        end
         if not why then
           if pct > 0.03 and new > 1 then
             list[#list + 1] = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot }
           end
         end
       end
+      -- material / recept pro profesi partaka
+      if type(link) == 'string' and not gift and G.matPeers then
+        local mp = G.matPeers(link, function() return tipData('bag', bag, slot, link) end)[1]
+        if mp then gift = mp.name end
+      end
+      if gift then G.giftMap[key] = gift sell = nil end
       if sell then G.sellMap[key] = sell G.sellByLink[link] = sell end
     end
   end
@@ -503,6 +513,7 @@ end
 -- tooltip: material / recept, ktery vyuzije partak
 function G.matPeers(link, data)
   local typ, sub, _, cls = itemInfo(link)
+  if type(data) == 'function' and (cls == 9 or typ == 'Recipe') then data = data() end
   if cls == 7 or typ == 'Trade Goods' or typ == 'Tradeskill' then
     local need = sub and PROFMAT[sub]
     return need and G.profPeers(need) or {}
@@ -738,6 +749,7 @@ end)
 ------------------------------------------------------------------------------------------
 local ARROW = 'Interface\\AddOns\\ClaudeMaster\\Textures\\UpgradeArrow'   -- sipky z addonu Pawn (CC BY-NC-ND, viz Textures)
 local COIN_T = 'Interface\\MoneyFrame\\UI-GoldIcon'
+local GIFT_T = 'Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon'
 local function mark(btn, on)
   if not btn then return end
   if on and not btn.cmUp then
@@ -755,6 +767,16 @@ local function sellMark(btn, on)
     btn.cmSell = t
   end
   if btn.cmSell then btn.cmSell:SetShown(on and true or false) end
+end
+-- postavicka = hodi se partakovi v parte (radsi dat nez prodat)
+local function giftMark(btn, on)
+  if not btn then return end
+  if on and not btn.cmGift then
+    local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
+    t:SetTexture(GIFT_T) t:SetSize(16, 16) t:SetPoint('BOTTOMRIGHT', btn, 'BOTTOMRIGHT', 0, 0)
+    btn.cmGift = t
+  end
+  if btn.cmGift then btn.cmGift:SetShown(on and true or false) end
 end
 local function eachButton(frame, fn)
   if not frame or not frame:IsShown() then return end
@@ -780,6 +802,7 @@ function G.refreshBags()
     local up = key and map[key] ~= nil
     mark(b, up)
     sellMark(b, G.merchant and key and not up and G.sellMap and G.sellMap[key])
+    giftMark(b, G.merchant and key and not up and G.giftMap and G.giftMap[key])
   end
   eachButton(_G.ContainerFrameCombinedBags, upd)
   for i = 1, 13 do eachButton(_G['ContainerFrame' .. i], upd) end
