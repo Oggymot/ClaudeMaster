@@ -379,6 +379,8 @@ function W.refresh()
       end
       -- Devastation (+crit) a Ruin (crit x2) plati na Destruction kouzla
       mult = mult * (1 + 0.01 * tal('Devastation') * critBonus)
+      -- Incinerate (Forever): +25 % na cil s Immolate - addon Immolate drzi porad
+      if n == 'Incinerate' then mult = mult * 1.25 end
       local cost = ns.cost(n)
       local ctEff = ct + (cost > 0 and (cost / math.max(50, tap)) * 1.5 or 0)   -- + podil Life Tapu (1.5 s GCD)
       scores[n] = { dmg = dmg, ct = ct, ctEff = ctEff, cost = cost, dps = dmg and (dmg * mult / ctEff) or nil, mult = mult }
@@ -797,6 +799,13 @@ local function decide(c, s)
     if ready('Conflagrate') and dot('Immolate') > 0 then return A('Conflagrate', 'Dorazit: Conflagrate') end
     if ns.known('Shoot') and c.manaKnown and c.mana < 0.5 and not c.tough then return A('Shoot', 'Skoro mrtvy: wand, setri manu') end
     if ready('Searing Pain') then return A('Searing Pain', 'Dorazit rychlym Searing Pain') end
+  end
+  -- 7b) Shadow and Flame: Shadowburn = +10 % ohnivy damage na 20 s a shard zpet (5/5 vzdy, jinak sance)
+  --     -> na cooldown, kdyz je shard (pri < 5/5 jen nad drzenymi shardy)
+  local snf = ns.talent('Shadow and Flame') or 0
+  if snf > 0 and ready('Shadowburn') and c.shards > 0 and (snf >= 5 or c.shards > keep) and not c.tPlayer
+    and (ttd == nil or ttd > 2) then
+    return A('Shadowburn', 'Shadowburn: +10 % ohen na 20 s (Shadow and Flame)' .. (snf >= 5 and ', shard zpet' or ''))
   end
   -- 8) zaklad: Immolate -> Conflagrate -> znovu Immolate (Conflagrate Immolate spotrebuje)
   if dot('Immolate') <= 1 and ready('Immolate') and not c.moving and (ttd == nil or ttd > 4) then
