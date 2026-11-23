@@ -246,7 +246,7 @@ function G.upgrades(force)
         if st and not blocked and not (req and req > lvl) then
           local pct, oldLink, eqSlot, new = G.compare(link, st)
           if pct and pct > 0.03 and new > 1 then
-            list[#list + 1] = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot }
+            list[#list + 1] = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot }
           end
         end
       end
@@ -254,6 +254,8 @@ function G.upgrades(force)
   end
   table.sort(list, function(a, b) return a.pct > b.pct end)
   upCache, upAt = list, GetTime()
+  G.upMap = {}
+  for _, u in ipairs(list) do G.upMap[u.bag .. ':' .. u.bslot] = u end
   return list
 end
 
@@ -290,7 +292,64 @@ end
 -- zmena gearu / batohu -> prepocitat
 local f = CreateFrame('Frame')
 for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_LEVEL_UP' }) do pcall(f.RegisterEvent, f, e) end
-f:SetScript('OnEvent', function() G.invalidate() upCache = nil end)
+f:SetScript('OnEvent', function()
+  G.invalidate() upCache = nil
+  if C_Timer and G.refreshBags then C_Timer.After(0.2, function() pcall(G.refreshBags) end) end
+end)
+
+------------------------------------------------------------------------------------------
+-- Zelena sipka v rohu itemu v batohu (jako Pawn): vylepseni pro tebe
+------------------------------------------------------------------------------------------
+local ARROW = 'Interface\\Buttons\\Arrow-Up-Up'
+local function mark(btn, on)
+  if not btn then return end
+  if on and not btn.cmUp then
+    local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
+    t:SetTexture(ARROW) t:SetSize(16, 16) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', -1, 1)
+    t:SetVertexColor(0.3, 1, 0.35)
+    btn.cmUp = t
+  end
+  if btn.cmUp then btn.cmUp:SetShown(on and true or false) end
+end
+local function eachButton(frame, fn)
+  if not frame or not frame:IsShown() then return end
+  if frame.EnumerateValidItems then
+    for _, b in frame:EnumerateValidItems() do fn(b) end
+  else
+    local name = frame:GetName()
+    for i = 1, 40 do
+      local b = name and _G[name .. 'Item' .. i]
+      if not b then break end
+      fn(b)
+    end
+  end
+end
+function G.refreshBags()
+  if not ns.db or ns.db.gearTips == false or InCombatLockdown() then return end
+  pcall(G.upgrades)
+  local map = G.upMap or {}
+  local function upd(b)
+    local bag = b.GetBagID and b:GetBagID() or (b:GetParent() and b:GetParent():GetID())
+    local slot = b:GetID()
+    mark(b, bag and slot and map[bag .. ':' .. slot] ~= nil)
+  end
+  eachButton(_G.ContainerFrameCombinedBags, upd)
+  for i = 1, 13 do eachButton(_G['ContainerFrame' .. i], upd) end
+end
+-- prekreslit, kdyz se batoh otevre / zmeni (hook = bez taintu)
+local function hookFrame(fr)
+  if fr and not fr.cmHooked then
+    fr.cmHooked = true
+    if fr.UpdateItems then hooksecurefunc(fr, 'UpdateItems', function() pcall(G.refreshBags) end) end
+    fr:HookScript('OnShow', function() if C_Timer then C_Timer.After(0.05, function() pcall(G.refreshBags) end) end end)
+  end
+end
+local hk = CreateFrame('Frame')
+hk:RegisterEvent('PLAYER_LOGIN')
+hk:SetScript('OnEvent', function()
+  pcall(hookFrame, _G.ContainerFrameCombinedBags)
+  for i = 1, 13 do pcall(hookFrame, _G['ContainerFrame' .. i]) end
+end)
 
 ------------------------------------------------------------------------------------------
 -- Tip v panelu: mimo boj a bez cile nabidni lepsi kus z batohu (klik = nasadit)
