@@ -6,7 +6,7 @@
 local ADDON, ns = ...
 local _, playerClass = UnitClass('player')
 ns.class = playerClass
-ns.enabled = (playerClass == 'MAGE' or playerClass == 'WARLOCK' or playerClass == 'PALADIN')
+ns.enabled = (playerClass == 'MAGE' or playerClass == 'WARLOCK' or playerClass == 'PALADIN' or playerClass == 'DRUID')
 
 local issecret = issecretvalue or function() return false end
 ns.issecret = issecret
@@ -117,7 +117,18 @@ local PALADIN_SPELLS = {
   'Greater Blessing of Wisdom', 'Greater Blessing of Kings', 'Greater Blessing of Sanctuary', 'Redemption',
   'Will to Survive', 'Perception',
 }
-ns.SPELLS = (playerClass == 'WARLOCK') and WARLOCK_SPELLS or (playerClass == 'PALADIN') and PALADIN_SPELLS or MAGE_SPELLS
+local DRUID_SPELLS = {
+  'Attack', 'Wrath', 'Moonfire', 'Starfire', 'Insect Swarm', 'Hurricane', 'Entangling Roots', "Nature's Grasp", 'Faerie Fire',
+  'Faerie Fire (Feral)', 'Hibernate', 'Soothe Animal', 'Barkskin', 'Innervate', 'Moonkin Form', 'Thorns', 'Mark of the Wild',
+  'Gift of the Wild', 'Healing Touch', 'Regrowth', 'Rejuvenation', 'Swiftmend', "Nature's Swiftness", 'Tranquility',
+  'Wild Growth', 'Rebirth', 'Revive', 'Remove Curse', 'Cure Poison', 'Abolish Poison',
+  'Bear Form', 'Dire Bear Form', 'Cat Form', 'Travel Form', 'Aquatic Form', 'Maul', 'Swipe', 'Growl', 'Demoralizing Roar',
+  'Enrage', 'Bash', 'Frenzied Regeneration', 'Challenging Roar', 'Feral Charge', 'Lacerate',
+  'Claw', 'Rake', 'Rip', 'Ferocious Bite', 'Shred', 'Ravage', 'Pounce', 'Prowl', "Tiger's Fury", 'Dash', 'Cower',
+  'Will to Survive', 'Perception', 'Read Leyline',
+}
+ns.SPELLS = (playerClass == 'WARLOCK') and WARLOCK_SPELLS or (playerClass == 'PALADIN') and PALADIN_SPELLS
+  or (playerClass == 'DRUID') and DRUID_SPELLS or MAGE_SPELLS
 -- Zakladni cooldowny (prepisou se skutecnymi, ktere klient ukaze mimo boj)
 ns.BASE_CD = {
   ['Frost Nova'] = 25, ['Cone of Cold'] = 10, ['Fire Blast'] = 8, ['Counterspell'] = 24, ['Ice Barrier'] = 30,
@@ -133,15 +144,21 @@ ns.BASE_CD = {
   ['Exorcism'] = 15, ['Consecration'] = 8, ['Holy Shock'] = 30, ['Divine Protection'] = 300, ['Divine Shield'] = 300,
   ['Lay on Hands'] = 3600, ['Blessing of Protection'] = 300, ['Holy Wrath'] = 60, ["Avenger's Shield"] = 30,
   ['Holy Shield'] = 10, ['Repentance'] = 60, ['Turn Undead'] = 30, ['Divine Favor'] = 120, ['Blessing of Freedom'] = 20,
+  -- druid
+  ["Nature's Grasp"] = 60, ['Enrage'] = 60, ['Growl'] = 8, ['Bash'] = 60, ['Barkskin'] = 60, ['Innervate'] = 360,
+  ['Swiftmend'] = 15, ["Nature's Swiftness"] = 180, ['Hurricane'] = 60, ['Frenzied Regeneration'] = 180,
+  ['Challenging Roar'] = 600, ['Dash'] = 300, ['Feral Charge'] = 15, ['Rebirth'] = 1800, ['Tranquility'] = 300,
+  ["Tiger's Fury"] = 1, ['Read Leyline'] = 120, ['Faerie Fire (Feral)'] = 6,
 }
 -- Kouzla bez globalniho cooldownu
 ns.OFF_GCD = { ['Cold Snap'] = true, ['Icy Veins'] = true, ['Presence of Mind'] = true, ['Counterspell'] = true,
   ['Will to Survive'] = true, ['Perception'] = true, ['Amplify Curse'] = true, ['Fel Domination'] = true,
-  ['Arcane Power'] = true, ['Combustion'] = true }
+  ['Arcane Power'] = true, ['Combustion'] = true, ['Maul'] = true, ["Nature's Swiftness"] = true }
 -- Mrazive cooldowny, ktere Cold Snap resetuje
 ns.FROST_CDS = { 'Frost Nova', 'Cone of Cold', 'Ice Barrier', 'Ice Block', 'Icy Veins', 'Ice Lance', 'Cryoblast', 'Frost Ward' }
 ns.CHANNEL = { ['Blizzard'] = 8, ['Evocation'] = 8, ['Arcane Missiles'] = 5,
-  ['Drain Life'] = 5, ['Drain Soul'] = 15, ['Drain Mana'] = 5, ['Health Funnel'] = 10, ['Rain of Fire'] = 8, ['Hellfire'] = 15 }
+  ['Drain Life'] = 5, ['Drain Soul'] = 15, ['Drain Mana'] = 5, ['Health Funnel'] = 10, ['Rain of Fire'] = 8, ['Hellfire'] = 15,
+  ['Tranquility'] = 10, ['Hurricane'] = 10 }
 
 ns.S = {}         -- name -> {id, icon, cast, cost, known}
 ns.ranks = {}     -- name -> { id ranku 1, id ranku 2, ... }
