@@ -285,12 +285,17 @@ function G.upgrades(force)
   local getNum = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
   local getInfo = C_Container and C_Container.GetContainerItemInfo
   G.lastAll = {}
+  G.sellMap = {}
   if not (getNum and getInfo) then return list end
   local lvl = safeNum(UnitLevel('player')) or 60
   for bag = 0, 4 do
     for slot = 1, safeNum(pc(getNum, bag)) or 0 do
       local info = pc(getInfo, bag, slot)
       local link = type(info) == 'table' and safe(info.hyperlink)
+      -- seda vec (junk) = na prodej
+      if type(link) == 'string' and safeNum(info.quality) == 0 and not safeBool(info.hasNoValue) then
+        G.sellMap[bag .. ':' .. slot] = true
+      end
       if type(link) == 'string' and equipLocOf(link) and SLOTS[equipLocOf(link)] then
         local st, blocked, req = G.parse(tipData('bag', bag, slot, link))
         local why
@@ -303,6 +308,10 @@ function G.upgrades(force)
           if not pct then why = 'nesrovnavam (trinket / uz mas)' end
         end
         G.lastAll[#G.lastAll + 1] = { link = link, pct = pct, why = why }
+        -- na prodej: neumis nosit, nebo neni vylepseni (budouci vylepseni "od lvl X" a trinkety nechame)
+        if not safeBool(info.hasNoValue) and ((st and blocked) or (not why and pct <= 0.02)) then
+          G.sellMap[bag .. ':' .. slot] = true
+        end
         if not why then
           if pct > 0.03 and new > 1 then
             list[#list + 1] = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot }
@@ -356,8 +365,11 @@ end
 
 -- zmena gearu / batohu -> prepocitat
 local f = CreateFrame('Frame')
-for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_LEVEL_UP' }) do pcall(f.RegisterEvent, f, e) end
-f:SetScript('OnEvent', function()
+for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_LEVEL_UP', 'MERCHANT_SHOW', 'MERCHANT_CLOSED' }) do
+  pcall(f.RegisterEvent, f, e)
+end
+f:SetScript('OnEvent', function(_, ev)
+  if ev == 'MERCHANT_SHOW' then G.merchant = true elseif ev == 'MERCHANT_CLOSED' then G.merchant = false end
   G.invalidate() upCache = nil bbCache = nil
   if C_Timer and G.refreshBags then C_Timer.After(0.2, function() pcall(G.refreshBags) end) end
 end)
@@ -366,6 +378,7 @@ end)
 -- Zelena sipka v rohu itemu v batohu (jako Pawn): vylepseni pro tebe
 ------------------------------------------------------------------------------------------
 local ARROW = 'Interface\\AddOns\\ClaudeMaster\\Textures\\UpgradeArrow'   -- sipky z addonu Pawn (CC BY-NC-ND, viz Textures)
+local COIN_T = 'Interface\\MoneyFrame\\UI-GoldIcon'
 local function mark(btn, on)
   if not btn then return end
   if on and not btn.cmUp then
@@ -374,6 +387,15 @@ local function mark(btn, on)
     btn.cmUp = t
   end
   if btn.cmUp then btn.cmUp:SetShown(on and true or false) end
+end
+local function sellMark(btn, on)
+  if not btn then return end
+  if on and not btn.cmSell then
+    local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
+    t:SetTexture(COIN_T) t:SetSize(14, 14) t:SetPoint('BOTTOMRIGHT', btn, 'BOTTOMRIGHT', -1, 1)
+    btn.cmSell = t
+  end
+  if btn.cmSell then btn.cmSell:SetShown(on and true or false) end
 end
 local function eachButton(frame, fn)
   if not frame or not frame:IsShown() then return end
@@ -395,7 +417,10 @@ function G.refreshBags()
   local function upd(b)
     local bag = b.GetBagID and b:GetBagID() or (b:GetParent() and b:GetParent():GetID())
     local slot = b:GetID()
-    mark(b, bag and slot and map[bag .. ':' .. slot] ~= nil)
+    local key = bag and slot and (bag .. ':' .. slot)
+    local up = key and map[key] ~= nil
+    mark(b, up)
+    sellMark(b, G.merchant and key and not up and G.sellMap and G.sellMap[key])
   end
   eachButton(_G.ContainerFrameCombinedBags, upd)
   for i = 1, 13 do eachButton(_G['ContainerFrame' .. i], upd) end
