@@ -12,7 +12,7 @@ ns.Druid = DR
 
 local FORMS = { ['Bear Form'] = 'bear', ['Dire Bear Form'] = 'bear', ['Cat Form'] = 'cat', ['Travel Form'] = 'travel',
   ['Aquatic Form'] = 'aquatic', ['Moonkin Form'] = 'moonkin', ['Flight Form'] = 'travel', ['Swift Flight Form'] = 'travel' }
-local DOTS = { Moonfire = 12, ['Insect Swarm'] = 12, Rake = 9, Rip = 12, ['Faerie Fire'] = 40, ['Faerie Fire (Feral)'] = 40,
+local DOTS = { Moonfire = 9, ['Insect Swarm'] = 12, Rake = 9, Rip = 12, ['Faerie Fire'] = 40, ['Faerie Fire (Feral)'] = 40,
   ['Demoralizing Roar'] = 30, ['Entangling Roots'] = 12, Lacerate = 15 }
 local HOTS = { Rejuvenation = 12, Regrowth = 21 }
 
@@ -168,6 +168,7 @@ E.context = function()
   local m = inR('Maul')
   if m == nil then m = inR('Claw') end
   if m ~= nil and (c.form == 'bear' or c.form == 'cat') then c.near = m end
+  c.chargeR = inR('Feral Charge')
   -- buffy (mimo boj): Mark of the Wild, Thorns
   c.motw = unitBuff('player', { 'Mark of the Wild', 'Gift of the Wild' })
   c.thorns = unitBuff('player', { 'Thorns' })
@@ -389,6 +390,14 @@ local function decide(c, s)
     -- v parte: mob nebije tebe -> Growl
     if c.group and not c.aggro and not c.tankUp and ready('Growl') then return A('Growl', 'Mob nebije tebe: Growl') end
     if (c.rage or 0) < 10 and ready('Enrage') and c.near then return A('Enrage', 'Malo rage: Enrage') end
+    -- v parte bije vic mobu spoluhrace: Challenging Roar
+    if c.group and aoe >= 3 and ready('Challenging Roar') then
+      local hit = 0
+      for _, m in ipairs((c.party and c.party.members) or {}) do
+        if m.alive and (m.mobs or 0) > 0 and not m.unit:find('pet') then hit = hit + 1 end
+      end
+      if hit >= 2 then return A('Challenging Roar', 'Moby bijou partu: Challenging Roar', 'spell', { urgent = true }) end
+    end
     if dotLeft('Demoralizing Roar') <= s.t + 2 and ready('Demoralizing Roar') and c.near and (danger or aoe >= 2)
       and not s.used.demo and (c.rage == nil or c.rage >= 10) then
       s.used.demo = true
@@ -405,6 +414,7 @@ local function decide(c, s)
       s.used.Maul = true
       return A('Maul', 'Maul (silnejsi pristi uder)')
     end
+    if not c.near and c.chargeR and ready('Feral Charge') then return A('Feral Charge', 'Feral Charge k cili') end
     if not c.near then return A('Attack', 'Dojdi k cili (medved)', 'wait', { dur = 1.5 }) end
     return A('Attack', 'Auto attack, sbirej rage', 'wait', { dur = 1.5 })
   end
@@ -417,6 +427,8 @@ local function decide(c, s)
       return A('Cat Form', 'Malo HP: vyjdi z kocky (klik) a vylec se', 'spell', { urgent = true })
     end
     if not c.near then return A('Attack', 'Dojdi k cili (kocka)', 'wait', { dur = 1.5 }) end
+    -- v parte mas aggro jako kocka: Cower
+    if c.group and c.aggro and c.tankUp and ready('Cower') then return A('Cower', 'Mas aggro: Cower') end
     local cp = (c.combo or 0) + (s.cp or 0)
     local en = c.energy
     if cp >= 5 or (cp >= 3 and c.tLow20) then
@@ -430,6 +442,7 @@ local function decide(c, s)
       s.used.Rake = true s.cp = (s.cp or 0) + 1
       return A('Rake', 'Rake (krvaceni)')
     end
+    if ready('Primal Bite') then s.cp = (s.cp or 0) + 1 return A('Primal Bite', 'Primal Bite') end
     if ready('Shred') and not c.aggro and c.group then s.cp = (s.cp or 0) + 1 return A('Shred', 'Shred (jsi za zady)') end
     if ready('Claw') then s.cp = (s.cp or 0) + 1 return A('Claw', 'Claw (combo body)') end
     return A('Attack', 'Auto attack, cekej na energii', 'wait', { dur = 1 })
@@ -543,6 +556,7 @@ local TRACK = { "Nature's Grasp", 'Enrage', 'Growl', 'Bash', 'Barkskin', 'Innerv
 function E.plan(c)
   local s = { t = 0, mana = c.mana or 1, cd = {}, used = {}, step = 1, form = c.form }
   for _, n in ipairs(TRACK) do if ns.known(n) then s.cd[n] = ns.cdLeft(n) end end
+  for _, n in ipairs(ns.SPELLS) do if not s.cd[n] and ns.known(n) and ns.cdFor(n) > 1.5 then s.cd[n] = ns.cdLeft(n) end end
   if c.castName and not c.channel then s.t = c.castLeft end
   s.t = math.max(s.t, c.gcd)
   local startT = s.t

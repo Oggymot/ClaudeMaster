@@ -19,7 +19,9 @@ local BLESS = { 'Blessing of Might', 'Blessing of Wisdom', 'Blessing of Kings', 
   'Greater Blessing of Kings', 'Greater Blessing of Sanctuary' }
 local SEAL_SET = {} for _, n in ipairs(SEALS) do SEAL_SET[n] = true end
 local SEAL_DUR, BLESS_DUR = 30, 600
-local STRIKES = { 'Crusader Strike', 'Holy Strike' }
+local STRIKES = { 'Crusader Strike', 'Holy Strike', 'Hammer of the Righteous' }
+-- Cleanse (42) umi i magii, Purify jen jed/nemoc
+local function cure() return ns.known('Cleanse') and 'Cleanse' or 'Purify' end
 
 -- Buffy hrace mimo boj: projit vsechny podle indexu (hledani podle jmena na Foreveru
 -- sealy nenachazelo). Vysledek: jmeno -> expirationTime (0 = bez konce). V boji nil.
@@ -212,12 +214,13 @@ local function decide(c, s)
     if c.rf == false and c.shield and c.group and not town and ready('Righteous Fury') then
       return A('Righteous Fury', 'Tankujes se stitem: Righteous Fury (vic aggra)')
     end
-    -- jed / nemoc na tobe nebo na partakovi: Purify
-    if ready('Purify') then
-      if dispellable('player') then return A('Purify', 'Mas na sobe jed/nemoc: Purify', 'spell', { unit = 'player' }) end
+    -- jed / nemoc (Cleanse i magie) na tobe nebo na partakovi
+    local cu = cure()
+    if ready(cu) then
+      if dispellable('player') then return A(cu, 'Mas na sobe debuff: ' .. cu, 'spell', { unit = 'player' }) end
       for _, m in ipairs((c.party and c.party.members) or {}) do
         if m.alive and not m.unit:find('pet') and dispellable(m.unit) then
-          return A('Purify', ('%s ma jed/nemoc: Purify'):format(m.name or '?'), 'spell', { unit = m.unit })
+          return A(cu, ('%s ma debuff: %s'):format(m.name or '?', cu), 'spell', { unit = m.unit })
         end
       end
     end
@@ -280,6 +283,11 @@ local function decide(c, s)
     s.shield = true
     return A('Divine Protection', 'Malo HP: Divine Protection, pak se vylec', 'spell', { urgent = true })
   end
+  -- Templar's Bulwark (talent): absorb stit na 8 s, take dava Forbearance
+  if s.step == 1 and danger and php < 40 and not c.forb and ready("Templar's Bulwark") then
+    s.shield = true
+    return A("Templar's Bulwark", "Malo HP: Templar's Bulwark (stit)", 'spell', { urgent = true })
+  end
   -- malo HP a mob te bije: omrac ho Hammer of Justice a vylec se (stun = 3+ s klidu na Holy Light)
   if s.step == 1 and danger and php < 40 and not c.healerUp and c.hostile and c.hojR and ready('Hammer of Justice')
     and not shielded() and bestHeal(false) then
@@ -333,14 +341,19 @@ local function decide(c, s)
     end
   end
   -- jed / nemoc v boji (kdyz to hra prozradi)
-  if s.step == 1 and ready('Purify') and dispellable('player') == true and php < 70 then
-    return A('Purify', 'Jed/nemoc na tobe: Purify', 'spell', { unit = 'player' })
+  if s.step == 1 and ready(cure()) and dispellable('player') == true and php < 70 then
+    return A(cure(), 'Debuff na tobe: ' .. cure(), 'spell', { unit = 'player' })
   end
   if not c.hostile then return nil end
   -- preruseni / stun kouzlici mobky
   if c.tCasting and c.interruptible and c.hojR and ready('Hammer of Justice') then
     s.used['Hammer of Justice'] = true
     return A('Hammer of Justice', 'Mob kouzli: Hammer of Justice (stun = preruseni)', 'spell', { urgent = true })
+  end
+  -- Repentance (talent): HoJ je na cooldownu, mob kouzli -> uspi ho
+  if c.tCasting and c.interruptible and c.near and ready('Repentance') and not ready('Hammer of Justice') then
+    s.used.Repentance = true
+    return A('Repentance', 'Mob kouzli: Repentance (preruseni)', 'spell', { urgent = true })
   end
   -- mob, ktery pri malo HP utika (humanoid / vime z minula): omracit tesne pred utekem, at nepritahne dalsi
   local mob = c.mob
@@ -357,7 +370,20 @@ local function decide(c, s)
     s.seal = seal
     return A(seal, c.seal and 'Seal dobiha - obnov ho' or 'Chybi seal: ' .. seal)
   end
+  local aoe = c.enemies.cluster or c.enemies.combat or 0
+  -- Holy Shield: se stitem, kdyz te moby bijou (blok + holy damage)
+  if c.shield and danger and ready('Holy Shield') and not s.used['Holy Shield'] then
+    s.used['Holy Shield'] = true
+    return A('Holy Shield', 'Moby te bijou: Holy Shield')
+  end
   if c.tLow20 and ready('Hammer of Wrath') then return A('Hammer of Wrath', 'Cil pod 20 %: Hammer of Wrath') end
+  -- Holy Wrath: undead/demon kolem tebe
+  if c.undead and c.near and ready('Holy Wrath') and (aoe >= 2 or not c.manaKnown or s.mana > 0.5) then
+    return A('Holy Wrath', 'Undead/demon: Holy Wrath')
+  end
+  if aoe >= 2 and c.near and ready('Hammer of the Righteous') then
+    return A('Hammer of the Righteous', ('%d moby: Hammer of the Righteous'):format(aoe))
+  end
   if c.judgeR and ready('Judgement') then return A('Judgement', 'Judgement (seal zustava)') end
   -- Swift Judgement (ret talent): druhy Judgement s vlastnim cooldownem
   if c.judgeR and ready('Swift Judgement') then return A('Swift Judgement', 'Swift Judgement (vlastni cooldown)') end
@@ -367,7 +393,6 @@ local function decide(c, s)
       if ready(n) then return A(n, n) end
     end
   end
-  local aoe = c.enemies.cluster or c.enemies.combat or 0
   if aoe >= 2 and c.near and ready('Consecration') and (not c.manaKnown or s.mana > 0.3) then
     return A('Consecration', ('%d moby kolem: Consecration'):format(aoe))
   end
@@ -403,12 +428,10 @@ local function apply(c, s, a)
   s.t = s.t + (ns.OFF_GCD[n] and 0 or math.max(1.5, ct))
 end
 
-local TRACK = { 'Judgement', 'Swift Judgement', 'Crusader Strike', 'Holy Strike', 'Hammer of Justice', 'Hammer of Wrath', 'Exorcism',
-  'Consecration', 'Holy Shock', 'Divine Protection', 'Divine Shield', 'Lay on Hands' }
-
 function E.plan(c)
   local s = { t = 0, mana = c.mana, cd = {}, used = {}, step = 1 }
-  for _, n in ipairs(TRACK) do if ns.known(n) then s.cd[n] = ns.cdLeft(n) end end
+  -- cooldowny vsech znamych kouzel (i tech, ktera prijdou s levelem)
+  for _, n in ipairs(ns.SPELLS) do if ns.known(n) and ns.cdFor(n) > 1.5 then s.cd[n] = ns.cdLeft(n) end end
   if c.castName and not c.channel then s.t = c.castLeft end
   s.t = math.max(s.t, c.gcd)
   local startT = s.t

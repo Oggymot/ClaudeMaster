@@ -115,6 +115,7 @@ local PALADIN_SPELLS = {
   'Frost Resistance Aura', 'Fire Resistance Aura', 'Blessing of Might', 'Blessing of Wisdom', 'Blessing of Kings',
   'Blessing of Sanctuary', 'Blessing of Light', 'Blessing of Salvation', 'Greater Blessing of Might',
   'Greater Blessing of Wisdom', 'Greater Blessing of Kings', 'Greater Blessing of Sanctuary', 'Redemption',
+  'Divine Intervention', 'Blessing of Sacrifice', "Light's Vigil",
   'Will to Survive', 'Perception',
 }
 local DRUID_SPELLS = {
@@ -124,7 +125,7 @@ local DRUID_SPELLS = {
   'Wild Growth', 'Rebirth', 'Revive', 'Remove Curse', 'Cure Poison', 'Abolish Poison',
   'Bear Form', 'Dire Bear Form', 'Cat Form', 'Travel Form', 'Aquatic Form', 'Maul', 'Swipe', 'Growl', 'Demoralizing Roar',
   'Enrage', 'Bash', 'Frenzied Regeneration', 'Challenging Roar', 'Feral Charge', 'Lacerate',
-  'Claw', 'Rake', 'Rip', 'Ferocious Bite', 'Shred', 'Ravage', 'Pounce', 'Prowl', "Tiger's Fury", 'Dash', 'Cower',
+  'Claw', 'Rake', 'Rip', 'Ferocious Bite', 'Primal Bite', 'Shred', 'Ravage', 'Pounce', 'Prowl', "Tiger's Fury", 'Dash', 'Cower',
   'Will to Survive', 'Perception', 'Read Leyline',
 }
 ns.SPELLS = (playerClass == 'WARLOCK') and WARLOCK_SPELLS or (playerClass == 'PALADIN') and PALADIN_SPELLS
@@ -142,13 +143,14 @@ ns.BASE_CD = {
   -- paladin
   ['Judgement'] = 10, ['Holy Strike'] = 10, ['Crusader Strike'] = 6, ['Hammer of Justice'] = 60, ['Hammer of Wrath'] = 6,
   ['Exorcism'] = 15, ['Consecration'] = 8, ['Holy Shock'] = 30, ['Divine Protection'] = 300, ['Divine Shield'] = 300,
-  ['Lay on Hands'] = 3600, ['Blessing of Protection'] = 300, ['Holy Wrath'] = 60, ["Avenger's Shield"] = 30,
+  ['Lay on Hands'] = 1200, ['Divine Intervention'] = 3600, ['Blessing of Sacrifice'] = 30,
+  ['Hammer of the Righteous'] = 6, ["Templar's Bulwark"] = 300, ['Swift Judgement'] = 60, ['Blessing of Protection'] = 300, ['Holy Wrath'] = 60, ["Avenger's Shield"] = 30,
   ['Holy Shield'] = 10, ['Repentance'] = 60, ['Turn Undead'] = 30, ['Divine Favor'] = 120, ['Blessing of Freedom'] = 20,
   -- druid
   ["Nature's Grasp"] = 60, ['Enrage'] = 60, ['Growl'] = 8, ['Bash'] = 60, ['Barkskin'] = 60, ['Innervate'] = 360,
   ['Swiftmend'] = 15, ["Nature's Swiftness"] = 180, ['Hurricane'] = 60, ['Frenzied Regeneration'] = 180,
   ['Challenging Roar'] = 600, ['Dash'] = 300, ['Feral Charge'] = 15, ['Rebirth'] = 1800, ['Tranquility'] = 300,
-  ["Tiger's Fury"] = 1, ['Read Leyline'] = 120, ['Faerie Fire (Feral)'] = 6,
+  ["Tiger's Fury"] = 1, ['Read Leyline'] = 120, ['Faerie Fire (Feral)'] = 6, ['Primal Bite'] = 6, ['Cower'] = 10,
 }
 -- Kouzla bez globalniho cooldownu
 ns.OFF_GCD = { ['Cold Snap'] = true, ['Icy Veins'] = true, ['Presence of Mind'] = true, ['Counterspell'] = true,
@@ -162,6 +164,7 @@ ns.CHANNEL = { ['Blizzard'] = 8, ['Evocation'] = 8, ['Arcane Missiles'] = 5,
 
 ns.S = {}         -- name -> {id, icon, cast, cost, known}
 ns.ranks = {}     -- name -> { id ranku 1, id ranku 2, ... }
+ns.bookLine = {}  -- name -> jmeno zalozky spellbooku (false = General)
 function ns.rankCount(name) local r = ns.ranks[name] return r and #r or 0 end
 function ns.rankId(name, k) local r = ns.ranks[name] return r and r[k] end
 ns.castAt = {}    -- name -> GetTime() posledniho seslani
@@ -175,6 +178,7 @@ local function readSpellbook()
     for l = 1, lines do
       local li = pc(C_SpellBook.GetSpellBookSkillLineInfo, l)
       if type(li) == 'table' then
+        local lname = safe(li.name)
         local off, num = safeNum(li.itemIndexOffset) or 0, safeNum(li.numSpellBookItems) or 0
         for i = off + 1, off + num do
           local it = pc(C_SpellBook.GetSpellBookItemInfo, i, bank)
@@ -183,6 +187,7 @@ local function readSpellbook()
             local passive = safeBool(it.isPassive)
             if type(name) == 'string' and id and not passive then
               found[name] = id   -- posledni = nejvyssi rank
+              ns.bookLine[name] = l > 1 and lname ~= 'General' and lname or false
               ns.ranks[name] = ns.ranks[name] or {}
               local r = ns.ranks[name]
               if r[#r] ~= id then r[#r + 1] = id end
@@ -196,10 +201,12 @@ local function readSpellbook()
 end
 
 function ns.scanSpells()
-  ns.ranks = {}
+  ns.ranks, ns.bookLine = {}, {}
   pcall(ns.scanTalents)
   local book = readSpellbook()
   ns.lastBook = book
+  -- nova kouzla, ktera addon nezna: klasifikace z popisu (AutoSpells.lua)
+  if ns.AutoSpells then pcall(ns.AutoSpells.scan, book) end
   for _, name in ipairs(ns.SPELLS) do
     local e = ns.S[name] or {}
     local id = book[name]

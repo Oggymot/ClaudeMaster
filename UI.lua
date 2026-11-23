@@ -964,6 +964,7 @@ local HELP = {
   '/cm talents - co addon vycetl z talentu',
   '/cm dump - ulozi talenty, spelly, itemy a staty do souboru (po /reload)',
   '/cm sdilej - sdilet partakum questy, ktere nemaji (vidi to jejich addon)',
+  '/cm auto - nova kouzla (rozpoznana z popisu); /cm auto <jmeno> attack/aoe/heal/buff/stop/defense/ignore; /cm auto off',
   '/cm gear [spec] - lepsi gear z batohu (vahy: frost/arcane/destro/ret/prot/holy/resto/balance/feral), /cm vahy str=1 ... vlastni',
   '/cm macro - vytvori makra: utok sam vybere dalsiho nepritele' .. (ns.class == 'WARLOCK' and ', DoTy na jedno tlacitko' or ''),
   '/cm status - co addon zjistil (pro ladeni)',
@@ -1030,6 +1031,8 @@ SlashCmdList.CLAUDEMASTER = function(msg)
     if ns.Quests then ns.Quests.toggle(arg) end
   elseif cmd == 'duo' then
     if ns.Duo then ns.Duo.status() end
+  elseif cmd == 'auto' then
+    if ns.AutoSpells then ns.AutoSpells.cmd(arg) end
   elseif cmd == 'sdilej' or cmd == 'share' then
     if ns.Quests and ns.Quests.shareAll then ns.Quests.shareAll() end
   elseif cmd == 'zmeny' or cmd == 'patch' then
