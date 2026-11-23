@@ -43,12 +43,13 @@ function G.spec()
   if s and G.SPECS[s] then return s end
   return CLASS_DEFAULT[ns.class] or 'generic'
 end
-local wCache, wKey
-function G.weights()
-  local s = G.spec()
-  if s == 'custom' then return ns.db.gearWeights end
-  local lvl = safeNum(UnitLevel('player')) or 60
-  if wKey == s .. lvl then return wCache end
+local wCache = {}
+-- vahy pro libovolny spec a level (i pro partaka v parte)
+function G.weightsFor(s, lvl)
+  if s == 'custom' then return ns.db.gearWeights or {} end
+  if not G.SPECS[s] then s = 'generic' end
+  lvl = lvl or 60
+  if wCache[s .. lvl] then return wCache[s .. lvl] end
   local t = (lvl - 45) / 15
   local w = {}
   for k, v in pairs(G.SPECS[s]) do
@@ -57,9 +58,10 @@ function G.weights()
       else w[k] = v[1] * math.max(0.3, lvl / 45) end
     elseif type(v) == 'number' then w[k] = v end
   end
-  wCache, wKey = w, s .. lvl
+  wCache[s .. lvl] = w
   return w
 end
+function G.weights() return G.weightsFor(G.spec(), safeNum(UnitLevel('player')) or 60) end
 
 ------------------------------------------------------------------------------------------
 -- Cteni statu z radku tooltipu
@@ -96,20 +98,65 @@ local function parseLine(t, st)
   v = t:match('dodge an attack by (%d+)') if v then st.dodge = (st.dodge or 0) + num(v) return end
   v = t:match('parry an attack by (%d+)') if v then st.parry = (st.parry or 0) + num(v) return end
   v = t:match('block attacks with a shield by (%d+)') if v then st.blockpct = (st.blockpct or 0) + num(v) return end
+  v = t:match('[Ss]pell [Dd]amage by up to (%d+)') or t:match('[Ss]pell [Pp]ower by (%d+)')
+  if v then st.sp = (st.sp or 0) + num(v) return end
+  local lo = t:lower()
+  for name, key in pairs(STAT) do
+    v = lo:match(name:lower() .. ' by (%d+)')
+    if v then st[key] = (st[key] or 0) + num(v) return end
+  end
+end
+local function total(st) local n = 0 for _, x in pairs(st) do n = n + x end return n end
+local function secs(n, u)
+  n = tonumber(n) or 0
+  u = (u or ''):lower()
+  if u:find('^min') then return n * 60 elseif u:find('^hour') then return n * 3600 end
+  return n
+end
+-- "Use:" efekt: prumerny prinos = bonus * trvani / cooldown (odhad); co nejde spocitat -> fl.unk
+local function useLine(t, st, fl)
+  local d, du = t:match('for (%d+) (%a+)')
+  local dur = d and secs(d, du)
+  local cd
+  local cm, cs = t:match('%((%d+) Min (%d+) Sec Cooldown%)')
+  if cm then cd = tonumber(cm) * 60 + tonumber(cs)
+  else
+    local c, cu = t:match('%((%d+) (%a+) Cooldown%)')
+    if c then cd = secs(c, cu) end
+  end
+  local body = t:gsub('^Use: ', '')
+  local tmp = {}
+  parseLine('Equip: ' .. body, tmp)
+  if total(tmp) > 0 and dur and cd and cd > 0 then
+    local k = math.min(1, dur / cd)
+    for s, x in pairs(tmp) do st[s] = (st[s] or 0) + x * k end
+    fl.est = true
+  else
+    fl.unk = true
+  end
 end
 local function isRed(c)
   if type(c) ~= 'table' then return false end
   local ok, r, g, b = pcall(function() return c.r, c.g, c.b end)
   return ok and type(r) == 'number' and r > 0.9 and g < 0.3 and b < 0.3
 end
--- data = tooltip data (C_TooltipInfo / postcall) -> staty, nelze nosit?, od levelu
+-- data = tooltip data (C_TooltipInfo / postcall) -> staty, nelze nosit?, od levelu, priznaky
+-- priznaky: est = Use: odhad, unk = efekt nelze spocitat, bound = Soulbound, classes = "Classes:" radek
 function G.parse(data)
   if type(data) ~= 'table' or type(data.lines) ~= 'table' then return nil end
-  local st, blocked, reqLvl = {}, false, nil
+  local st, blocked, reqLvl, fl = {}, false, nil, {}
   for _, l in ipairs(data.lines) do
     local t = safe(l.leftText)
     if type(t) == 'string' then
-      parseLine(t, st)
+      if t:find('^Use:') then useLine(t, st, fl)
+      elseif t:find('^Chance on hit:') then fl.unk = true
+      else
+        local before = total(st)
+        parseLine(t, st)
+        if t:find('^Equip:') and total(st) == before then fl.unk = true end
+      end
+      if t == 'Soulbound' then fl.bound = true end
+      fl.classes = fl.classes or t:match('^Classes: (.+)')
       if isRed(l.leftColor) or isRed(l.rightColor) then
         local lv = t:match('^Requires Level (%d+)')
         if lv then reqLvl = tonumber(lv) elseif not t:find('^Durability') then blocked = true end
@@ -118,7 +165,7 @@ function G.parse(data)
     local r = safe(l.rightText)
     if type(r) == 'string' and isRed(l.rightColor) then blocked = true end   -- napr. "Plate" cervene = neumis
   end
-  return st, blocked, reqLvl
+  return st, blocked, reqLvl, fl
 end
 function G.score(st, w)
   if not st then return 0 end
@@ -205,7 +252,7 @@ end
 function G.compare(link, st)
   local loc = equipLocOf(link)
   local slots = loc and SLOTS[loc]
-  if not slots or loc == 'INVTYPE_TRINKET' then return nil end
+  if not slots then return nil end
   local eq = equipped()
   local new = G.score(st)
   local old, oldLink, slot
@@ -244,16 +291,38 @@ end
 ------------------------------------------------------------------------------------------
 local UP = '|TInterface\\AddOns\\ClaudeMaster\\Textures\\UpgradeArrow:14:14|t'
 local DOWN = '|TInterface\\AddOns\\ClaudeMaster\\Textures\\DowngradeArrow:14:14|t'
+local COIN_TEX = 'Interface\\MoneyFrame\\UI-GoldIcon'
 local function onItemTip(tt, data)
   if not ns.db or ns.db.gearTips == false then return end
   if tt ~= GameTooltip and tt ~= ItemRefTooltip then return end
   local okL, _, link = pcall(tt.GetItem, tt)
   link = okL and safe(link) or nil
   if type(link) ~= 'string' then return end
-  local st, blocked, req = G.parse(data)
-  if not st and C_TooltipInfo and C_TooltipInfo.GetHyperlink then st, blocked, req = G.parse(pc(C_TooltipInfo.GetHyperlink, link)) end
-  if not st then return end
+  local st, blocked, req, fl = G.parse(data)
+  if not st and C_TooltipInfo and C_TooltipInfo.GetHyperlink then st, blocked, req, fl = G.parse(pc(C_TooltipInfo.GetHyperlink, link)) end
+  fl = fl or {}
+  if st then pcall(G.myTip, tt, link, st, blocked, req, fl) end
+  -- u vendora: proc to radime prodat
+  if G.merchant and G.sellWhy then
+    local why = G.sellWhy(tt, link)
+    if why then tt:AddLine('|T' .. COIN_TEX .. ':14:14|t |cffffd100Prodat:|r |cffdddddd' .. why .. '|r', 1, 1, 1, true) end
+  end
+  -- parta s addonem: komu by se to hodilo (jen kdyz to neni Soulbound)
+  if st and not fl.bound and G.peerUps then
+    for i, p in ipairs(G.peerUps(link, st, req, fl)) do
+      if i > 3 then break end
+      local s = p.empty and ('%s |cff66ccff%s|r |cff40ff60muze vyuzit (prazdny slot)|r'):format(UP, p.name)
+        or ('%s |cff66ccff%s|r |cff40ff60+%d %%|r'):format(UP, p.name, math.floor(p.pct * 100 + 0.5))
+      if p.req then s = s .. (' |cffffcc00(od lvl %d)|r'):format(p.req) end
+      tt:AddLine(s)
+    end
+  end
+end
+function G.myTip(tt, link, st, blocked, req, fl)
   local pct, oldLink, _, _, _, partner = G.compare(link, st)
+  if fl.unk and equipLocOf(link) and SLOTS[equipLocOf(link)] then
+    tt:AddLine('|cff9aa6b8CM: efekt (proc / Use) nelze spocitat - jen staty|r')
+  end
   if not pct then return end
   local oldName = oldLink and oldLink:match('%[(.-)%]') or 'prazdny slot'
   if partner then oldName = oldName .. ' |cffffffff(s ' .. (partner:match('%[(.-)%]') or '?') .. ')|r' end
@@ -269,6 +338,7 @@ local function onItemTip(tt, data)
   else
     txt = '|cff9aa6b8CM: stejne jako ' .. oldName .. '|r'
   end
+  if fl.est and not blocked then txt = txt .. ' |cffffcc00(odhad Use:)|r' end
   tt:AddLine(txt)
 end
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
@@ -286,38 +356,54 @@ function G.upgrades(force)
   local getInfo = C_Container and C_Container.GetContainerItemInfo
   G.lastAll = {}
   G.sellMap = {}
+  G.sellByLink = {}
   if not (getNum and getInfo) then return list end
   local lvl = safeNum(UnitLevel('player')) or 60
+  local specLabel = (G.SPECS[G.spec()] or {}).label or 'tvuj spec'
   for bag = 0, 4 do
     for slot = 1, safeNum(pc(getNum, bag)) or 0 do
       local info = pc(getInfo, bag, slot)
       local link = type(info) == 'table' and safe(info.hyperlink)
+      local key = bag .. ':' .. slot
+      local value = type(link) == 'string' and not safeBool(info.hasNoValue)
+      local sell
       -- seda vec (junk) = na prodej
-      if type(link) == 'string' and safeNum(info.quality) == 0 and not safeBool(info.hasNoValue) then
-        G.sellMap[bag .. ':' .. slot] = true
-      end
+      if value and safeNum(info.quality) == 0 then sell = 'seda vec (junk)' end
+      -- materialy a recepty pro profese, ktere nemas
+      if value and not sell then sell = G.tradeWhy(link, bag, slot) end
       if type(link) == 'string' and equipLocOf(link) and SLOTS[equipLocOf(link)] then
-        local st, blocked, req = G.parse(tipData('bag', bag, slot, link))
+        local st, blocked, req, fl = G.parse(tipData('bag', bag, slot, link))
+        fl = fl or {}
         local why
         if not st then why = 'nejde precist'
         elseif blocked then why = 'neumis nosit'
         elseif req and req > lvl then why = 'od lvl ' .. req end
-        local pct, oldLink, eqSlot, new
+        local pct, oldLink, eqSlot, new, old
         if not why then
-          pct, oldLink, eqSlot, new = G.compare(link, st)
-          if not pct then why = 'nesrovnavam (trinket / uz mas)' end
+          pct, oldLink, eqSlot, new, old = G.compare(link, st)
+          if not pct then why = 'uz mas na sobe' end
         end
-        G.lastAll[#G.lastAll + 1] = { link = link, pct = pct, why = why }
-        -- na prodej: neumis nosit, nebo neni vylepseni (budouci vylepseni "od lvl X" a trinkety nechame)
-        if not safeBool(info.hasNoValue) and ((st and blocked) or (not why and pct <= 0.02)) then
-          G.sellMap[bag .. ':' .. slot] = true
+        G.lastAll[#G.lastAll + 1] = { link = link, pct = pct, why = why, est = fl.est, unk = fl.unk }
+        -- na prodej: neumis nosit, nebo neni vylepseni (budouci "od lvl X" a neznamy proc nechame)
+        if value and not sell then
+          local oldName = oldLink and oldLink:match('%[(.-)%]') or '?'
+          if st and blocked then
+            sell = fl.classes and ('jen pro: ' .. fl.classes) or 'tvoje trida to nosit neumi'
+          elseif not why and pct <= 0.02 and not fl.unk then
+            if old and old > 0 and new < old * 0.15 then sell = ('pro %s skoro bez uzitku (spatne staty)'):format(specLabel)
+            elseif pct < -0.02 then sell = ('horsi nez %s (%d %%)'):format(oldName, math.floor(pct * 100 - 0.5))
+            else sell = 'stejne jako ' .. oldName end
+          end
         end
+        -- partak v parte by to vyuzil (a jde to predat) -> neprodavat, tooltip rekne komu
+        if sell and st and not fl.bound and G.peerUps and G.peerUps(link, st, req, fl)[1] then sell = nil end
         if not why then
           if pct > 0.03 and new > 1 then
             list[#list + 1] = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot }
           end
         end
       end
+      if sell then G.sellMap[key] = sell G.sellByLink[link] = sell end
     end
   end
   table.sort(list, function(a, b) return a.pct > b.pct end)
@@ -326,6 +412,225 @@ function G.upgrades(force)
   for _, u in ipairs(list) do G.upMap[u.bag .. ':' .. u.bslot] = u end
   return list
 end
+
+-- duvod prodeje pro tooltip (podle tlacitka v batohu, jinak podle odkazu)
+function G.sellWhy(tt, link)
+  if not G.sellMap then pcall(G.upgrades) end
+  local ok, owner = pcall(tt.GetOwner, tt)
+  if ok and owner and owner.GetID then
+    -- jen tlacitka batohu (ne sloty postavy: tam GetID = cislo slotu)
+    local okB, bag = pcall(function()
+      if owner.GetBagID then return owner:GetBagID() end
+      local par = owner:GetParent()
+      local pn = par and par:GetName()
+      if pn and pn:find('^ContainerFrame') then return par:GetID() end
+    end)
+    local slot = owner:GetID()
+    local w = okB and bag and slot and G.sellMap and G.sellMap[bag .. ':' .. slot]
+    if w then return w end
+  end
+  return G.sellByLink and G.sellByLink[link]
+end
+
+------------------------------------------------------------------------------------------
+-- Profese: materialy / recepty, ktere nevyuzijes
+------------------------------------------------------------------------------------------
+local PROFMAT = {
+  Cloth = { 'Tailoring', 'First Aid' }, Leather = { 'Leatherworking' },
+  ['Metal & Stone'] = { 'Blacksmithing', 'Engineering', 'Jewelcrafting' }, Herb = { 'Alchemy', 'Inscription' },
+  Cooking = { 'Cooking' }, Meat = { 'Cooking' }, Enchanting = { 'Enchanting' }, Parts = { 'Engineering' },
+  Devices = { 'Engineering' }, Explosives = { 'Engineering' }, Jewelcrafting = { 'Jewelcrafting' },
+}
+local profCache, profAt = nil, -99
+local function myProfs()
+  if profCache and GetTime() - profAt < 30 then return profCache end
+  local t, any = {}, false
+  if GetProfessions and GetProfessionInfo then
+    any = true
+    local list = { pc(GetProfessions) }
+    for i = 1, 6 do
+      local idx = safeNum(list[i])
+      local n = idx and safe(pc(GetProfessionInfo, idx))
+      if type(n) == 'string' then t[n] = true end
+    end
+  end
+  if GetNumSkillLines and GetSkillLineInfo then
+    any = true
+    for i = 1, safeNum(pc(GetNumSkillLines)) or 0 do
+      local n, hdr = pc(GetSkillLineInfo, i)
+      n = safe(n)
+      if type(n) == 'string' and not safeBool(hdr) then t[n] = true end
+    end
+  end
+  profCache, profAt = any and t or nil, GetTime()
+  return profCache
+end
+local function itemInfo(link)
+  local f = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+  if not f then return nil end
+  local _, typ, sub, loc, _, cls = pc(f, link)
+  return safe(typ), safe(sub), safe(loc), safeNum(cls)
+end
+function G.tradeWhy(link, bag, slot)
+  local typ, sub, _, cls = itemInfo(link)
+  local pr = myProfs()
+  if not pr then return nil end
+  if cls == 7 or typ == 'Trade Goods' or typ == 'Tradeskill' then
+    local need = sub and PROFMAT[sub]
+    if not need then return nil end
+    for _, p in ipairs(need) do if pr[p] then return nil end end
+    return ('material pro %s - tu profesi nemas (na AH vic)'):format(table.concat(need, ' / '))
+  end
+  if cls == 9 or typ == 'Recipe' then
+    local d = tipData('bag', bag, slot, link)
+    if type(d) ~= 'table' or type(d.lines) ~= 'table' then return nil end
+    for _, l in ipairs(d.lines) do
+      local t = safe(l.leftText)
+      if type(t) == 'string' and isRed(l.leftColor) then
+        if t == 'Already known' then return 'recept uz umis' end
+        local p = t:match('^Requires ([%a ]+) %(%d+%)')
+        if p and not pr[p] then return 'recept pro ' .. p .. ' - tu profesi nemas (na AH vic)' end
+        if t:find('^Classes:') then return 'recept pro jinou tridu' end
+      end
+    end
+  end
+  return nil
+end
+
+------------------------------------------------------------------------------------------
+-- Parta: addony si posilaji, co kdo ma na sobe (skore slotu) -> "Cherri +12 %" v tooltipu
+-- zprava: G^TRIDA^spec^lvl^obourucka(0/1)^slot:skore,slot:skore,...
+------------------------------------------------------------------------------------------
+G.peers = {}
+local ARMOR = { Cloth = 1, Leather = 2, Mail = 3, Plate = 4 }
+local MAXARMOR = { MAGE = 1, PRIEST = 1, WARLOCK = 1, DRUID = 2, ROGUE = 2, MONK = 2, DEMONHUNTER = 2,
+  HUNTER = { 2, 3 }, SHAMAN = { 2, 3 }, WARRIOR = { 3, 4 }, PALADIN = { 3, 4 }, DEATHKNIGHT = 4, EVOKER = 3 }
+local WEAP = {}
+for cls, s in pairs({
+  MAGE = 'Staves,One-Handed Swords,Daggers,Wands',
+  WARLOCK = 'Staves,One-Handed Swords,Daggers,Wands',
+  PRIEST = 'Staves,One-Handed Maces,Daggers,Wands',
+  DRUID = 'Staves,One-Handed Maces,Two-Handed Maces,Daggers,Fist Weapons,Polearms,Idols',
+  PALADIN = 'One-Handed Axes,Two-Handed Axes,One-Handed Maces,Two-Handed Maces,One-Handed Swords,Two-Handed Swords,Polearms,Shields,Librams',
+  WARRIOR = 'One-Handed Axes,Two-Handed Axes,One-Handed Maces,Two-Handed Maces,One-Handed Swords,Two-Handed Swords,Polearms,Staves,Daggers,Fist Weapons,Shields,Bows,Guns,Crossbows,Thrown',
+  HUNTER = 'One-Handed Axes,Two-Handed Axes,One-Handed Swords,Two-Handed Swords,Polearms,Staves,Daggers,Fist Weapons,Bows,Guns,Crossbows,Thrown',
+  ROGUE = 'One-Handed Maces,One-Handed Swords,Daggers,Fist Weapons,Bows,Guns,Crossbows,Thrown',
+  SHAMAN = 'One-Handed Axes,Two-Handed Axes,One-Handed Maces,Two-Handed Maces,Staves,Daggers,Fist Weapons,Shields,Totems',
+}) do
+  WEAP[cls] = {}
+  for w in s:gmatch('[^,]+') do WEAP[cls][w] = true end
+end
+local function canUse(cls, lvl, link, loc, fl)
+  if fl.classes then
+    local ok = false
+    for c in fl.classes:gmatch('[^,]+') do
+      local k = c:gsub('%s', '')
+      if k:upper() == cls then ok = true end
+    end
+    if not ok then return false end
+  end
+  local typ, sub = itemInfo(link)
+  if typ == 'Armor' then
+    if loc == 'INVTYPE_CLOAK' or sub == 'Miscellaneous' or not sub then return true end
+    local a = ARMOR[sub]
+    if a then
+      local m = MAXARMOR[cls]
+      if type(m) == 'table' then m = (lvl >= 40) and m[2] or m[1] end
+      return m == nil or a <= m
+    end
+    return WEAP[cls] == nil or WEAP[cls][sub] == true      -- stity, libramy, idoly, totemy
+  elseif typ == 'Weapon' then
+    return WEAP[cls] == nil or WEAP[cls][sub] == true
+  end
+  return true
+end
+local function inParty(name)
+  if not UnitInParty then return true end
+  local ok, r = pcall(UnitInParty, name)
+  if not ok then return true end
+  r = safeBool(r)
+  return r ~= false
+end
+-- komu z party je item vylepsenim -> { {name, pct, req, empty}, ... } (nejvetsi prvni)
+function G.peerUps(link, st, req, fl)
+  local out = {}
+  local loc = equipLocOf(link)
+  local slots = loc and SLOTS[loc]
+  if not slots then return out end
+  if loc == 'INVTYPE_WEAPON' then slots = { 16 } end
+  local now = GetTime()
+  for name, p in pairs(G.peers) do
+    if now - p.at < 900 and inParty(name) and canUse(p.cls, p.lvl, link, loc, fl or {}) then
+      local new = G.score(st, G.weightsFor(p.spec, p.lvl))
+      local old
+      if loc == 'INVTYPE_2HWEAPON' then old = (p.sc[16] or 0) + (p.sc[17] or 0)
+      elseif (slots[1] == 16 or slots[1] == 17) and p.two then old = nil       -- vs obourucka: nesrovnavat
+      else
+        for _, s in ipairs(slots) do
+          local v = p.sc[s] or 0
+          if old == nil or v < old then old = v end
+        end
+      end
+      if old and new > 0.5 then
+        local pct = old > 0 and (new - old) / old or 1
+        if pct > 0.02 then
+          out[#out + 1] = { name = name, pct = pct, empty = old <= 0, req = (req and req > p.lvl) and req or nil }
+        end
+      end
+    end
+  end
+  table.sort(out, function(a, b) return a.pct > b.pct end)
+  return out
+end
+function G.recv(name, msg)
+  local f = {}
+  for v in (msg .. '^'):gmatch('([^%^]*)%^') do f[#f + 1] = v end
+  local old = G.peers[name]
+  local p = { cls = f[2], spec = f[3], lvl = tonumber(f[4]) or 60, two = f[5] == '1', sc = {}, at = GetTime() }
+  for s, v in (f[6] or ''):gmatch('(%d+):([%d%.]+)') do p.sc[tonumber(s)] = tonumber(v) end
+  G.peers[name] = p
+  upCache = nil
+  -- novy partak: poslat mu i nase
+  if not old or GetTime() - old.at > 120 then G.shareSoon(1) end
+end
+local function fmt1(x)
+  local s = ('%.1f'):format(x or 0)
+  s = s:gsub('%.0$', '')
+  return s
+end
+function G.share()
+  if not (IsInGroup and IsInGroup()) or not (ns.Duo and ns.Duo.rawSend) then return end
+  local s = G.spec()
+  if s == 'custom' or not G.SPECS[s] then s = CLASS_DEFAULT[ns.class] or 'generic' end
+  local lvl = safeNum(UnitLevel('player')) or 60
+  local w = G.weightsFor(s, lvl)
+  G.invalidate()
+  local eq = equipped()
+  local parts = {}
+  for slot = 1, 18 do
+    local e = eq[slot]
+    if e then parts[#parts + 1] = slot .. ':' .. fmt1(G.score(e.st, w)) end
+  end
+  local mh = eq[16]
+  local msg = ('G^%s^%s^%d^%s^%s'):format(ns.class or '?', s, lvl, (mh and mh.loc == 'INVTYPE_2HWEAPON') and '1' or '0',
+    table.concat(parts, ','))
+  pcall(ns.Duo.rawSend, msg:sub(1, 250))
+end
+local shareAt, sharePend = -99, false
+function G.shareSoon(delay)
+  if sharePend or not C_Timer then return end
+  sharePend = true
+  C_Timer.After(math.max(delay or 2, shareAt + 5 - GetTime()), function()
+    sharePend = false
+    shareAt = GetTime()
+    pcall(G.share)
+  end)
+end
+local sf = CreateFrame('Frame')
+for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'GROUP_ROSTER_UPDATE', 'PLAYER_LEVEL_UP', 'PLAYER_ENTERING_WORLD' }) do
+  pcall(sf.RegisterEvent, sf, e)
+end
+sf:SetScript('OnEvent', function() G.shareSoon(3) end)
 
 function G.report()
   local s = G.spec()
