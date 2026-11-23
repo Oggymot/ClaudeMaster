@@ -515,10 +515,10 @@ function TA.tagHint(c, s, A, ready)
   if c.castName and now - T.freeAt < 3 then
     T.stolenAt = now
     return A('TAG', 'Mob ti vzal jiny hrac - zastav cast (pohni se) a vezmi jineho.' .. more, 'hint',
-      { urgent = true, icon = 'Interface\Icons\Spell_Shadow_SacrificialShield' })
+      { urgent = true, icon = 'Interface\\Icons\\Spell_Shadow_SacrificialShield' })
   end
   return A('TAG', 'Sedy mob = tagnul ho jiny hrac, za nej nic nedostanes.' .. more, 'hint',
-    { icon = 'Interface\Icons\Spell_Shadow_SacrificialShield' })
+    { icon = 'Interface\\Icons\\Spell_Shadow_SacrificialShield' })
 end
 
 -- otvirak do plne oblasti: instant s dosahem (vola se jen mimo boj na volneho moba)

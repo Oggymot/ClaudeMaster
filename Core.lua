@@ -708,7 +708,7 @@ local function newProbe(n, def)
   for i = 1, n do
     local b = CreateFrame('StatusBar', nil, probeRoot)
     b:SetSize(64, 1) b:SetPoint('BOTTOMLEFT', probeRoot, 'BOTTOMLEFT', 0, probeRow) probeRow = probeRow + 1
-    b:SetStatusBarTexture('Interface\Buttons\WHITE8X8') b:SetMinMaxValues(0, 2) b:SetValue(1)
+    b:SetStatusBarTexture('Interface\\Buttons\\WHITE8X8') b:SetMinMaxValues(0, 2) b:SetValue(1)
     local clip = CreateFrame('Frame', nil, b)
     clip:SetPoint('TOPLEFT', b, 'TOPLEFT') clip:SetPoint('BOTTOMRIGHT', b:GetStatusBarTexture(), 'BOTTOMRIGHT')
     clip:SetScript('OnSizeChanged', function() P.fired[i] = true end)
