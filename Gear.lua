@@ -896,8 +896,21 @@ for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_L
   'QUEST_ACCEPTED', 'QUEST_REMOVED', 'QUEST_TURNED_IN' }) do
   pcall(f.RegisterEvent, f, e)
 end
-for _, e in ipairs({ 'NEW_RECIPE_LEARNED', 'SKILL_LINES_CHANGED', 'TRADE_SKILL_LIST_UPDATE' }) do pcall(f.RegisterEvent, f, e) end
+for _, e in ipairs({ 'NEW_RECIPE_LEARNED', 'SKILL_LINES_CHANGED', 'TRADE_SKILL_LIST_UPDATE', 'ITEM_LOCK_CHANGED' }) do pcall(f.RegisterEvent, f, e) end
+local lockAt = 0
 f:SetScript('OnEvent', function(_, ev)
+  -- item zvednut / polozen: znacky hned za nim (a znovu, az batoh jineho addonu prekresli sva tlacitka)
+  if ev == 'ITEM_LOCK_CHANGED' then
+    local now = GetTime()
+    if now - lockAt < 0.05 then return end
+    lockAt = now
+    upCache = nil
+    if C_Timer then
+      C_Timer.After(0.05, function() pcall(G.refreshBags) end)
+      C_Timer.After(0.6, function() pcall(G.refreshBags) end)
+    end
+    return
+  end
   if ev == 'PLAYER_LEVEL_UP' or ev == 'PLAYER_EQUIPMENT_CHANGED' or ev == 'NEW_RECIPE_LEARNED' or ev == 'SKILL_LINES_CHANGED'
     or ev == 'TRADE_SKILL_LIST_UPDATE' then G.clearTipCache() end
   if ev == 'NEW_RECIPE_LEARNED' or ev == 'SKILL_LINES_CHANGED' or ev == 'TRADE_SKILL_LIST_UPDATE' then return end
@@ -905,7 +918,10 @@ f:SetScript('OnEvent', function(_, ev)
   if ev == 'BANKFRAME_OPENED' then G.bank = true elseif ev == 'BANKFRAME_CLOSED' then G.bank = false end
   if ev == 'BANKFRAME_OPENED' and C_Timer then C_Timer.After(0.6, function() pcall(G.refreshBags) end) end
   G.invalidate() upCache = nil bbCache = nil qiCache = nil
-  if C_Timer and G.refreshBags then C_Timer.After(0.2, function() pcall(G.refreshBags) end) end
+  if C_Timer and G.refreshBags then
+    C_Timer.After(0.2, function() pcall(G.refreshBags) end)
+    C_Timer.After(0.8, function() pcall(G.refreshBags) end)   -- batoh jineho addonu (GW2 UI) prekresluje pozdeji
+  end
 end)
 
 ------------------------------------------------------------------------------------------
