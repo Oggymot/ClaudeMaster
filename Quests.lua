@@ -540,13 +540,34 @@ function Q.recvShare(name, msg)
     local ids = {}
     for id in (list or ''):gmatch('%d+') do ids[tonumber(id)] = true end
     Q.wants[name] = { ids = ids, at = GetTime() }
-    -- novy quest pro partaka: jednou do chatu
+    -- od kdy partak quest nema (prave ho treba bere od NPC -> chvili pockat)
+    local now = GetTime()
+    for k in pairs(Q.since) do
+      local n, id = k:match('^(.-):(%d+)$')
+      if n == name and not ids[tonumber(id)] then Q.since[k] = nil end
+    end
     for id in pairs(ids) do
       local k = name .. ':' .. id
-      if not announced[k] then
+      if not Q.since[k] then Q.since[k] = now end
+    end
+  end
+end
+-- quest chybi partakovi uz aspon WAIT sekund (mezitim si ho muze vzit sam)
+local WAIT = 90
+Q.since = {}
+local function waited(name, id)
+  local t = Q.since[name .. ':' .. id]
+  return t and GetTime() - t >= WAIT
+end
+-- po case jednou do chatu
+local function announceDue()
+  for name, w in pairs(Q.wants) do
+    for id in pairs(w.ids) do
+      local k = name .. ':' .. id
+      if not announced[k] and waited(name, id) and titleOf(id) and not (Q.offeredTo and Q.offeredTo(name, id)) then
         announced[k] = true
         ns.say(('|cffffd100Quest:|r %s nema |cffffff00%s|r - sdilej (klik na tip v panelu nebo /cm sdilej)'):format(
-          name, titleOf(id) or ('#' .. id)))
+          name, titleOf(id)))
       end
     end
   end
@@ -584,6 +605,7 @@ local function markNo(name, id, secs)
   ns.db.qNo[name .. ':' .. id] = now + secs
 end
 Q.markNo = markNo
+Q.offeredTo = offered
 -- odpoved hry na sdileni ("X is not eligible for that quest" apod.) -> pamatovat, at se tip neopakuje
 local PUSH_ERR = {
   { 'ERR_QUEST_PUSH_INVALID_S', 30 * 86400, 'quest vzit nemuze' },
@@ -664,7 +686,7 @@ function Q.toShare()
     local p = ns.Duo and ns.Duo.peers and ns.Duo.peers[name]
     if p and now - p.at < 30 and now - w.at < 600 then
       for id in pairs(w.ids) do
-        if mine[id] and canPush(id) and not offered(name, id) then
+        if mine[id] and canPush(id) and not offered(name, id) and waited(name, id) then
           if not byId[id] then
             byId[id] = { id = id, title = mine[id].title or ('#' .. id), who = {} }
             out[#out + 1] = byId[id]
@@ -710,6 +732,7 @@ qe:SetScript('OnUpdate', function(_, el)
   st = st + el
   if st < 2 then return end
   st = 0
+  pcall(announceDue)
   if shareDirty then
     shareDirty = false
     pcall(sendShareable, true)
