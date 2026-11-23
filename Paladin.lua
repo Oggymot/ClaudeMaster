@@ -139,6 +139,19 @@ E.context = function()
     if m.healer and m.alive and not m.unit:find('pet') then c.healerUp = true end
   end
   c.undead = c.ctype == 'Undead' or c.ctype == 'Demon'
+  -- dosah: Attack (6603) nema dosah, takze melee merime pres Strike, Judgement ma 10 yd
+  local function inR(n)
+    local id = ns.id(n)
+    if not id or not c.hostile or not (C_Spell and C_Spell.IsSpellInRange) then return nil end
+    return safeBool(pc(C_Spell.IsSpellInRange, id, 'target'))
+  end
+  local m = inR('Crusader Strike')
+  if m == nil then m = inR('Holy Strike') end
+  if m ~= nil then c.near = m end
+  c.judgeR = inR('Judgement')
+  if c.judgeR == nil then c.judgeR = c.near end
+  c.hojR = inR('Hammer of Justice')
+  if c.hojR == nil then c.hojR = c.near end
   return c
 end
 
@@ -212,7 +225,7 @@ local function decide(c, s)
       if not c.seal and seal and ready(seal) and not s.seal then
         return A(seal, 'Pred pullem: ' .. seal)
       end
-      if c.near and ready('Judgement') and (c.seal or s.seal) then return A('Judgement', 'Pull: Judgement') end
+      if c.judgeR and ready('Judgement') and (c.seal or s.seal) then return A('Judgement', 'Pull: Judgement') end
       if ready('Exorcism') and c.undead then return A('Exorcism', 'Pull: Exorcism (undead/demon)') end
       return A('Attack', c.near and 'Utoc (auto attack)' or 'Pull: dojdi k cili', 'wait')
     end
@@ -262,7 +275,7 @@ local function decide(c, s)
   end
   if not c.hostile then return nil end
   -- preruseni / stun kouzlici mobky
-  if c.tCasting and c.interruptible and c.near and ready('Hammer of Justice') then
+  if c.tCasting and c.interruptible and c.hojR and ready('Hammer of Justice') then
     s.used['Hammer of Justice'] = true
     return A('Hammer of Justice', 'Mob kouzli: Hammer of Justice (stun = preruseni)', 'spell', { urgent = true })
   end
@@ -274,7 +287,7 @@ local function decide(c, s)
     return A(seal, c.seal and 'Seal dobiha - obnov ho' or 'Chybi seal: ' .. seal)
   end
   if c.tLow20 and ready('Hammer of Wrath') then return A('Hammer of Wrath', 'Cil pod 20 %: Hammer of Wrath') end
-  if c.near and ready('Judgement') then return A('Judgement', 'Judgement (seal zustava)') end
+  if c.judgeR and ready('Judgement') then return A('Judgement', 'Judgement (seal zustava)') end
   if c.undead and ready('Exorcism') then return A('Exorcism', 'Undead/demon: Exorcism') end
   if c.near then
     for _, n in ipairs(STRIKES) do

@@ -1052,6 +1052,11 @@ SlashCmdList.CLAUDEMASTER = function(msg)
       exhaustion = 'Curse of Exhaustion', none = 'none', shadow = 'Curse of Shadow',
       weakness = 'Curse of Weakness', tongues = 'Curse of Tongues', recklessness = 'Curse of Recklessness', doom = 'Curse of Doom', auto = 'auto' }
     db.lockCurse = map[arg] or 'auto' ns.say('curse: ' .. db.lockCurse)
+  elseif cmd == 'seal' and ns.class == 'PALADIN' then
+    local map = { crusader = 'Seal of the Crusader', righteousness = 'Seal of Righteousness', wisdom = 'Seal of Wisdom',
+      command = 'Seal of Command', light = 'Seal of Light', justice = 'Seal of Justice', auto = 'auto' }
+    db.palSeal = map[arg] or 'auto'
+    ns.say('seal: ' .. db.palSeal .. '   (/cm seal auto|righteousness|crusader|wisdom|command|light)')
   elseif cmd == 'sound' then db.sound = not db.sound ns.say('zvuk: ' .. (db.sound and 'zap' or 'vyp'))
   elseif cmd == 'dump' then
     ns.fullDump()
