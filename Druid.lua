@@ -610,3 +610,90 @@ function E.infoLine(c)
   if c.thorns == false then p[#p + 1] = '|cffffcc00bez Thorns|r' end
   return table.concat(p, '  |cff556070-|r  ')
 end
+
+------------------------------------------------------------------------------------------
+-- Threat metr v medvedovi: pruh nad panelem.
+-- Drzis aggro -> pruh = kolik ma nejblizsi spoluhrac (% tveho threatu, 100 = strhne si moba).
+-- Nedrzis -> pruh = tvuj threat k tomu, kdo moba ma.  /cm threat on|off
+------------------------------------------------------------------------------------------
+local PARTY = { 'party1', 'party2', 'party3', 'party4', 'pet' }
+local function threatOf(u)
+  if not UnitExists(u) then return nil end
+  local tanking, status, scaled = pc(UnitDetailedThreatSituation, u, 'target')
+  return safeNum(scaled), safeNum(status), safeBool(tanking)
+end
+local function classHex(u)
+  local _, cls = UnitClass(u)
+  local cc = cls and RAID_CLASS_COLORS and RAID_CLASS_COLORS[safe(cls)]
+  return cc and cc.colorStr and ('|c' .. cc.colorStr) or '|cffffffff'
+end
+
+local bar
+local function makeBar()
+  local panel = _G.ClaudeMasterFrame
+  if bar or not panel then return bar end
+  local b = CreateFrame('StatusBar', nil, panel, 'BackdropTemplate')
+  b:SetHeight(14)
+  b:SetPoint('BOTTOMLEFT', panel, 'TOPLEFT', 0, 3)
+  b:SetPoint('BOTTOMRIGHT', panel, 'TOPRIGHT', 0, 3)
+  b:SetStatusBarTexture('Interface\\TargetingFrame\\UI-StatusBar')
+  b:SetMinMaxValues(0, 100)
+  b:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 1 })
+  b:SetBackdropColor(0, 0, 0, 0.55)
+  b:SetBackdropBorderColor(0, 0, 0, 0.9)
+  b.icon = b:CreateTexture(nil, 'OVERLAY')
+  b.icon:SetSize(12, 12) b.icon:SetPoint('LEFT', 2, 0)
+  b.icon:SetTexture('Interface\\Icons\\Ability_Racial_BearForm')
+  b.left = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall')
+  b.left:SetPoint('LEFT', b.icon, 'RIGHT', 4, 0)
+  b.right = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall')
+  b.right:SetPoint('RIGHT', -4, 0)
+  b:Hide()
+  bar = b
+  return b
+end
+
+local function updateBar()
+  local db = ns.db
+  local show = db and db.threatBar ~= false and DR.form() == 'bear' and UnitExists('target')
+    and safeBool(pc(UnitCanAttack, 'player', 'target')) and not safeBool(pc(UnitIsDead, 'target'))
+    and (ns.inCombat() or safeBool(pc(UnitAffectingCombat, 'target')))
+  local b = makeBar()
+  if not b then return end
+  if not show then b:Hide() return end
+  local mine, status, tanking = threatOf('player')
+  -- nejvyssi threat ze spoluhracu
+  local top, topU
+  for _, u in ipairs(PARTY) do
+    local s = threatOf(u)
+    if s and (not top or s > top) then top, topU = s, u end
+  end
+  local tt = safeBool(pc(UnitIsUnit, 'targettarget', 'player'))
+  if tanking == nil then tanking = tt end
+  if tanking then
+    -- drzis: jak blizko je nekdo dalsi
+    local v = top or 0
+    b:SetValue(math.max(4, v))
+    if v >= 90 then b:SetStatusBarColor(1, 0.25, 0.2)
+    elseif v >= 70 then b:SetStatusBarColor(1, 0.8, 0.1)
+    else b:SetStatusBarColor(0.2, 0.85, 0.3) end
+    b.left:SetText(status == 2 and '|cffffd200Drzis (tesne)|r' or '|cff80ff80Drzis aggro|r')
+    b.right:SetText(topU and (classHex(topU) .. (safe(UnitName(topU)) or '?') .. '|r ' .. math.floor(v) .. '%') or '')
+  else
+    local v = mine or 0
+    b:SetValue(math.max(4, v))
+    b:SetStatusBarColor(0.9, 0.2, 0.2)
+    local who = safe(pc(UnitName, 'targettarget'))
+    b.left:SetText('|cffff6060Nedrzis|r' .. (mine and ('  ' .. math.floor(v) .. '%') or ''))
+    b.right:SetText(type(who) == 'string' and ('bije: ' .. classHex('targettarget') .. who .. '|r') or '')
+  end
+  b:Show()
+end
+
+local tbf, acc = CreateFrame('Frame'), 0
+tbf:SetScript('OnUpdate', function(_, el)
+  acc = acc + el
+  if acc < 0.25 then return end
+  acc = 0
+  pcall(updateBar)
+end)

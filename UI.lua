@@ -965,6 +965,7 @@ local HELP = {
   '/cm dump - ulozi talenty, spelly, itemy a staty do souboru (po /reload)',
   '/cm sdilej - sdilet partakum questy, ktere nemaji (vidi to jejich addon)',
   '/cm prodej on/off - sede veci se u vendora prodaji samy; /cm oprava on/off - automaticka oprava',
+  '/cm threat on/off - threat metr nad panelem (druid v medvedovi)',
   '/cm talent - co si vzit v talentech (a proc); taky v tooltipu talentu',
   '/cm auto - nova kouzla (rozpoznana z popisu); /cm auto <jmeno> attack/aoe/heal/buff/stop/defense/ignore; /cm auto off',
   '/cm gear [spec] - lepsi gear z batohu (vahy: frost/arcane/destro/ret/prot/holy/resto/balance/feral), /cm vahy str=1 ... vlastni',
@@ -1038,6 +1039,9 @@ SlashCmdList.CLAUDEMASTER = function(msg)
     if arg == 'off' then db[key] = false elseif arg == 'on' then db[key] = nil end
     ns.say((cmd == 'prodej' and 'Automaticky prodej sedych veci' or 'Automaticka oprava') .. ': ' .. (db[key] == false and 'vypnuto' or 'zapnuto')
       .. '  (/cm ' .. cmd .. ' on/off)')
+  elseif cmd == 'threat' then
+    if arg == 'off' then db.threatBar = false elseif arg == 'on' then db.threatBar = nil end
+    ns.say('Threat metr (medved): ' .. (db.threatBar == false and 'vypnuto' or 'zapnuto') .. '  (/cm threat on/off)')
   elseif cmd == 'talent' or cmd == 'talenty' then
     if ns.Talents then ns.Talents.cmd(arg) end
   elseif cmd == 'auto' then
