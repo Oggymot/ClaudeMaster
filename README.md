@@ -27,3 +27,7 @@ GitHub Action postavi zip a vytvori Release; WowUp pak nabidne aktualizaci.
 skriptem `tools/build_mobdata.py` (imunity, kouzla, utek, odolnosti, dropy; classic 1.12).
 Forever se od classicu muze lisit - addon databazi bere jen jako vychozi odhad,
 vlastni pozorovani ve hre ma prednost.
+
+## Credits
+
+Upgrade/downgrade arrow textures (`Textures/`) are unmodified files from [Pawn](https://www.vgermods.com) by Vger-Azjol-Nerub, (c) Travis Spomer, CC BY-NC-ND 3.0.

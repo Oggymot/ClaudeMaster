@@ -205,8 +205,8 @@ end
 ------------------------------------------------------------------------------------------
 -- Tooltip itemu: sipka + %
 ------------------------------------------------------------------------------------------
-local UP = '|TInterface\\Buttons\\Arrow-Up-Up:14:14|t'
-local DOWN = '|TInterface\\Buttons\\Arrow-Down-Up:14:14|t'
+local UP = '|TInterface\\AddOns\\ClaudeMaster\\Textures\\UpgradeArrow:14:14|t'
+local DOWN = '|TInterface\\AddOns\\ClaudeMaster\\Textures\\DowngradeArrow:14:14|t'
 local function onItemTip(tt, data)
   if not ns.db or ns.db.gearTips == false then return end
   if tt ~= GameTooltip and tt ~= ItemRefTooltip then return end
@@ -327,13 +327,12 @@ end)
 ------------------------------------------------------------------------------------------
 -- Zelena sipka v rohu itemu v batohu (jako Pawn): vylepseni pro tebe
 ------------------------------------------------------------------------------------------
-local ARROW = 'Interface\\Buttons\\Arrow-Up-Up'
+local ARROW = 'Interface\\AddOns\\ClaudeMaster\\Textures\\UpgradeArrow'   -- sipky z addonu Pawn (CC BY-NC-ND, viz Textures)
 local function mark(btn, on)
   if not btn then return end
   if on and not btn.cmUp then
     local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
-    t:SetTexture(ARROW) t:SetSize(16, 16) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', -1, 1)
-    t:SetVertexColor(0.3, 1, 0.35)
+    t:SetTexture(ARROW) t:SetSize(16, 16) t:SetPoint('BOTTOMRIGHT', btn, 'BOTTOMRIGHT', 1, -1)
     btn.cmUp = t
   end
   if btn.cmUp then btn.cmUp:SetShown(on and true or false) end

@@ -1,0 +1,4 @@
+UpgradeArrow.tga, UpgradeArrowBig.tga and DowngradeArrow.tga are unmodified textures from the
+Pawn addon by Vger-Azjol-Nerub (https://www.vgermods.com).
+(c) 2006-2026 Travis Spomer. Released under Creative Commons Attribution-NonCommercial-NoDerivs 3.0
+(http://creativecommons.org/licenses/by-nc-nd/3.0). Redistributed here unchanged, non-commercially.

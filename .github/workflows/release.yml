@@ -15,6 +15,7 @@ jobs:
           VER="${GITHUB_REF_NAME#v}"
           mkdir -p dist/ClaudeMaster
           cp *.toc *.lua dist/ClaudeMaster/
+          cp -r Textures dist/ClaudeMaster/
           sed -i "s/^## Version:.*/## Version: ${VER}/" dist/ClaudeMaster/ClaudeMaster.toc
           cd dist && zip -r "ClaudeMaster-${VER}.zip" ClaudeMaster
       - uses: softprops/action-gh-release@v2
