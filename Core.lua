@@ -569,6 +569,7 @@ function ns.playerAura(name)
   if not ok then return nil end
   if a == nil then return ns.inCombat() and nil or false end   -- v boji "nic" neznamena "neni"
   if issecret(a) then return true end
+  if not a then return ns.inCombat() and nil or false end   -- v boji 'false' taky nic neznamena
   return a
 end
 -- Pozitivni detekce debuffu na cili (v boji muze lhat "neni", takze jen true/nil)
