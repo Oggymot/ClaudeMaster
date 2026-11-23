@@ -533,8 +533,29 @@ local function onRoll(rollID)
   elseif pct then
     txt = ('%s |cffff6060%d %%|r - Greed'):format(DOWN, math.floor(pct * 100 - 0.5))
   else return end
-  ns.say(link .. ' ' .. txt)
-  for _, fr in ipairs(rollFrames()) do if fr.cmUp and fr.rollID == rollID then fr.cmUp:Hide() end end
+  local shown = false
+  for _, fr in ipairs(rollFrames()) do
+    if fr.cmUp and fr.rollID == rollID then fr.cmUp:Hide() end
+    -- bublina vedle okna hodu (jako Pawn), zmizi s oknem
+    if fr:IsShown() and fr.rollID == rollID then
+      if not fr.cmTip then
+        local t = CreateFrame('Frame', nil, fr, 'BackdropTemplate')
+        t:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 2 })
+        t:SetBackdropColor(0.05, 0.04, 0.02, 0.92) t:SetBackdropBorderColor(1, 0.8, 0.2, 0.9)
+        t:SetPoint('LEFT', fr, 'RIGHT', 6, 0)
+        t.text = t:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+        t.text:SetPoint('CENTER') t.text:SetJustifyH('LEFT')
+        fr.cmTip = t
+      end
+      fr.cmTip.text:SetText('|cff66ccffClaudeMaster|r\n' .. txt)
+      fr.cmTip:SetSize(math.max(140, fr.cmTip.text:GetStringWidth() + 20), fr.cmTip.text:GetStringHeight() + 16)
+      fr.cmTip:Show()
+      shown = true
+    elseif fr.cmTip and not fr:IsShown() then
+      fr.cmTip:Hide()
+    end
+  end
+  if not shown then ns.say(link .. ' ' .. txt) end   -- okno hodu jsme nenasli: aspon do chatu
   if tex then
     for _, fr in ipairs(rollFrames()) do
       if fr:IsShown() and fr.rollID == rollID then
