@@ -503,7 +503,7 @@ local function decide(c, s)
   end
   -- Forever Ice Barrier dava i +15-20 % mrazive poskozeni: drz ho porad, kdyz bojujes
   if ns.barrierBuff and ready('Ice Barrier') and not c.barrierUp and s.barrierUntil <= s.t and c.hostile then
-    return A('Ice Barrier', 'Ice Barrier: +20 % mraziveho dmg, bez pushbacku - drz ho porad')
+    return A('Ice Barrier', 'Ice Barrier: +5 % mraziveho dmg (s Frigid Power +20 %), bez pushbacku - drz ho porad')
   end
   -- 4a) procy z Forever talentu (hra rozsviti tlacitko)
   if (ns.talent('Missile Barrage') or 0) > 0 and ns.glowing('Arcane Missiles') and ready('Arcane Missiles') and not c.moving then
@@ -533,7 +533,7 @@ local function decide(c, s)
     end
     if ready('Frost Nova') then
       return A('Frost Nova', c.group and 'Strhl jsi aggro: Frost Nova a odstup, at si ho tank/pet vezme zpet'
-        or 'Mob je u tebe: Frost Nova, odstup a Ice Lance na zmrazeneho (3x dmg)')
+        or 'Mob je u tebe: Frost Nova, odstup a Ice Lance na zmrazeneho (4x dmg)')
     end
     if ready('Cone of Cold') then return A('Cone of Cold', 'Mob u tebe, Nova na CD: zpomal ho a odejdi') end
     if c.hpLow35 and ready('Blink') then return A('Blink', 'Mob u tebe a HP dole: Blink pryc') end
@@ -595,7 +595,7 @@ local function decide(c, s)
   end
   -- 8) Zmrazeny cil (Frost Nova / Frostbite) = Shatter
   if frozenLeft > 0 then
-    if ready('Ice Lance') then return A('Ice Lance', ('Zmrazeny cil (%.1fs): Ice Lance 3x dmg'):format(frozenLeft)) end
+    if ready('Ice Lance') then return A('Ice Lance', ('Zmrazeny cil (%.1fs): Ice Lance 4x dmg'):format(frozenLeft)) end
     -- Forever: Shatter dava jen par % critu, hlavni bonus na zmrazeny cil je Ice Lance (3x dmg).
     -- Frostbolt jen kdyz Ice Lance nejde (mana) a zmrazeni vydrzi cely cast.
     if can('Frostbolt') and frozenLeft > fbCast + 0.2 and not c.moving then
@@ -680,6 +680,11 @@ local function apply(c, s, a)
   elseif ns.OFF_GCD[n] then dur = 0
   else dur = math.max(1.5, ct) end
   if cd > 1.5 then s.cd[n] = s.t + ct + cd end
+  -- Forever: Ice Lance a Fire Blast sdili cooldown (kategorie 8 s)
+  if cd > 1.5 and (n == 'Ice Lance' or n == 'Fire Blast') then
+    local other = n == 'Ice Lance' and 'Fire Blast' or 'Ice Lance'
+    s.cd[other] = math.max(s.cd[other] or 0, s.t + ct + cd)
+  end
   if not c.inCombat then s.used[n] = true end   -- buffy/conjure jen jednou
   if n == 'Frost Nova' and (c.near or c.enemies.near > 0) then s.frozenUntil = s.t + 8 s.frozenHits = 0 end
   if n == 'Ice Barrier' then s.barrierUntil = s.t + 60 end

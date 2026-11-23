@@ -13,20 +13,26 @@ ns.Gear = G
 ------------------------------------------------------------------------------------------
 -- Vahy statu (EP: kolik "bodu" ma 1 jednotka statu; % = 1 % critu/hitu)
 ------------------------------------------------------------------------------------------
+-- Hodnoty { na lvl 45, na lvl 60 } se prolinaji podle levelu (pod 45 klesaji). Odvozeno z
+-- MythicSim Forever enginu (spell power = 1, u melee sila = 1): crit/hit rostou s gearem a levelem.
 G.SPECS = {
-  frost = { label = 'Frost Mage', sp = 1, frostsp = 1, int = 0.45, spi = 0.1, sta = 0.2, spcrit = 9, sphit = 11, mp5 = 1.2, armor = 0.003 },
-  arcane = { label = 'Arcane Mage', sp = 1, arcanesp = 1, int = 0.55, spi = 0.15, sta = 0.2, spcrit = 9, sphit = 11, mp5 = 1.4, armor = 0.003 },
-  fire = { label = 'Fire Mage', sp = 1, firesp = 1, int = 0.4, spi = 0.1, sta = 0.2, spcrit = 11, sphit = 11, mp5 = 1, armor = 0.003 },
-  destro = { label = 'Destruction Warlock', sp = 1, shadowsp = 0.8, firesp = 0.4, int = 0.3, spi = 0.2, sta = 0.35, spcrit = 8,
-    sphit = 11, mp5 = 0.6, armor = 0.003 },
-  ret = { label = 'Retribution Paladin', str = 1, agi = 0.6, sta = 0.4, int = 0.25, spi = 0.1, ap = 0.5, crit = 14, hit = 14,
-    dps = 7, armor = 0.015, sp = 0.25, holysp = 0.25, mp5 = 1, def = 0.3 },
-  prot = { label = 'Protection Paladin', sta = 1, armor = 0.06, def = 1.2, block = 0.5, str = 0.6, agi = 0.5, dodge = 12,
-    parry = 10, sp = 0.5, holysp = 0.5, int = 0.2, dps = 2, hit = 6 },
+  frost = { label = 'Frost Mage', sp = 1, frostsp = 1, int = { 0.15, 0.25 }, spi = { 0.05, 0.1 }, sta = 0.2,
+    spcrit = { 4.1, 10 }, sphit = { 4.8, 13 }, mp5 = 1, armor = 0.003 },
+  arcane = { label = 'Arcane Mage', sp = 1, arcanesp = 1, int = { 0.4, 0.7 }, spi = 0.1, sta = 0.2,
+    spcrit = { 4, 9 }, sphit = { 4.5, 12 }, mp5 = 1.2, armor = 0.003 },
+  fire = { label = 'Fire Mage', sp = 1, firesp = 1, int = { 0.15, 0.25 }, spi = 0.05, sta = 0.2,
+    spcrit = { 5, 11 }, sphit = { 4.8, 13 }, mp5 = 1, armor = 0.003 },
+  destro = { label = 'Destruction Warlock', sp = 1, shadowsp = 0.85, firesp = 0.35, int = { 0.1, 0.25 },
+    spi = { 0.15, 0.2 }, sta = 0.35, spcrit = { 2.9, 8 }, sphit = { 3.3, 11 }, mp5 = 0.6, armor = 0.003 },
+  -- ret (sila = 1 = 2 AP): spell power ~ 2 AP (Righteousness, Holy Strike, Judgement, Consecration)
+  ret = { label = 'Retribution Paladin', str = 1, agi = 0.5, ap = 0.5, sp = 1, holysp = 1, sta = 0.4, int = 0.15,
+    spi = 0.05, crit = 10, hit = 9, dps = 7, armor = 0.015, mp5 = 0.8, def = 0.3 },
+  prot = { label = 'Protection Paladin', sta = 1, armor = 0.06, def = 1.2, block = 0.5, str = 0.7, agi = 0.6, dodge = 12,
+    parry = 10, sp = 0.6, holysp = 0.6, int = 0.2, dps = 2, hit = 6 },
   holy = { label = 'Holy Paladin', heal = 1, sp = 1, int = 0.8, mp5 = 2, spcrit = 8, spi = 0.2, sta = 0.2, armor = 0.003 },
-  balance = { label = 'Balance Druid', sp = 1, natsp = 0.7, arcanesp = 0.3, int = 0.5, spi = 0.3, sta = 0.2, spcrit = 9,
-    sphit = 11, mp5 = 1, armor = 0.003 },
-  feral = { label = 'Feral Druid', agi = 1, str = 1.1, ap = 0.5, sta = 0.5, crit = 14, hit = 14, armor = 0.02 },
+  balance = { label = 'Balance Druid', sp = 1, natsp = 0.7, arcanesp = 0.3, int = 0.3, spi = 0.2, sta = 0.2,
+    spcrit = { 4, 9 }, sphit = { 4.5, 11 }, mp5 = 1, armor = 0.003 },
+  feral = { label = 'Feral Druid', agi = 1.05, str = 1, ap = 0.5, sta = 0.5, crit = 14, hit = 14, armor = 0.02 },
   generic = { label = 'obecne', sta = 0.5, armor = 0.01, str = 0.5, agi = 0.5, int = 0.5, sp = 0.5 },
 }
 local CLASS_DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'balance' }
@@ -37,10 +43,22 @@ function G.spec()
   if s and G.SPECS[s] then return s end
   return CLASS_DEFAULT[ns.class] or 'generic'
 end
+local wCache, wKey
 function G.weights()
   local s = G.spec()
   if s == 'custom' then return ns.db.gearWeights end
-  return G.SPECS[s]
+  local lvl = safeNum(UnitLevel('player')) or 60
+  if wKey == s .. lvl then return wCache end
+  local t = (lvl - 45) / 15
+  local w = {}
+  for k, v in pairs(G.SPECS[s]) do
+    if type(v) == 'table' then
+      if t >= 0 then w[k] = v[1] + (v[2] - v[1]) * math.min(1, t)
+      else w[k] = v[1] * math.max(0.3, lvl / 45) end
+    elseif type(v) == 'number' then w[k] = v end
+  end
+  wCache, wKey = w, s .. lvl
+  return w
 end
 
 ------------------------------------------------------------------------------------------

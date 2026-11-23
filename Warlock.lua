@@ -360,11 +360,12 @@ function W.refresh()
       local BASECT = { ['Shadow Bolt'] = 3, ['Searing Pain'] = 1.5, Incinerate = 2.5 }
       local ct = math.max(1.5, ns.castTime(n))   -- cas castu ze hry uz je s talentem Bane
       local fire = n ~= 'Shadow Bolt'
-      -- bonus ze spell poweru (koeficient = zakladni cast / 3.5)
+      -- bonus ze spell poweru (koeficienty z MythicSim enginu pro Forever)
+      local COEF = { ['Shadow Bolt'] = 0.857, ['Searing Pain'] = 0.429, Incinerate = 0.714 }
       local sp = safeNum(pc(GetSpellBonusDamage, fire and 3 or 6)) or 0
-      if dmg then dmg = dmg + sp * math.min(1, (BASECT[n] or ct) / 3.5) end
+      if dmg then dmg = dmg + sp * (COEF[n] or math.min(1, (BASECT[n] or ct) / 3.5)) end
       local mult = 1
-      local critBonus = tal('Ruin') > 0 and 1 or 0.5     -- s Ruin crit = dvojnasobek
+      local critBonus = 0.5 + 0.1 * tal('Ruin')     -- crit 1.5x, Ruin +0.1 za bod (5/5 = 2x)
       -- Agonizing Flames (Forever): +10 % Destruction dmg, Searing Pain +10 % crit
       mult = mult * (1 + 0.1 * tal('Agonizing Flames') / 3)
       if fire then
@@ -377,7 +378,7 @@ function W.refresh()
         mult = mult * (1 + 0.02 * tal('Shadow Mastery')) * (1 + 0.025 * tal('Improved Shadow Bolt'))
       end
       -- Devastation (+crit) a Ruin (crit x2) plati na Destruction kouzla
-      mult = mult * (1 + 0.01 * tal('Devastation') * (tal('Ruin') > 0 and 1 or 0.5))
+      mult = mult * (1 + 0.01 * tal('Devastation') * critBonus)
       local cost = ns.cost(n)
       local ctEff = ct + (cost > 0 and (cost / math.max(50, tap)) * 1.5 or 0)   -- + podil Life Tapu (1.5 s GCD)
       scores[n] = { dmg = dmg, ct = ct, ctEff = ctEff, cost = cost, dps = dmg and (dmg * mult / ctEff) or nil, mult = mult }
@@ -398,7 +399,9 @@ function W.refresh()
         local sp = safeNum(pc(GetSpellBonusDamage, n == 'Immolate' and 3 or 6)) or 0
         local mult = 1
         if n == 'Corruption' then mult = 1 + 0.02 * tal('Improved Corruption') end
-        W.dotInfo[n] = { dmg = (dmg + sp * math.min(1, dur / 15)) * mult, dur = dur, ramp = (n == 'Bane of Agony' or n == 'Curse of Agony') }
+        -- celkovy koeficient DoTu (engine): Corruption 6x0.2, Agony 12x0.133, Immolate 5x0.13
+        local DOTCOEF = { Corruption = 1.2, ['Bane of Agony'] = 1.6, ['Curse of Agony'] = 1.6, Immolate = 0.65 }
+        W.dotInfo[n] = { dmg = (dmg + sp * (DOTCOEF[n] or math.min(1, dur / 15))) * mult, dur = dur, ramp = (n == 'Bane of Agony' or n == 'Curse of Agony') }
       end
     end
   end

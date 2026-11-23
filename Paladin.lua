@@ -101,8 +101,9 @@ local function wantSeal(c)
   local pref = c.db.palSeal
   if pref and pref ~= 'auto' and ns.known(pref) then return pref end
   if c.manaKnown and c.mana < 0.2 and ns.known('Seal of Wisdom') and not c.tough then return 'Seal of Wisdom', 'malo many' end
-  if ns.known('Seal of Command') then return 'Seal of Command' end
+  -- engine: ret i prot drzi Righteousness (nemuze minout, skaluje se spell power i rychlosti zbrane)
   if ns.known('Seal of Righteousness') then return 'Seal of Righteousness' end
+  if ns.known('Seal of Command') then return 'Seal of Command' end
   return ns.known('Seal of the Crusader') and 'Seal of the Crusader' or nil
 end
 local function wantAura(c)
@@ -295,8 +296,12 @@ local function decide(c, s)
     end
   end
   local aoe = c.enemies.cluster or c.enemies.combat or 0
-  if aoe >= 3 and c.near and ready('Consecration') and (not c.manaKnown or s.mana > 0.35) then
+  if aoe >= 2 and c.near and ready('Consecration') and (not c.manaKnown or s.mana > 0.3) then
     return A('Consecration', ('%d moby kolem: Consecration'):format(aoe))
+  end
+  -- jeden cil: Consecration jen kdyz je many dost (engine: od 70 %)
+  if c.near and ready('Consecration') and c.manaKnown and s.mana >= 0.7 and not c.tLow20 then
+    return A('Consecration', 'Hodne many: Consecration i na jeden cil')
   end
   if not c.near and ready('Holy Shock') and (not c.manaKnown or s.mana > 0.4) then
     return A('Holy Shock', 'Cil je daleko: Holy Shock')

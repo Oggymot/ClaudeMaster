@@ -1135,6 +1135,10 @@ local function onCast(spellID)
   if ns.S[name] and ns.S[name].known then
     local cd = cdFor(name)
     if cd > GCD then cdUntil[name] = now + cd end
+    -- Forever: Ice Lance a Fire Blast sdili cooldown
+    if cd > GCD and (name == 'Ice Lance' or name == 'Fire Blast') then
+      cdUntil[name == 'Ice Lance' and 'Fire Blast' or 'Ice Lance'] = now + cd
+    end
     if not ns.inCombat() and C_Timer then
       C_Timer.After(0.3, function() ns.cdLeft(name) end)   -- nauci se skutecny cooldown
     end
