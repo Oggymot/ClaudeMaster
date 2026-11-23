@@ -237,9 +237,12 @@ local function newPage(host)
   end
   function p.row(...)
     local f = CreateFrame('Frame', nil, c)
-    f:SetSize(CW, 24)
-    local x = 0
-    for _, b in ipairs({ ... }) do b:SetParent(f) b:ClearAllPoints() b:SetPoint('LEFT', x, 0) x = x + b:GetWidth() + 8 end
+    local x, y = 0, 0
+    for _, b in ipairs({ ... }) do
+      if x > 0 and x + b:GetWidth() > CW then x, y = 0, y - 30 end   -- nevejde se -> dalsi radek
+      b:SetParent(f) b:ClearAllPoints() b:SetPoint('TOPLEFT', x, y) x = x + b:GetWidth() + 8
+    end
+    f:SetSize(CW, 24 - y)
     return p.add(f, 10)
   end
   function p.refresh()
@@ -575,6 +578,10 @@ local function build()
   local T = th()
   local f = CreateFrame('Frame', 'ClaudeMasterOptions', UIParent, 'BackdropTemplate')
   O.frame = f
+  -- ulozena velikost (roztahuje se za roh vpravo dole)
+  W = math.max(520, math.min(1100, db.optW or W))
+  H = math.max(360, math.min(900, db.optH or H))
+  CW = W - NAV - 44
   f:SetSize(W, H)
   f:SetPoint('CENTER')
   f:SetFrameStrata('DIALOG')
@@ -651,6 +658,27 @@ local function build()
     tabs[pg.key] = tb
   end
   f.select = select
+
+  -- roztahovani: tah za roh; obsah se po pusteni prestavi na novou sirku. Dvojklik = puvodni velikost.
+  f:SetResizable(true)
+  if f.SetResizeBounds then f:SetResizeBounds(520, 360, 1100, 900)
+  elseif f.SetMinResize then f:SetMinResize(520, 360) f:SetMaxResize(1100, 900) end
+  local function rebuild()
+    W, H = math.floor(f:GetWidth() + 0.5), math.floor(f:GetHeight() + 0.5)
+    db.optW, db.optH = W, H
+    CW = W - NAV - 44
+    for k, pg in pairs(pages) do pg.sf:Hide() pages[k] = nil end
+    select(db.optTab or PAGES[1].key)
+  end
+  local grip = CreateFrame('Button', nil, f)
+  grip:SetSize(16, 16) grip:SetPoint('BOTTOMRIGHT', -2, 2) grip:SetFrameLevel(f:GetFrameLevel() + 10)
+  grip:SetNormalTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up')
+  grip:SetHighlightTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight')
+  grip:SetPushedTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down')
+  grip:SetScript('OnMouseDown', function() f:StartSizing('BOTTOMRIGHT') end)
+  grip:SetScript('OnMouseUp', function() f:StopMovingOrSizing() rebuild() end)
+  grip:SetScript('OnDoubleClick', function() f:SetSize(600, 480) rebuild() end)
+  tip(grip, 'Velikost okna', 'Tahni za roh. Dvojklik = puvodni velikost.')
   f:SetScript('OnShow', function()
     local k = db.optTab
     local ok = false

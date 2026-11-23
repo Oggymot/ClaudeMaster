@@ -208,7 +208,21 @@ local function equipLocOf(link)
 end
 -- tooltip data: presne (bag / slot postavy), jinak podle odkazu
 local TI = C_TooltipInfo or {}
+local tipData0
+-- cteni tooltipu je drahe (stovky radku pri kazdem otevreni batohu) -> pamatovat podle odkazu itemu;
+-- smaze se pri zmene levelu, vybaveni, profesi (recept "Already known") a kdyz naroste
+local tipCache, tipN = {}, 0
+function G.clearTipCache() tipCache, tipN = {}, 0 end
 local function tipData(kind, a, b, link)
+  if kind == 'bag' and link and tipCache[link] then return tipCache[link] end
+  local d = tipData0(kind, a, b, link)
+  if kind == 'bag' and link and type(d) == 'table' then
+    if tipN > 600 then tipCache, tipN = {}, 0 end
+    tipCache[link] = d tipN = tipN + 1
+  end
+  return d
+end
+tipData0 = function(kind, a, b, link)
   local d
   if kind == 'bag' and TI.GetBagItem then d = pc(TI.GetBagItem, a, b)
   elseif kind == 'inv' and TI.GetInventoryItem then d = pc(TI.GetInventoryItem, 'player', a) end
@@ -882,7 +896,11 @@ for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'BAG_UPDATE_DELAYED', 'PLAYER_L
   'QUEST_ACCEPTED', 'QUEST_REMOVED', 'QUEST_TURNED_IN' }) do
   pcall(f.RegisterEvent, f, e)
 end
+for _, e in ipairs({ 'NEW_RECIPE_LEARNED', 'SKILL_LINES_CHANGED', 'TRADE_SKILL_LIST_UPDATE' }) do pcall(f.RegisterEvent, f, e) end
 f:SetScript('OnEvent', function(_, ev)
+  if ev == 'PLAYER_LEVEL_UP' or ev == 'PLAYER_EQUIPMENT_CHANGED' or ev == 'NEW_RECIPE_LEARNED' or ev == 'SKILL_LINES_CHANGED'
+    or ev == 'TRADE_SKILL_LIST_UPDATE' then G.clearTipCache() end
+  if ev == 'NEW_RECIPE_LEARNED' or ev == 'SKILL_LINES_CHANGED' or ev == 'TRADE_SKILL_LIST_UPDATE' then return end
   if ev == 'MERCHANT_SHOW' then G.merchant = true elseif ev == 'MERCHANT_CLOSED' then G.merchant = false end
   if ev == 'BANKFRAME_OPENED' then G.bank = true elseif ev == 'BANKFRAME_CLOSED' then G.bank = false end
   if ev == 'BANKFRAME_OPENED' and C_Timer then C_Timer.After(0.6, function() pcall(G.refreshBags) end) end
@@ -942,13 +960,24 @@ local function isBlizzBag(b)
   local n = p and p.GetName and p:GetName()
   return type(n) == 'string' and (n:find('^ContainerFrame') or n == 'BankFrame' or n:find('^BankPanel')) ~= nil
 end
-function G.otherButtons(force)
-  local now = GetTime()
-  if (force or now - otherAt > 5) and EnumerateFrames then
-    otherAt = now
-    local f = EnumerateFrames()
-    local n = 0
-    while f and n < 20000 do
+-- hledani po kouskach (300 framu za snimek), at hra nesekne; nejvys jednou za 20 s
+local scanCo
+local scanner = CreateFrame('Frame')
+scanner:Hide()
+scanner:SetScript('OnUpdate', function(self)
+  if not scanCo then self:Hide() return end
+  local ok = coroutine.resume(scanCo)
+  if not ok or coroutine.status(scanCo) == 'dead' then
+    scanCo = nil self:Hide()
+    otherAt = GetTime()
+    if C_Timer then C_Timer.After(0, function() pcall(G.refreshBags) end) end
+  end
+end)
+function G.scanOther()
+  if scanCo or not EnumerateFrames or GetTime() - otherAt < 20 then return end
+  scanCo = coroutine.create(function()
+    local f, n = EnumerateFrames(), 0
+    while f do
       n = n + 1
       if not other[f] and not (f.IsForbidden and f:IsForbidden()) then
         local ok, yes = pcall(function()
@@ -956,11 +985,13 @@ function G.otherButtons(force)
         end)
         if ok and yes then other[f] = true end
       end
+      if n % 300 == 0 then coroutine.yield() end
       f = EnumerateFrames(f)
     end
-  end
-  return other
+  end)
+  scanner:Show()
 end
+function G.otherButtons() return other end
 local function eachButton(frame, fn)
   if not frame or not frame:IsShown() then return end
   if frame.EnumerateValidItems then
@@ -1025,7 +1056,18 @@ local function hookFrame(fr)
     fr:HookScript('OnShow', function() if C_Timer then C_Timer.After(0.05, function() pcall(G.refreshBags) end) end end)
   end
 end
-local function soon() if C_Timer then C_Timer.After(0.15, function() pcall(G.otherButtons, true) pcall(G.refreshBags) end) end end
+local function anyOtherVisible()
+  for b in pairs(other) do if b:IsVisible() then return true end end
+  return false
+end
+local function soon()
+  if not C_Timer then return end
+  C_Timer.After(0.15, function()
+    pcall(G.refreshBags)
+    -- batoh jineho addonu otevreny, ale jeho tlacitka jeste nezname -> najit (po kouskach)
+    if not anyOtherVisible() then pcall(G.scanOther) end
+  end)
+end
 for _, fn in ipairs({ 'ToggleAllBags', 'OpenAllBags', 'ToggleBackpack', 'OpenBackpack', 'ToggleBag', 'OpenBag' }) do
   if type(_G[fn]) == 'function' then hooksecurefunc(fn, soon) end
 end
@@ -1034,12 +1076,10 @@ local tickAcc = 0
 local tk = CreateFrame('Frame')
 tk:SetScript('OnUpdate', function(_, el)
   tickAcc = tickAcc + el
-  if tickAcc < 1.5 then return end
+  if tickAcc < 2.5 then return end
   tickAcc = 0
   if InCombatLockdown() or not ns.db or ns.db.gearTips == false then return end
-  for b in pairs(other) do
-    if b:IsVisible() then pcall(G.refreshBags) return end
-  end
+  if anyOtherVisible() then pcall(G.refreshBags) end
 end)
 local hk = CreateFrame('Frame')
 hk:RegisterEvent('PLAYER_LOGIN')
@@ -1048,6 +1088,7 @@ hk:SetScript('OnEvent', function()
   for i = 1, 13 do pcall(hookFrame, _G['ContainerFrame' .. i]) end
   pcall(hookFrame, _G.BankFrame)
   pcall(hookFrame, _G.BankPanel)
+  if C_Timer then C_Timer.After(15, function() pcall(G.scanOther) end) end   -- tlacitka batohu jinych addonu predem
 end)
 
 ------------------------------------------------------------------------------------------
