@@ -615,11 +615,13 @@ end
 -- Threat metr v medvedovi: pruh nad panelem.
 -- Drzis aggro -> pruh = kolik ma nejblizsi spoluhrac (% tveho threatu, 100 = strhne si moba).
 -- Nedrzis -> pruh = tvuj threat k tomu, kdo moba ma.  /cm threat on|off
+-- Nad nim mensi radky pro dalsi moby v boji (z nameplatu): uteceni nahore.
 ------------------------------------------------------------------------------------------
 local PARTY = { 'party1', 'party2', 'party3', 'party4', 'pet' }
-local function threatOf(u)
+local MAXROWS = 6
+local function threatOf(u, mob)
   if not UnitExists(u) then return nil end
-  local tanking, status, scaled = pc(UnitDetailedThreatSituation, u, 'target')
+  local tanking, status, scaled = pc(UnitDetailedThreatSituation, u, mob)
   return safeNum(scaled), safeNum(status), safeBool(tanking)
 end
 local function classHex(u)
@@ -627,67 +629,131 @@ local function classHex(u)
   local cc = cls and RAID_CLASS_COLORS and RAID_CLASS_COLORS[safe(cls)]
   return cc and cc.colorStr and ('|c' .. cc.colorStr) or '|cffffffff'
 end
+local function short(s, n) s = s or '?' return #s > n and (s:sub(1, n - 1) .. '.') or s end
 
-local bar
-local function makeBar()
-  local panel = _G.ClaudeMasterFrame
-  if bar or not panel then return bar end
-  local b = CreateFrame('StatusBar', nil, panel, 'BackdropTemplate')
-  b:SetHeight(14)
-  b:SetPoint('BOTTOMLEFT', panel, 'TOPLEFT', 0, 3)
-  b:SetPoint('BOTTOMRIGHT', panel, 'TOPRIGHT', 0, 3)
+-- stav jednoho moba: { tank = drzim?, v = 0-100 pro pruh, mine, top, topU, who, whoU }
+local function mobInfo(mob)
+  local mine, status, tanking = threatOf('player', mob)
+  local top, topU
+  for _, u in ipairs(PARTY) do
+    local s = threatOf(u, mob)
+    if s and (not top or s > top) then top, topU = s, u end
+  end
+  local tu = mob .. 'target'
+  if tanking == nil then tanking = safeBool(pc(UnitIsUnit, tu, 'player')) end
+  local who = safe(pc(UnitName, tu))
+  return { tank = tanking, status = status, mine = mine, top = top, topU = topU,
+    who = type(who) == 'string' and who or nil, whoU = tu }
+end
+
+local function newBar(parent, h, icon)
+  local b = CreateFrame('StatusBar', nil, parent, 'BackdropTemplate')
+  b:SetHeight(h)
   b:SetStatusBarTexture('Interface\\TargetingFrame\\UI-StatusBar')
   b:SetMinMaxValues(0, 100)
   b:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 1 })
   b:SetBackdropColor(0, 0, 0, 0.55)
   b:SetBackdropBorderColor(0, 0, 0, 0.9)
   b.icon = b:CreateTexture(nil, 'OVERLAY')
-  b.icon:SetSize(12, 12) b.icon:SetPoint('LEFT', 2, 0)
-  b.icon:SetTexture('Interface\\Icons\\Ability_Racial_BearForm')
+  b.icon:SetSize(h - 2, h - 2) b.icon:SetPoint('LEFT', 2, 0)
+  if icon then b.icon:SetTexture(icon) end
   b.left = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall')
   b.left:SetPoint('LEFT', b.icon, 'RIGHT', 4, 0)
   b.right = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall')
   b.right:SetPoint('RIGHT', -4, 0)
   b:Hide()
-  bar = b
   return b
 end
 
-local function updateBar()
-  local db = ns.db
-  local show = db and db.threatBar ~= false and DR.form() == 'bear' and UnitExists('target')
-    and safeBool(pc(UnitCanAttack, 'player', 'target')) and not safeBool(pc(UnitIsDead, 'target'))
-    and (ns.inCombat() or safeBool(pc(UnitAffectingCombat, 'target')))
-  local b = makeBar()
-  if not b then return end
-  if not show then b:Hide() return end
-  local mine, status, tanking = threatOf('player')
-  -- nejvyssi threat ze spoluhracu
-  local top, topU
-  for _, u in ipairs(PARTY) do
-    local s = threatOf(u)
-    if s and (not top or s > top) then top, topU = s, u end
+local bar, rows = nil, {}
+local function makeBar()
+  local panel = _G.ClaudeMasterFrame
+  if bar or not panel then return bar end
+  bar = newBar(panel, 14, 'Interface\\Icons\\Ability_Racial_BearForm')
+  bar:SetPoint('BOTTOMLEFT', panel, 'TOPLEFT', 0, 3)
+  bar:SetPoint('BOTTOMRIGHT', panel, 'TOPRIGHT', 0, 3)
+  for i = 1, MAXROWS do
+    local r = newBar(panel, 11)
+    r.left:SetFontObject('GameFontHighlightSmall')
+    r:SetPoint('BOTTOMLEFT', i == 1 and bar or rows[i - 1], 'TOPLEFT', 0, 1)
+    r:SetPoint('BOTTOMRIGHT', i == 1 and bar or rows[i - 1], 'TOPRIGHT', 0, 1)
+    rows[i] = r
   end
-  local tt = safeBool(pc(UnitIsUnit, 'targettarget', 'player'))
-  if tanking == nil then tanking = tt end
-  if tanking then
-    -- drzis: jak blizko je nekdo dalsi
-    local v = top or 0
+  return bar
+end
+
+-- vyplnit jeden pruh; prefix = jmeno moba (radky) nebo nil (hlavni pruh)
+local function fill(b, m, prefix)
+  local mark = safeNum(pc(GetRaidTargetIndex, m.unit or 'target'))
+  if prefix then
+    if mark then b.icon:SetTexture('Interface\\TargetingFrame\\UI-RaidTargetingIcon_' .. mark) b.icon:Show()
+    else b.icon:Hide() end
+  end
+  local p = prefix and ('|cffcccccc' .. prefix .. '|r  ') or ''
+  if m.tank then
+    local v = m.top or 0
     b:SetValue(math.max(4, v))
     if v >= 90 then b:SetStatusBarColor(1, 0.25, 0.2)
     elseif v >= 70 then b:SetStatusBarColor(1, 0.8, 0.1)
     else b:SetStatusBarColor(0.2, 0.85, 0.3) end
-    b.left:SetText(status == 2 and '|cffffd200Drzis (tesne)|r' or '|cff80ff80Drzis aggro|r')
-    b.right:SetText(topU and (classHex(topU) .. (safe(UnitName(topU)) or '?') .. '|r ' .. math.floor(v) .. '%') or '')
+    b.left:SetText(p .. (prefix and '' or (m.status == 2 and '|cffffd200Drzis (tesne)|r' or '|cff80ff80Drzis aggro|r')))
+    b.right:SetText(m.topU and (classHex(m.topU) .. short(safe(UnitName(m.topU)), 10) .. '|r ' .. math.floor(v) .. '%') or '')
   else
-    local v = mine or 0
+    local v = m.mine or 0
     b:SetValue(math.max(4, v))
     b:SetStatusBarColor(0.9, 0.2, 0.2)
-    local who = safe(pc(UnitName, 'targettarget'))
-    b.left:SetText('|cffff6060Nedrzis|r' .. (mine and ('  ' .. math.floor(v) .. '%') or ''))
-    b.right:SetText(type(who) == 'string' and ('bije: ' .. classHex('targettarget') .. who .. '|r') or '')
+    b.left:SetText(p .. (prefix and '|cffff6060!|r' or '|cffff6060Nedrzis|r') .. (m.mine and ('  ' .. math.floor(v) .. '%') or ''))
+    b.right:SetText(m.who and ('bije: ' .. classHex(m.whoU) .. short(m.who, 10) .. '|r') or '')
   end
   b:Show()
+end
+
+local function hostile(u)
+  return UnitExists(u) and safeBool(pc(UnitCanAttack, 'player', u)) and not safeBool(pc(UnitIsDead, u))
+end
+
+local function updateBar()
+  local db = ns.db
+  local b = makeBar()
+  if not b then return end
+  local on = db and db.threatBar ~= false and DR.form() == 'bear' and ns.inCombat()
+  -- hlavni pruh: cil
+  if on and hostile('target') then
+    local m = mobInfo('target') m.unit = 'target'
+    fill(b, m)
+  else
+    b:Hide()
+  end
+  -- dalsi moby v boji (nameplaty), bez aktualniho cile; uteceni (nedrzis) nahoru
+  local list = {}
+  if on then
+    local plates = C_NamePlate and C_NamePlate.GetNamePlates and pc(C_NamePlate.GetNamePlates)
+    for _, pl in ipairs(type(plates) == 'table' and plates or {}) do
+      local u = pl.namePlateUnitToken or (pl.UnitFrame and pl.UnitFrame.unit)
+      if u and hostile(u) and not safeBool(pc(UnitIsUnit, u, 'target'))
+        and safeBool(pc(UnitAffectingCombat, u)) then
+        local m = mobInfo(u)
+        -- jen moby, ktere se tykaji nas (muj threat, nebo bije nekoho z party)
+        local ours = m.mine ~= nil or m.tank == true or m.top ~= nil
+        if not ours and m.who then
+          for _, pu in ipairs(PARTY) do if safeBool(pc(UnitIsUnit, m.whoU, pu)) then ours = true end end
+        end
+        if ours then
+          m.unit, m.name = u, safe(pc(UnitName, u))
+          list[#list + 1] = m
+        end
+      end
+    end
+  end
+  table.sort(list, function(a, x)
+    if (a.tank and 1 or 0) ~= (x.tank and 1 or 0) then return not a.tank end
+    return (a.top or 0) > (x.top or 0)
+  end)
+  -- pokud neni hlavni pruh, radky zacnou od nej stejne (drzi pozici)
+  for i = 1, MAXROWS do
+    local m = list[i]
+    if m then fill(rows[i], m, short(m.name, 14)) else rows[i]:Hide() end
+  end
 end
 
 local tbf, acc = CreateFrame('Frame'), 0
