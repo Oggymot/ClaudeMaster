@@ -543,6 +543,7 @@ end
 
 -- muzu ted koupit bod? true / false / nil (nevime)
 local function canBuy(e)
+  if T.freePoints() <= 0 then return false end   -- bez volneho bodu nic koupit nejde (API obcas tvrdi opak)
   local ni = nodeInfo(e and e.node)
   if not ni then return nil end
   local c = safeBool(ni.canPurchaseRank)

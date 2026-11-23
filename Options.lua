@@ -430,8 +430,8 @@ PAGES[#PAGES + 1] = { key = 'build', name = 'Build', icon = 'Interface\\Icons\\I
     f.icon = f:CreateTexture(nil, 'ARTWORK') f.icon:SetSize(26, 26) f.icon:SetPoint('TOPLEFT', 0, -2)
     f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     f.name = label(f, '', 12, 1, 0.85, 0.3) f.name:SetPoint('TOPLEFT', 34, -1)
-    f.why = label(f, '', 10, 0.7, 0.72, 0.78) f.why:SetPoint('TOPLEFT', 34, -16) f.why:SetPoint('RIGHT', 0, 0)
-    f.why:SetWordWrap(false)
+    f.why = label(f, '', 10, 0.7, 0.72, 0.78) f.why:SetPoint('TOPLEFT', 34, -16) f.why:SetWidth(CW - 34)
+    f.why:SetWordWrap(true) f.why:SetSpacing(1)
     nextLines[i] = f
     p.add(f, 4)
   end
@@ -505,6 +505,7 @@ PAGES[#PAGES + 1] = { key = 'build', name = 'Build', icon = 'Interface\\Icons\\I
         f.icon:SetTexture(tex or 'Interface\\Icons\\INV_Misc_QuestionMark')
         f.name:SetText(('%s  |cffaaaaaa%d/%d|r%s'):format(r.name, r.cur, r.target, r.can and '  |cff55ee66- muzes hned|r' or ''))
         f.why:SetText(r.why)
+        f:SetHeight(math.max(32, 18 + math.ceil(f.why:GetStringHeight()) + 2))
         f:Show()
       else f:Hide() end
     end
