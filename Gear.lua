@@ -1116,7 +1116,17 @@ end)
 ------------------------------------------------------------------------------------------
 local JUNK = 'seda vec (junk)'
 local selling = false
-local function money(c) return GetCoinTextureString and GetCoinTextureString(c) or (tostring(math.floor(c / 100)) .. 's') end
+-- castka s ikonkami zlata / stribra / medi
+local function money(c)
+  c = math.floor(tonumber(c) or 0)
+  local g, s, cu = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
+  local function ic(n) return '|TInterface\\MoneyFrame\\UI-' .. n .. 'Icon:0:0:2:0|t' end
+  local out = {}
+  if g > 0 then out[#out + 1] = g .. ic('Gold') end
+  if s > 0 then out[#out + 1] = s .. ic('Silver') end
+  if cu > 0 or #out == 0 then out[#out + 1] = cu .. ic('Copper') end
+  return table.concat(out, ' ')
+end
 
 -- prodat veci z G.sellMap (jen batohy 0-5); onlyJunk = jen sede
 function G.sellMarked(onlyJunk)
