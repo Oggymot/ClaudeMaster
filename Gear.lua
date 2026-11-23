@@ -1161,6 +1161,48 @@ end)
 ------------------------------------------------------------------------------------------
 -- Tip v panelu: mimo boj a bez cile nabidni lepsi kus z batohu (klik = nasadit)
 ------------------------------------------------------------------------------------------
+-- Sledovani na minimape (Find Herbs / Find Minerals / Find Treasure): po smrti zmizi -> pripomenout
+local TRACK_SPELLS = { { 2383, 'Find Herbs' }, { 2580, 'Find Minerals' }, { 2481, 'Find Treasure' } }
+local function knownSpell(id)
+  if IsPlayerSpell and safeBool(pc(IsPlayerSpell, id)) then return true end
+  if IsSpellKnown and safeBool(pc(IsSpellKnown, id)) then return true end
+  return false
+end
+-- je zapnute nejake "Find ..." sledovani? true / false / nil (nejde zjistit)
+local function findTrackingActive()
+  local M = C_Minimap
+  if M and M.GetNumTrackingTypes and M.GetTrackingInfo then
+    local n = safeNum(pc(M.GetNumTrackingTypes)) or 0
+    if n > 0 then
+      for i = 1, n do
+        local a, b, c = pc(M.GetTrackingInfo, i)
+        local name, active
+        if type(a) == 'table' then name, active = safe(a.name), safeBool(a.active)
+        else name, active = safe(a), safeBool(c) end
+        if active and type(name) == 'string' and name:find('^Find ') then return true end
+      end
+      return false
+    end
+  end
+  if GetTrackingTexture then return safe(pc(GetTrackingTexture)) ~= nil end
+  return nil
+end
+function G.trackingHint(c)
+  if ns.db.trackHint == false or c.inCombat or c.hostile or c.dead then return nil end
+  if safeBool(pc(UnitIsDeadOrGhost, 'player')) then return nil end
+  if UnitOnTaxi and safeBool(pc(UnitOnTaxi, 'player')) then return nil end
+  local want
+  for _, t in ipairs(TRACK_SPELLS) do
+    if knownSpell(t[1]) then want = t break end   -- poradi: byliny, rudy, poklad
+  end
+  if not want or findTrackingActive() ~= false then return nil end
+  local name = (C_Spell and C_Spell.GetSpellName and safe(pc(C_Spell.GetSpellName, want[1]))) or want[2]
+  local icon = C_Spell and C_Spell.GetSpellTexture and safe(pc(C_Spell.GetSpellTexture, want[1]))
+  return { name = 'TARGET', kind = 'hint', icon = icon or 'Interface\\Icons\\INV_Misc_Flower_02', dkey = 'track:' .. want[1],
+    reason = ('Zapni %s (sledovani na minimape po smrti zmizi) - klik'):format(name),
+    macro = '/cast ' .. name, macroLabel = name }
+end
+
 local E = ns.Engine
 if E and E.plan then
   local origPlan = E.plan
@@ -1174,6 +1216,11 @@ if E and E.plan then
           reason = ('Lepsi gear v batohu: %s (+%d %%) - klik = nasadit'):format(u.link:match('%[(.-)%]') or '?',
             math.floor(u.pct * 100 + 0.5)) }
       end
+    end
+    -- Find Herbs / Minerals vypnute (typicky po smrti) -> pripomenout (klik)
+    if not util then
+      local ok, h = pcall(G.trackingHint, c)
+      if ok and h then util = h end
     end
     -- parta: quest, ktery partak nema -> sdilet (klik)
     if not util and not c.inCombat and ns.Quests and ns.Quests.shareHint then

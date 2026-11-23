@@ -546,6 +546,9 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
     .. 'na aukci ani nedas partakovi. Vypnuto = takove veci jen oznaci sipkou.',
     function() return db.autoEquipBoE end, function(v) db.autoEquipBoE = v end), 6, 24)
 
+  p.add(checkbox(p.c, 'Pripominat Find Herbs / Find Minerals', 'Kdyz sledovani bylin nebo rud na minimape neni zapnute '
+    .. '(typicky po smrti), ukaze se tip - klik ho zapne. Pravy klik na tip = skryt na 30 min.',
+    function() return db.trackHint ~= false end, function(v) db.trackHint = (not v) and false or nil end), 12)
   p.section('Questy pod minimapou')
   p.add(checkbox(p.c, 'Jen questy z aktualni oblasti', 'Seznam ukaze jen questy z mista, kde jsi.',
     function() return db.questZone == true end, function(v) db.questZone = v questsUpd() end))
