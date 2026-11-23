@@ -145,14 +145,23 @@ local function equipLocOf(link)
   local _, _, _, loc = pc(f, link)
   return safe(loc)
 end
+-- tooltip data: presne (bag / slot postavy), jinak podle odkazu
+local TI = C_TooltipInfo or {}
+local function tipData(kind, a, b, link)
+  local d
+  if kind == 'bag' and TI.GetBagItem then d = pc(TI.GetBagItem, a, b)
+  elseif kind == 'inv' and TI.GetInventoryItem then d = pc(TI.GetInventoryItem, 'player', a) end
+  if type(d) ~= 'table' and link and TI.GetHyperlink then d = pc(TI.GetHyperlink, link) end
+  return d
+end
 local eqCache, eqAt = nil, -99
 local function equipped()
   if eqCache and GetTime() - eqAt < 2 then return eqCache end
   local t = {}
   for slot = 1, 18 do
     local link = safe(pc(GetInventoryItemLink, 'player', slot))
-    if link and C_TooltipInfo and C_TooltipInfo.GetInventoryItem then
-      local st = G.parse(pc(C_TooltipInfo.GetInventoryItem, 'player', slot))
+    if link then
+      local st = G.parse(tipData('inv', slot, nil, link))
       t[slot] = { link = link, st = st, score = G.score(st), loc = equipLocOf(link) }
     end
   end
@@ -235,17 +244,27 @@ function G.upgrades(force)
   local list = {}
   local getNum = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
   local getInfo = C_Container and C_Container.GetContainerItemInfo
-  if not (getNum and getInfo and C_TooltipInfo and C_TooltipInfo.GetBagItem) then return list end
+  G.lastAll = {}
+  if not (getNum and getInfo) then return list end
   local lvl = safeNum(UnitLevel('player')) or 60
   for bag = 0, 4 do
     for slot = 1, safeNum(pc(getNum, bag)) or 0 do
       local info = pc(getInfo, bag, slot)
       local link = type(info) == 'table' and safe(info.hyperlink)
       if type(link) == 'string' and equipLocOf(link) and SLOTS[equipLocOf(link)] then
-        local st, blocked, req = G.parse(pc(C_TooltipInfo.GetBagItem, bag, slot))
-        if st and not blocked and not (req and req > lvl) then
-          local pct, oldLink, eqSlot, new = G.compare(link, st)
-          if pct and pct > 0.03 and new > 1 then
+        local st, blocked, req = G.parse(tipData('bag', bag, slot, link))
+        local why
+        if not st then why = 'nejde precist'
+        elseif blocked then why = 'neumis nosit'
+        elseif req and req > lvl then why = 'od lvl ' .. req end
+        local pct, oldLink, eqSlot, new
+        if not why then
+          pct, oldLink, eqSlot, new = G.compare(link, st)
+          if not pct then why = 'nesrovnavam (trinket / uz mas)' end
+        end
+        G.lastAll[#G.lastAll + 1] = { link = link, pct = pct, why = why }
+        if not why then
+          if pct > 0.03 and new > 1 then
             list[#list + 1] = { link = link, id = safeNum(info.itemID), pct = pct, old = oldLink, slot = eqSlot, bag = bag, bslot = slot }
           end
         end
@@ -264,10 +283,16 @@ function G.report()
   ns.say(('Gear: vahy %s   (/cm gear frost|arcane|fire|destro|ret|prot|holy|balance|feral|auto)'):format(
     s == 'custom' and 'vlastni' or G.SPECS[s].label))
   local l = G.upgrades(true)
-  if #l == 0 then ns.say('V batohu neni nic lepsiho.') return end
-  for _, u in ipairs(l) do
-    ns.say(('  %s %s  +%d %%  (misto %s)'):format(UP, u.link, math.floor(u.pct * 100 + 0.5), u.old or 'prazdneho slotu'))
+  local all = G.lastAll or {}
+  if #all == 0 then ns.say('V batohu nemas zadny gear (zbran / brneni).') return end
+  for _, e in ipairs(all) do
+    if e.why then ns.say(('  |cff888888- %s: %s|r'):format(e.link, e.why))
+    else
+      ns.say(('  %s %s  %s%+d %%|r'):format(e.pct > 0.03 and UP or (e.pct < -0.03 and DOWN or '='), e.link,
+        e.pct > 0.03 and '|cff40ff60' or (e.pct < -0.03 and '|cffff6060' or '|cff9aa6b8'), math.floor(e.pct * 100 + 0.5)))
+    end
   end
+  if #l == 0 then ns.say('Nic z batohu neni lepsi nez to, co mas na sobe.') end
 end
 -- /cm vahy str=1 sta=0.5 crit=14 ...  (napr. z MythicSim stat weights)
 function G.setWeights(arg)

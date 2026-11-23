@@ -351,6 +351,8 @@ local function decide(c, s)
   end
   if c.tLow20 and ready('Hammer of Wrath') then return A('Hammer of Wrath', 'Cil pod 20 %: Hammer of Wrath') end
   if c.judgeR and ready('Judgement') then return A('Judgement', 'Judgement (seal zustava)') end
+  -- Swift Judgement (ret talent): druhy Judgement s vlastnim cooldownem
+  if c.judgeR and ready('Swift Judgement') then return A('Swift Judgement', 'Swift Judgement (vlastni cooldown)') end
   if c.undead and ready('Exorcism') then return A('Exorcism', 'Undead/demon: Exorcism') end
   if c.near then
     for _, n in ipairs(STRIKES) do
@@ -393,7 +395,7 @@ local function apply(c, s, a)
   s.t = s.t + (ns.OFF_GCD[n] and 0 or math.max(1.5, ct))
 end
 
-local TRACK = { 'Judgement', 'Crusader Strike', 'Holy Strike', 'Hammer of Justice', 'Hammer of Wrath', 'Exorcism',
+local TRACK = { 'Judgement', 'Swift Judgement', 'Crusader Strike', 'Holy Strike', 'Hammer of Justice', 'Hammer of Wrath', 'Exorcism',
   'Consecration', 'Holy Shock', 'Divine Protection', 'Divine Shield', 'Lay on Hands' }
 
 function E.plan(c)
