@@ -310,7 +310,7 @@ local BUILDS = {
       { 'Ruin', 5, 'Krity Destruction kouzel 2x misto 1.5x.' },
       { 'Agonizing Flames', 3, '+10 % ke vsem Destruction kouzlum.' },
       { 'Shadow and Flame', 5, 'Shadowburn = +10 % ohen na 20 s a shard zpet; Conflagrate nezere Immolate. Az na 5/5 vzdy (mezitim 60-80 %).' },
-      { 'Shadowburn', 1, 'S Shadow and Flame ho addon dava na cooldown (+10 % ohen).' },
+      { 'Shadowburn', 1, 'Dorazeni + shard. Se Shadow and Flame 5/5 ho addon dava i na cooldown (+10 % ohen).' },
       { 'Conflagrate', 1, 'Instantni uder kazdych 10 s.' },
       { 'Fire and Brimstone', 3, 'Conflagrate +25 % krit (s Ruin = 2x).' },
       { 'Aftermath', 5, 'Uvodni uder Immolate +50 %.' },
