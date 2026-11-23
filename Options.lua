@@ -170,7 +170,7 @@ local function newPage(host)
   local c = CreateFrame('Frame', nil, sf)
   c:SetSize(CW, 10)
   sf:SetScrollChild(c)
-  local p = { sf = sf, c = c, y = 0, items = {} }
+  local p = { sf = sf, c = c, y = 0, items = {}, flow = {} }
   -- posuvnik (jen ukazatel; kolecko mysi)
   local bar = sf:CreateTexture(nil, 'OVERLAY') bar:SetTexture(WHITE) bar:SetWidth(3) bar:SetVertexColor(accent(0.5))
   local function upd()
@@ -188,28 +188,50 @@ local function newPage(host)
   end)
   sf:SetScript('OnShow', function() sf:SetVerticalScroll(0) upd() end)
   p.upd = upd
+  -- rozvrzeni pod sebe; skryte prvky a prazdne poznamky misto nezaberou
+  function p.layout()
+    local y, first = 0, true
+    for _, it in ipairs(p.flow) do
+      local w = it.w
+      if w:IsShown() and w:GetHeight() > 1 then
+        y = y - (first and 0 or it.gap)
+        first = false
+        w:ClearAllPoints()
+        w:SetPoint('TOPLEFT', c, 'TOPLEFT', it.indent or 0, y)
+        y = y - w:GetHeight()
+      end
+    end
+    p.y = y
+    c:SetHeight(-y + 10)
+  end
   function p.add(w, gap, indent)
-    p.y = p.y - (gap or 6)
-    w:SetPoint('TOPLEFT', c, 'TOPLEFT', indent or 0, p.y)
-    p.y = p.y - w:GetHeight()
-    c:SetHeight(-p.y + 10)
+    p.flow[#p.flow + 1] = { w = w, gap = gap or 6, indent = indent }
     p.items[#p.items + 1] = w
+    p.layout()
     return w
   end
   function p.section(text, sub)
     local f = CreateFrame('Frame', nil, c)
-    f:SetSize(CW, sub and 36 or 22)
+    f:SetSize(CW, 22)
     local t = label(f, text, 13, unpack(th().title)) t:SetPoint('TOPLEFT', 0, 0)
     local line = f:CreateTexture(nil, 'ARTWORK') line:SetTexture(WHITE) line:SetHeight(1)
-    line:SetPoint('TOPLEFT', 0, -17) line:SetPoint('TOPRIGHT', 0, -17) line:SetVertexColor(accent(0.3))
-    if sub then local s = label(f, sub, 10, 0.6, 0.62, 0.68) s:SetPoint('TOPLEFT', 0, -22) s:SetWidth(CW) end
-    return p.add(f, #p.items == 0 and 0 or 16)
+    line:SetPoint('TOPLEFT', 0, -18) line:SetPoint('TOPRIGHT', 0, -18) line:SetVertexColor(accent(0.3))
+    if sub then
+      local s = label(f, sub, 10, 0.6, 0.62, 0.68) s:SetPoint('TOPLEFT', 0, -24) s:SetWidth(CW) s:SetWordWrap(true)
+      s:SetSpacing(2)
+      f:SetHeight(24 + math.ceil(s:GetStringHeight()) + 2)
+    end
+    return p.add(f, 18)
   end
   function p.note(text, size)
     local f = CreateFrame('Frame', nil, c)
     local t = label(f, text, size or 11, 0.65, 0.67, 0.72) t:SetPoint('TOPLEFT') t:SetWidth(CW) t:SetWordWrap(true)
-    f:SetSize(CW, math.max(12, t:GetStringHeight() + 2))
     f.fs = t
+    function f.fit()   -- vyska podle textu (prazdny = 0, v rozvrzeni se preskoci)
+      local txt = t:GetText()
+      f:SetHeight((txt and txt ~= '') and math.max(12, t:GetStringHeight() + 2) or 1)
+    end
+    f:SetWidth(CW) f.fit()
     return p.add(f, 4)
   end
   function p.row(...)
@@ -221,6 +243,8 @@ local function newPage(host)
   end
   function p.refresh()
     for _, w in ipairs(p.items) do if w.refresh then pcall(w.refresh) end end
+    for _, it in ipairs(p.flow) do if it.w.fit then it.w.fit() end end
+    p.layout()
     upd()
   end
   return p
@@ -398,7 +422,6 @@ PAGES[#PAGES + 1] = { key = 'build', name = 'Build', icon = 'Interface\\Icons\\I
   end
   local warn = p.note('', 11)
   warn.fs:SetTextColor(1, 0.65, 0.3)
-  p.y = p.y - 16   -- misto na dva radky varovani
 
   p.section('Dalsi body podle vybraneho buildu')
   local nextLines = {}
