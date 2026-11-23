@@ -21,8 +21,52 @@ local SEAL_SET = {} for _, n in ipairs(SEALS) do SEAL_SET[n] = true end
 local SEAL_DUR, BLESS_DUR = 30, 600
 local STRIKES = { 'Crusader Strike', 'Holy Strike' }
 
--- Aura z seznamu: jmeno (aktivni) / false (neni) / nil (nevime). V boji podle posledniho castu.
-local function activeOf(list, dur)
+-- Buffy hrace mimo boj: projit vsechny podle indexu (hledani podle jmena na Foreveru
+-- sealy nenachazelo). Vysledek: jmeno -> expirationTime (0 = bez konce). V boji nil.
+local buffCache, buffAt = nil, -1
+local function myBuffs()
+  if ns.inCombat() then return nil end
+  if buffAt == GetTime() then return buffCache end
+  local get = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+  if not get then return nil end
+  local t, seen = {}, {}
+  for i = 1, 40 do
+    local ok, a = pcall(get, 'player', i, 'HELPFUL')
+    if not ok then return nil end
+    if type(a) ~= 'table' then break end
+    local n = safe(a.name)
+    if type(n) == 'string' then
+      t[n] = safeNum(a.expirationTime) or 0
+      seen[#seen + 1] = n
+    end
+  end
+  buffCache, buffAt = t, GetTime()
+  if ns.db then ns.db.palBuffs = seen end   -- diagnostika: co hra opravdu ukazuje
+  return t
+end
+
+-- Buff ze skupiny: jmeno (aktivni) / false (neni) / nil (nevime). V boji podle posledniho castu.
+local function activeOf(list, dur, pat)
+  local b = myBuffs()
+  if b then
+    for _, n in ipairs(list) do
+      if b[n] then
+        -- naucit cas nahozeni, at sledovani pokracuje i v boji (seal nahozeny pred /reload)
+        if dur and b[n] > 0 then ns.castAt[n] = b[n] - dur end
+        if not ns.castAt[n] then ns.castAt[n] = GetTime() end
+        return n
+      end
+    end
+    if pat then
+      for n, exp in pairs(b) do
+        if n:find(pat) then
+          if dur and exp > 0 then ns.castAt[n] = exp - dur elseif not ns.castAt[n] then ns.castAt[n] = GetTime() end
+          return n
+        end
+      end
+    end
+    return false
+  end
   local unknown = false
   for _, n in ipairs(list) do
     local a = ns.playerAura(n)
@@ -30,10 +74,11 @@ local function activeOf(list, dur)
   end
   if not unknown then return false end
   local best, at = nil, -1
-  for _, n in ipairs(list) do
-    local t = ns.castAt[n]
+  local function consider(n, t)
     if t and t > at and (not dur or GetTime() - t < dur) then best, at = n, t end
   end
+  for _, n in ipairs(list) do consider(n, ns.castAt[n]) end
+  if pat then for n, t in pairs(ns.castAt) do if type(n) == 'string' and n:find(pat) then consider(n, t) end end end
   return best
 end
 local function forbearance()
@@ -78,13 +123,13 @@ end
 local baseContext = E.context
 E.context = function()
   local c = baseContext()
-  c.seal = activeOf(SEALS, SEAL_DUR)
+  c.seal = activeOf(SEALS, SEAL_DUR, '^Seal of')
   c.sealLeft = nil   -- nil = seal je (aura), ale nevime kolik zbyva
   if c.seal and ns.castAt[c.seal] and GetTime() - ns.castAt[c.seal] < SEAL_DUR then
     c.sealLeft = SEAL_DUR - (GetTime() - ns.castAt[c.seal])
   end
-  c.palAura = activeOf(AURAS)
-  c.bless = activeOf(BLESS, BLESS_DUR)
+  c.palAura = activeOf(AURAS, nil, ' Aura$')
+  c.bless = activeOf(BLESS, nil, 'Blessing of')
   c.forb = forbearance()
   c.healerUp = false
   for _, m in ipairs((c.party and c.party.members) or {}) do
