@@ -27,3 +27,4 @@ Gear.lua
 UI.lua
 Options.lua
 Quests.lua
+Talents.lua

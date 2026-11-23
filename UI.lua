@@ -964,6 +964,8 @@ local HELP = {
   '/cm talents - co addon vycetl z talentu',
   '/cm dump - ulozi talenty, spelly, itemy a staty do souboru (po /reload)',
   '/cm sdilej - sdilet partakum questy, ktere nemaji (vidi to jejich addon)',
+  '/cm prodej on/off - sede veci se u vendora prodaji samy; /cm oprava on/off - automaticka oprava',
+  '/cm talent - co si vzit v talentech (a proc); taky v tooltipu talentu',
   '/cm auto - nova kouzla (rozpoznana z popisu); /cm auto <jmeno> attack/aoe/heal/buff/stop/defense/ignore; /cm auto off',
   '/cm gear [spec] - lepsi gear z batohu (vahy: frost/arcane/destro/ret/prot/holy/resto/balance/feral), /cm vahy str=1 ... vlastni',
   '/cm macro - vytvori makra: utok sam vybere dalsiho nepritele' .. (ns.class == 'WARLOCK' and ', DoTy na jedno tlacitko' or ''),
@@ -1031,6 +1033,13 @@ SlashCmdList.CLAUDEMASTER = function(msg)
     if ns.Quests then ns.Quests.toggle(arg) end
   elseif cmd == 'duo' then
     if ns.Duo then ns.Duo.status() end
+  elseif cmd == 'prodej' or cmd == 'oprava' then
+    local key = cmd == 'prodej' and 'autoSell' or 'autoRepair'
+    if arg == 'off' then db[key] = false elseif arg == 'on' then db[key] = nil end
+    ns.say((cmd == 'prodej' and 'Automaticky prodej sedych veci' or 'Automaticka oprava') .. ': ' .. (db[key] == false and 'vypnuto' or 'zapnuto')
+      .. '  (/cm ' .. cmd .. ' on/off)')
+  elseif cmd == 'talent' or cmd == 'talenty' then
+    if ns.Talents then ns.Talents.cmd(arg) end
   elseif cmd == 'auto' then
     if ns.AutoSpells then ns.AutoSpells.cmd(arg) end
   elseif cmd == 'sdilej' or cmd == 'share' then

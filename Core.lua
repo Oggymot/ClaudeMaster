@@ -278,6 +278,7 @@ function ns.scanTalents()
       cfg = spec and safeNum(pc(C_ClassTalents.GetLastSelectedSavedConfigID, spec))
     end
     local info = cfg and pc(C_Traits.GetConfigInfo, cfg)
+    ns.talentCfg = cfg
     if type(info) == 'table' and type(info.treeIDs) == 'table' then
       local list = {}
       for _, tree in ipairs(info.treeIDs) do
@@ -298,7 +299,7 @@ function ns.scanTalents()
               if type(name) == 'string' and name ~= '' then
                 local r = (active == nil or active == eid) and rank or 0
                 if (t[name] or 0) < r or t[name] == nil then t[name] = r end
-                list[#list + 1] = { name = name, rank = r, max = safeNum(ni.maxRanks), spellId = sid, tree = tree,
+                list[#list + 1] = { name = name, rank = r, max = safeNum(ni.maxRanks), spellId = sid, tree = tree, entry = eid,
                   node = node, x = safeNum(ni.posX), y = safeNum(ni.posY) }
               end
             end

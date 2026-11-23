@@ -1109,3 +1109,111 @@ rf:SetScript('OnEvent', function(_, _, rollID)
   -- okno hodu se vytvori az po udalosti: chvili pockat
   if C_Timer then C_Timer.After(0.3, function() pcall(onRoll, rollID) end) else pcall(onRoll, rollID) end
 end)
+
+------------------------------------------------------------------------------------------
+-- U vendora: automaticka oprava, prodej sedych veci (junk) a tlacitko "prodat oznacene"
+-- /cm prodej on|off, /cm oprava on|off
+------------------------------------------------------------------------------------------
+local JUNK = 'seda vec (junk)'
+local selling = false
+local function money(c) return GetCoinTextureString and GetCoinTextureString(c) or (tostring(math.floor(c / 100)) .. 's') end
+
+-- prodat veci z G.sellMap (jen batohy 0-5); onlyJunk = jen sede
+function G.sellMarked(onlyJunk)
+  if selling or not G.merchant then return end
+  pcall(G.upgrades, true)
+  local getInfo = C_Container and C_Container.GetContainerItemInfo
+  local use = C_Container and C_Container.UseContainerItem or UseContainerItem
+  if not (getInfo and use) then return end
+  local todo = {}
+  for key, why in pairs(G.sellMap or {}) do
+    local bag, slot = key:match('^(%-?%d+):(%d+)$')
+    bag, slot = tonumber(bag), tonumber(slot)
+    if bag and bag >= 0 and bag <= 5 and (why == JUNK or not onlyJunk) then
+      local info = pc(getInfo, bag, slot)
+      local link = type(info) == 'table' and safe(info.hyperlink)
+      if type(link) == 'string' and not safeBool(info.isLocked) then
+        todo[#todo + 1] = { bag = bag, slot = slot, link = link,
+          price = (select(11, pc(GetItemInfo, link)) or 0) * (safeNum(info.stackCount) or 1) }
+      end
+    end
+  end
+  if #todo == 0 then
+    if not onlyJunk then ns.say('Neni nic oznaceneho k prodeji') end
+    return
+  end
+  selling = true
+  local total, n, i = 0, 0, 0
+  local function step()
+    i = i + 1
+    local t = todo[i]
+    if not t or not G.merchant then
+      selling = false
+      if n > 0 then ns.say(('Prodano %d %s za %s'):format(n, n == 1 and 'vec' or 'veci', money(total))) end
+      return
+    end
+    local info = pc(getInfo, t.bag, t.slot)
+    -- vec se mezitim nepohnula?
+    if type(info) == 'table' and safe(info.hyperlink) == t.link then
+      pc(use, t.bag, t.slot)
+      total, n = total + (safeNum(t.price) or 0), n + 1
+    end
+    C_Timer.After(0.15, step)
+  end
+  step()
+end
+
+local function repair()
+  if not (CanMerchantRepair and pc(CanMerchantRepair)) then return end
+  local cost, can = pc(GetRepairAllCost)
+  cost = safeNum(cost) or 0
+  if cost <= 0 or not can then return end
+  if (safeNum(GetMoney()) or 0) < cost then ns.say('Na opravu nemas dost penez (' .. money(cost) .. ')') return end
+  pc(RepairAllItems, false)
+  ns.say('Opraveno za ' .. money(cost))
+end
+
+local sellBtn
+local function updateBtn()
+  if not sellBtn then return end
+  local n = 0
+  for key in pairs(G.sellMap or {}) do
+    local bag = tonumber(key:match('^(%-?%d+):'))
+    if bag and bag >= 0 and bag <= 5 then n = n + 1 end
+  end
+  sellBtn.count:SetText(n > 0 and tostring(n) or '')
+  sellBtn:SetAlpha(n > 0 and 1 or 0.4)
+end
+local function makeBtn()
+  if sellBtn or not MerchantFrame then return end
+  local b = CreateFrame('Button', nil, MerchantFrame)
+  b:SetSize(28, 28)
+  b:SetPoint('TOPRIGHT', MerchantFrame, 'TOPRIGHT', -40, -28)
+  local ic = b:CreateTexture(nil, 'ARTWORK') ic:SetAllPoints() ic:SetTexture('Interface\Icons\INV_Misc_Coin_02')
+  b:SetHighlightTexture('Interface\Buttons\ButtonHilight-Square', 'ADD')
+  b.count = b:CreateFontString(nil, 'OVERLAY', 'NumberFontNormal')
+  b.count:SetPoint('BOTTOMRIGHT', -1, 2)
+  b:SetScript('OnClick', function() G.sellMarked(false) C_Timer.After(1, updateBtn) end)
+  b:SetScript('OnEnter', function(self)
+    GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+    GameTooltip:AddLine('ClaudeMaster: prodat oznacene')
+    GameTooltip:AddLine('Proda vsechno s minci v batohu (duvod je v tooltipu itemu).', 1, 1, 1, true)
+    GameTooltip:AddLine('Sede veci se prodavaji samy.', 0.7, 0.7, 0.7, true)
+    GameTooltip:Show()
+  end)
+  b:SetScript('OnLeave', function() GameTooltip:Hide() end)
+  sellBtn = b
+end
+
+local mf = CreateFrame('Frame')
+pcall(mf.RegisterEvent, mf, 'MERCHANT_SHOW')
+mf:SetScript('OnEvent', function()
+  local db = ns.db or {}
+  C_Timer.After(0.3, function()
+    if not G.merchant then return end
+    if db.autoRepair ~= false then pcall(repair) end
+    pcall(makeBtn)
+    if db.autoSell ~= false then pcall(G.sellMarked, true) end
+    C_Timer.After(1.5, function() pcall(updateBtn) end)
+  end)
+end)
