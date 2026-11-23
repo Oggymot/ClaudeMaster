@@ -610,9 +610,9 @@ local function inParty(name)
   return r ~= false
 end
 local PROFMAT = {
-  Cloth = { 'Tailoring', 'First Aid' }, Leather = { 'Leatherworking' },
+  Cloth = { 'Tailoring', 'First Aid' }, Leather = { 'Leatherworking', 'Skinning' },
   -- ruda: Mining ji tavi na pruty (Smelting) -> pro hornika to neni zbytecny material
-  ['Metal & Stone'] = { 'Mining', 'Blacksmithing', 'Engineering', 'Jewelcrafting' }, Herb = { 'Alchemy', 'Inscription' },
+  ['Metal & Stone'] = { 'Mining', 'Blacksmithing', 'Engineering', 'Jewelcrafting' }, Herb = { 'Alchemy', 'Herbalism', 'Inscription' },
   Cooking = { 'Cooking' }, Meat = { 'Cooking' }, Enchanting = { 'Enchanting' }, Parts = { 'Engineering' },
   Devices = { 'Engineering' }, Explosives = { 'Engineering' }, Jewelcrafting = { 'Jewelcrafting' },
 }
@@ -648,10 +648,13 @@ local function itemInfo(link)
 end
 -- kdo z party (s addonem) ma nekterou z profesi -> { {name, prof}, ... }
 G.peerProfs = {}
+-- profese partaku si pamatujeme (i po /reload) 14 dni od posledni zpravy - i kdyz zrovna nejsou v parte,
+-- at addon neradi prodat bylinky, ktere pravidelne davas parťakovi (driv to zapomnel po 15 min)
 function G.profPeers(list)
-  local out, now = {}, GetTime()
-  for name, pp in pairs(G.peerProfs) do
-    if now - pp.at < 900 and inParty(name) then
+  local out, now = {}, time()
+  local saved = ns.db and ns.db.peerProfs or {}
+  for name, pp in pairs(saved) do
+    if now - (pp.t or 0) < 14 * 86400 then
       for _, p in ipairs(list) do
         if pp.set[p] then out[#out + 1] = { name = name, prof = p } break end
       end
@@ -789,6 +792,10 @@ function G.recv(name, msg)
     local set = {}
     for pr in (f[3] or ''):gmatch('[^,]+') do set[pr] = true end
     G.peerProfs[name] = { set = set, at = GetTime() }
+    if ns.db then
+      ns.db.peerProfs = ns.db.peerProfs or {}
+      ns.db.peerProfs[name] = { set = set, t = time() }
+    end
     upCache = nil
     return
   end
@@ -845,6 +852,8 @@ for _, e in ipairs({ 'PLAYER_EQUIPMENT_CHANGED', 'GROUP_ROSTER_UPDATE', 'PLAYER_
   pcall(sf.RegisterEvent, sf, e)
 end
 sf:SetScript('OnEvent', function() G.shareSoon(3) end)
+-- v parte jednou za 5 min znovu (at partak nezapomene)
+if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(300, function() if IsInGroup and IsInGroup() then G.shareSoon(1) end end) end
 
 function G.report()
   local s = G.spec()
