@@ -55,7 +55,13 @@ f:SetScript('OnEvent', function(_, ev, _, a2, a3, a4)
   if not n then return end
   local now = GetTime()
   if DOTS[n] then DR.onTarget[n] = { tok = ns.T and ns.T.token, untilT = now + DOTS[n] } end
-  if HOTS[n] then DR.hotOn[n] = { unit = DR.lastHealUnit or 'player', untilT = now + HOTS[n] } end
+  if HOTS[n] then DR.hotOn[n .. ':' .. (DR.lastHealUnit or 'player')] = now + HOTS[n] end
+  -- Swiftmend spotrebuje HoT
+  if n == 'Swiftmend' then
+    local u = DR.lastHealUnit or 'player'
+    if (DR.hotOn['Rejuvenation:' .. u] or 0) > now then DR.hotOn['Rejuvenation:' .. u] = nil
+    else DR.hotOn['Regrowth:' .. u] = nil end
+  end
 end)
 local function dotLeft(n)
   local e = DR.onTarget[n]
@@ -63,9 +69,32 @@ local function dotLeft(n)
   return math.max(0, e.untilT - GetTime())
 end
 local function hotLeft(n, unit)
-  local e = DR.hotOn[n]
-  if not e or (unit and e.unit ~= unit) then return 0 end
-  return math.max(0, e.untilT - GetTime())
+  return math.max(0, (DR.hotOn[n .. ':' .. (unit or 'player')] or 0) - GetTime())
+end
+
+-- Specializace podle talentu (strom = sloupec v talentech Foreveru), /cm druid resto|balance|feral|auto
+local TREE = {
+  resto = { 'Improved Tranquility', 'Wild Growth', 'Living Spirit', 'Swiftmend', 'Improved Regrowth', 'Improved Rejuvenation',
+    'Tranquil Spirit', 'Gift of Nature', 'Subtlety', 'Bloom', 'Natural Shapeshifter', 'Reflection', "Nature's Swiftness",
+    'Naturalist', "Nature's Focus", 'Heart of the Wild' },
+  balance = { 'Improved Wrath', 'Genesis', 'Moonglow', 'Improved Entangling Roots', "Nature's Majesty", "Nature's Splendor",
+    "Nature's Reach", 'Insect Swarm', 'Improved Moonfire', 'Vengeance', 'Improved Starfire', "Nature's Grace", 'Eclipse',
+    'Moonfury', 'Moonkin Form', 'Overgrowth' },
+  feral = { 'Ferocity', 'Furor', 'Feral Instinct', 'Brutal Impact', 'Thick Hide', 'Feral Swiftness', 'Feral Charge',
+    'Shredding Attacks', 'Sharpened Claws', 'Blood Frenzy', 'Savage Fury', 'Lacerate', 'Natural Instinct',
+    'Predatory Discipline', 'Predatory Strikes', 'Rend and Tear', 'Natural Reaction', 'Leader of the Pack', 'Primal Bite',
+    'Shifting Power' },
+}
+function DR.spec()
+  local pref = ns.db and ns.db.druidSpec
+  if pref and TREE[pref] then return pref end
+  local best, bestN = nil, 0
+  for k, list in pairs(TREE) do
+    local n = 0
+    for _, t in ipairs(list) do n = n + (ns.talent and ns.talent(t) or 0) end
+    if n > bestN then best, bestN = k, n end
+  end
+  return best   -- nil = zatim zadne talenty
 end
 
 -- Buff na jednotce mimo boj (index scan): true / false / nil (v boji nebo nejde cist)
@@ -125,6 +154,8 @@ E.context = function()
   for _, m in ipairs((c.party and c.party.members) or {}) do
     if m.healer and m.alive and not m.unit:find('pet') then c.healerUp = true end
   end
+  c.spec = DR.spec()
+  c.resto = c.spec == 'resto'
   c.mf = dotLeft('Moonfire')
   c.is = dotLeft('Insect Swarm')
   local function inR(n)
@@ -152,6 +183,87 @@ local function A(name, reason, kind, extra)
   return a
 end
 
+-- Resto: koho lecit. Ty + parta (bez petu). HP pres hpBelow (v boji odhad), partak s addonem posila presne.
+local function below(u, x)
+  if u ~= 'player' and ns.Duo and ns.Duo.hpOf then
+    local h = ns.Duo.hpOf(u)
+    if h then return h < x end
+  end
+  return ns.hpBelow(u, x) == true
+end
+local function healTargets(c)
+  local t = { { unit = 'player', name = 'ty', mobs = (c.enemies and c.enemies.onMe) or 0 } }
+  local tank = c.party and c.party.tank
+  for _, m in ipairs((c.party and c.party.members) or {}) do
+    if m.alive and not m.unit:find('pet') and safeBool(pc(UnitIsConnected, m.unit)) ~= false then
+      t[#t + 1] = { unit = m.unit, name = m.name or '?', mobs = m.mobs or 0, tank = m == tank }
+    end
+  end
+  return t
+end
+-- jeden krok leceni pro resto (nil = nikoho neni treba lecit)
+local function restoHeal(c, s, ready)
+  local list = healTargets(c)
+  local function inRange(u)
+    if u == 'player' then return true end
+    local id = ns.id('Rejuvenation')
+    local r = id and C_Spell and C_Spell.IsSpellInRange and safeBool(pc(C_Spell.IsSpellInRange, id, u))
+    return r ~= false
+  end
+  local function who(m) return m.unit == 'player' and 'sebe' or m.name end
+  -- 1) nekdo umira
+  for _, m in ipairs(list) do
+    if below(m.unit, 35) and inRange(m.unit) then
+      local hot = hotLeft('Rejuvenation', m.unit) > s.t or hotLeft('Regrowth', m.unit) > s.t
+      if hot and ready('Swiftmend') then
+        s.used.Swiftmend = true
+        return A('Swiftmend', ('%s umira: Swiftmend (spotrebuje HoT)'):format(m.name), 'spell', { unit = m.unit, urgent = true })
+      end
+      if below(m.unit, 25) and ready("Nature's Swiftness") then
+        return A("Nature's Swiftness", ("%s umira: Nature's Swiftness + Healing Touch"):format(m.name), 'spell', { urgent = true })
+      end
+      local h = (hotLeft('Regrowth', m.unit) <= s.t and ready('Regrowth')) and 'Regrowth' or (ready('Healing Touch') and 'Healing Touch')
+      if h then
+        s.used[h .. m.unit] = true
+        return A(h, ('%s ma malo HP: %s na %s'):format(m.name, h, who(m)), 'spell', { unit = m.unit, urgent = true })
+      end
+    end
+  end
+  -- 2) vic lidi zranenych: Wild Growth / Tranquility
+  local hurt = 0
+  for _, m in ipairs(list) do if below(m.unit, 75) then hurt = hurt + 1 end end
+  if hurt >= 3 and ready('Wild Growth') then return A('Wild Growth', ('%d zranenych: Wild Growth'):format(hurt)) end
+  if hurt >= 3 and c.inCombat and ready('Tranquility') and #list >= 4 then
+    local bad = 0
+    for _, m in ipairs(list) do if below(m.unit, 45) then bad = bad + 1 end end
+    if bad >= 3 then return A('Tranquility', ('%d lidi pod 45 %%: Tranquility'):format(bad), 'spell', { urgent = true }) end
+  end
+  -- 3) stredne zraneny: Regrowth (velky heal + HoT), pod 50 % i bez HoTu Healing Touch
+  for _, m in ipairs(list) do
+    if below(m.unit, 60) and inRange(m.unit) and not s.used['Regrowth' .. m.unit] then
+      if hotLeft('Regrowth', m.unit) <= s.t and ready('Regrowth') then
+        s.used['Regrowth' .. m.unit] = true
+        return A('Regrowth', ('%s pod 60 %%: Regrowth'):format(m.name), 'spell', { unit = m.unit })
+      end
+      if below(m.unit, 50) and ready('Healing Touch') and not s.used['Healing Touch' .. m.unit] then
+        s.used['Healing Touch' .. m.unit] = true
+        return A('Healing Touch', ('%s pod 50 %%: Healing Touch'):format(m.name), 'spell', { unit = m.unit })
+      end
+    end
+  end
+  -- 4) Rejuvenation: tank / kdo dostava rany, a kdo je pod 85 %
+  for pass = 1, 2 do
+    for _, m in ipairs(list) do
+      local want = (pass == 1 and c.inCombat and (m.tank or m.mobs > 0) and below(m.unit, 95)) or (pass == 2 and below(m.unit, 85))
+      if want and inRange(m.unit) and hotLeft('Rejuvenation', m.unit) <= s.t and ready('Rejuvenation') and not s.used['Rejuvenation' .. m.unit] then
+        s.used['Rejuvenation' .. m.unit] = true
+        return A('Rejuvenation', ('%s: Rejuvenation (HoT)'):format(m.name), 'spell', { unit = m.unit })
+      end
+    end
+  end
+  return nil
+end
+
 local function decide(c, s)
   local db = c.db
   local function bad(n) return c.imm ~= nil and ns.Immune.bad(c.imm, n) end
@@ -174,6 +286,10 @@ local function decide(c, s)
 
   ---------------------------------------------------------------- mimo boj
   if not c.inCombat then
+    if caster and c.resto and c.group and not c.drinking and not c.eating and (not c.manaKnown or c.mana > 0.25) then
+      local h = restoHeal(c, s, ready)
+      if h then return h end
+    end
     if caster then
       -- Mark of the Wild / Thorns na sobe
       if c.motw == false and not s.used.motw and ready('Mark of the Wild') then
@@ -320,6 +436,17 @@ local function decide(c, s)
   end
 
   ---------------- caster (vcetne moonkina)
+  -- resto v parte: nejdriv leceni (ty i parta), DPS jen kdyz je vsichni v poradku a many dost
+  if c.resto and c.group then
+    local h = restoHeal(c, s, ready)
+    if h then return h end
+    if php < 35 and danger and ready('Barkskin') then
+      return A('Barkskin', 'Malo HP: Barkskin (mene damage, cast se neprerusuje)', 'spell', { urgent = true })
+    end
+    if c.manaKnown and s.mana < 0.5 then
+      return A('Attack', 'Setri manu na leceni (vsichni v poradku)', 'wait', { dur = 1.5 })
+    end
+  end
   -- nouze
   if php < 35 and not c.healerUp then
     if php < 25 and danger and ready('Barkskin') then

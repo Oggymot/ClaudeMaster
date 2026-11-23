@@ -32,6 +32,9 @@ G.SPECS = {
   holy = { label = 'Holy Paladin', heal = 1, sp = 1, int = 0.8, mp5 = 2, spcrit = 8, spi = 0.2, sta = 0.2, armor = 0.003 },
   balance = { label = 'Balance Druid', sp = 1, natsp = 0.7, arcanesp = 0.3, int = 0.3, spi = 0.2, sta = 0.2,
     spcrit = { 4, 9 }, sphit = { 4.5, 11 }, mp5 = 1, armor = 0.003 },
+  -- resto: heal = 1; spirit (regenerace pri castu, Bloom talent) a int drzi manu, mp5 hodne
+  resto = { label = 'Restoration Druid', heal = 1, sp = 0.9, int = 0.6, spi = 0.55, mp5 = 1.8, spcrit = 6, sta = 0.2,
+    armor = 0.003 },
   feral = { label = 'Feral Druid', agi = 1.05, str = 1, ap = 0.5, sta = 0.5, crit = 14, hit = 14, armor = 0.02 },
   generic = { label = 'obecne', sta = 0.5, armor = 0.01, str = 0.5, agi = 0.5, int = 0.5, sp = 0.5 },
 }
@@ -41,6 +44,11 @@ function G.spec()
   local s = ns.db and ns.db.gearSpec
   if s == 'custom' and ns.db.gearWeights then return 'custom' end
   if s and G.SPECS[s] then return s end
+  -- druid: podle talentu (resto / balance / feral)
+  if ns.class == 'DRUID' and ns.Druid and ns.Druid.spec then
+    local d = ns.Druid.spec()
+    if d == 'resto' then return 'resto' elseif d == 'feral' then return 'feral' end
+  end
   return CLASS_DEFAULT[ns.class] or 'generic'
 end
 local wCache = {}
@@ -758,7 +766,7 @@ sf:SetScript('OnEvent', function() G.shareSoon(3) end)
 
 function G.report()
   local s = G.spec()
-  ns.say(('Gear: vahy %s   (/cm gear frost, arcane, fire, destro, ret, prot, holy, balance, feral, auto)'):format(
+  ns.say(('Gear: vahy %s   (/cm gear frost, arcane, fire, destro, ret, prot, holy, resto, balance, feral, auto)'):format(
     s == 'custom' and 'vlastni' or G.SPECS[s].label))
   local l = G.upgrades(true)
   local all = G.lastAll or {}
