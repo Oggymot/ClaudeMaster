@@ -342,6 +342,14 @@ local function decide(c, s)
     s.used['Hammer of Justice'] = true
     return A('Hammer of Justice', 'Mob kouzli: Hammer of Justice (stun = preruseni)', 'spell', { urgent = true })
   end
+  -- mob, ktery pri malo HP utika (humanoid / vime z minula): omracit tesne pred utekem, at nepritahne dalsi
+  local mob = c.mob
+  if mob and mob.flees and c.hojR and ready('Hammer of Justice') and not c.targetCC
+    and (mob.fleeingNow or (not c.tLow10 and ((c.thp and c.thp < 30) or c.tLow20))) and not (c.ttd and c.ttd < 2) then
+    s.used['Hammer of Justice'] = true
+    return A('Hammer of Justice', mob.fleeingNow and 'Mob utika: Hammer of Justice, at nepritahne dalsi'
+      or 'Mob pri malo HP utika: omrac ho (Hammer of Justice) a dobij', 'spell', { urgent = mob.fleeingNow })
+  end
   -- seal
   local seal = wantSeal(c)
   local sealOn = s.seal or (c.seal and (c.sealLeft == nil or c.sealLeft > s.t + 1))
