@@ -21,6 +21,7 @@ Afflict.lua
 Tactics.lua
 Plates.lua
 Assist.lua
+Gear.lua
 UI.lua
 Options.lua
 Quests.lua

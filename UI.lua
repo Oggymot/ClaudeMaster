@@ -11,9 +11,12 @@ if not ns.enabled then
   SLASH_CLAUDEMASTER2 = '/claudemaster'
   SlashCmdList.CLAUDEMASTER = function(msg)
     local cmd = (msg or ''):lower():match('^(%S*)')
+    local arg = (msg or ''):lower():match('^%S*%s*(.-)%s*$')
     if cmd == 'dump' then ns.fullDump()
     elseif cmd == 'sonda' or cmd == 'probe' then ns.apiProbe()
-    else ns.say(tostring(ns.class) .. ' zatim neumim radit. Funguje: /cm dump, /cm sonda') end
+    elseif cmd == 'gear' and ns.Gear then ns.Gear.setSpec(arg)
+    elseif cmd == 'vahy' and ns.Gear then ns.Gear.setWeights(arg)
+    else ns.say(tostring(ns.class) .. ' zatim neumim radit. Funguje: /cm dump, /cm sonda, /cm gear, /cm vahy') end
   end
   return
 end
@@ -946,6 +949,7 @@ local HELP = {
   '/cm compact - jen ikony bez textu (duvod v tooltipu)',
   '/cm talents - co addon vycetl z talentu',
   '/cm dump - ulozi talenty, spelly, itemy a staty do souboru (po /reload)',
+  '/cm gear [spec] - lepsi gear z batohu (vahy: frost/arcane/destro/ret/prot/holy/balance/feral), /cm vahy str=1 ... vlastni',
   '/cm macro - vytvori makra: utok sam vybere dalsiho nepritele' .. (ns.class == 'WARLOCK' and ', DoTy na jedno tlacitko' or ''),
   '/cm status - co addon zjistil (pro ladeni)',
   '/cm rescan - znovu nacist kouzla a zkratky',
@@ -1060,6 +1064,8 @@ SlashCmdList.CLAUDEMASTER = function(msg)
       command = 'Seal of Command', light = 'Seal of Light', justice = 'Seal of Justice', auto = 'auto' }
     db.palSeal = map[arg] or 'auto'
     ns.say('seal: ' .. db.palSeal .. '   (/cm seal auto|righteousness|crusader|wisdom|command|light)')
+  elseif cmd == 'gear' and ns.Gear then ns.Gear.setSpec(arg)
+  elseif cmd == 'vahy' and ns.Gear then ns.Gear.setWeights(arg)
   elseif cmd == 'sound' then db.sound = not db.sound ns.say('zvuk: ' .. (db.sound and 'zap' or 'vyp'))
   elseif cmd == 'dump' then
     ns.fullDump()
