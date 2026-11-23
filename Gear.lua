@@ -435,3 +435,125 @@ if E and E.plan then
     return plan, util
   end
 end
+
+------------------------------------------------------------------------------------------
+-- Odmena za quest: sipka na nejlepsi vylepseni, jinak mince na nejdrazsi item (na prodej)
+------------------------------------------------------------------------------------------
+local COIN = 'Interface\\MoneyFrame\\UI-GoldIcon'
+local function badge(btn, tex)
+  if not btn then return end
+  local icon = btn.Icon or btn.icon or (btn.GetName and btn:GetName() and _G[btn:GetName() .. 'IconTexture']) or btn
+  if not btn.cmBadge then
+    local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
+    t:SetSize(18, 18)
+    t:SetPoint('BOTTOMRIGHT', icon, 'BOTTOMRIGHT', 3, -3)
+    btn.cmBadge = t
+  end
+  btn.cmBadge:SetShown(tex ~= nil)
+  if tex then btn.cmBadge:SetTexture(tex) end
+end
+local function rewardButtons()
+  local out = {}
+  local rf = _G.QuestInfoRewardsFrame or (_G.QuestInfoFrame and _G.QuestInfoFrame.rewardsFrame)
+  if rf and rf.RewardButtons then
+    for _, b in ipairs(rf.RewardButtons) do out[#out + 1] = b end
+  else
+    for i = 1, 10 do
+      local b = _G['QuestInfoRewardsFrameQuestInfoItem' .. i] or _G['QuestInfoItem' .. i]
+      if b then out[#out + 1] = b end
+    end
+  end
+  return out
+end
+function G.questRewards()
+  if not ns.db or ns.db.gearTips == false then return end
+  local btns = rewardButtons()
+  for _, b in ipairs(btns) do badge(b, nil) end
+  local n = safeNum(pc(GetNumQuestChoices)) or 0
+  if n < 2 then return end
+  local best, bestPct, rich, richPrice = nil, 0.02, nil, -1
+  for i = 1, n do
+    local link = safe(pc(GetQuestItemLink, 'choice', i))
+    if type(link) == 'string' then
+      local d = C_TooltipInfo and C_TooltipInfo.GetQuestItem and pc(C_TooltipInfo.GetQuestItem, 'choice', i)
+      if type(d) ~= 'table' then d = tipData(nil, nil, nil, link) end
+      local st, blocked = G.parse(d)
+      if st and not blocked then
+        local pct = G.compare(link, st)
+        if pct and pct > bestPct then best, bestPct = i, pct end
+      end
+      local f = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+      local price = safeNum(select(11, pc(f, link))) or 0
+      if price > richPrice then rich, richPrice = i, price end
+    end
+  end
+  local pick, tex = best, ARROW
+  if not pick then pick, tex = rich, COIN end
+  if not pick then return end
+  for _, b in ipairs(btns) do
+    local isChoice = (b.type == nil or b.type == 'choice') and b:IsShown()
+    if isChoice and b.GetID and b:GetID() == pick then badge(b, tex) end
+  end
+end
+if hooksecurefunc and _G.QuestInfo_Display then
+  hooksecurefunc('QuestInfo_Display', function()
+    if C_Timer then C_Timer.After(0.1, function() pcall(G.questRewards) end) end
+  end)
+end
+
+------------------------------------------------------------------------------------------
+-- Need / Greed: hned ukaz, zda je to vylepseni (radek do chatu + sipka u okna hodu)
+------------------------------------------------------------------------------------------
+local function rollFrames()
+  local out = {}
+  local c = _G.GroupLootContainer
+  if c and c.rollFrames then for _, fr in pairs(c.rollFrames) do out[#out + 1] = fr end end
+  for i = 1, 4 do local fr = _G['GroupLootFrame' .. i] if fr then out[#out + 1] = fr end end
+  return out
+end
+local function onRoll(rollID)
+  if not ns.db or ns.db.gearTips == false then return end
+  local link = safe(pc(GetLootRollItemLink, rollID))
+  if type(link) ~= 'string' then return end
+  local loc = equipLocOf(link)
+  if not (loc and SLOTS[loc]) then return end
+  local d = C_TooltipInfo and C_TooltipInfo.GetLootRollItem and pc(C_TooltipInfo.GetLootRollItem, rollID)
+  if type(d) ~= 'table' then d = tipData(nil, nil, nil, link) end
+  local st, blocked, req = G.parse(d)
+  if not st then return end
+  local pct, oldLink = G.compare(link, st)
+  local lvl = safeNum(UnitLevel('player')) or 60
+  local txt, tex
+  if blocked then txt = '|cff888888neumis nosit - Greed|r'
+  elseif pct and pct > 0.02 then
+    tex = ARROW
+    txt = ('%s |cff40ff60+%d %%|r vs %s - |cff40ff60Need|r'):format(UP, math.floor(pct * 100 + 0.5),
+      oldLink and oldLink:match('%[(.-)%]') or 'prazdny slot')
+    if req and req > lvl then txt = txt .. (' |cffffcc00(od lvl %d)|r'):format(req) end
+  elseif pct then
+    txt = ('%s |cffff6060%d %%|r - Greed'):format(DOWN, math.floor(pct * 100 - 0.5))
+  else return end
+  ns.say(link .. ' ' .. txt)
+  for _, fr in ipairs(rollFrames()) do if fr.cmUp and fr.rollID == rollID then fr.cmUp:Hide() end end
+  if tex then
+    for _, fr in ipairs(rollFrames()) do
+      if fr:IsShown() and fr.rollID == rollID then
+        local ic = fr.IconFrame or fr.Icon or fr
+        if not fr.cmUp then
+          local t = fr:CreateTexture(nil, 'OVERLAY', nil, 7)
+          t:SetSize(20, 20) t:SetPoint('BOTTOMRIGHT', ic, 'BOTTOMRIGHT', 4, -4)
+          fr.cmUp = t
+        end
+        fr.cmUp:SetTexture(tex) fr.cmUp:Show()
+      elseif fr.cmUp and fr.rollID ~= rollID and not fr:IsShown() then
+        fr.cmUp:Hide()
+      end
+    end
+  end
+end
+local rf = CreateFrame('Frame')
+pcall(rf.RegisterEvent, rf, 'START_LOOT_ROLL')
+rf:SetScript('OnEvent', function(_, _, rollID)
+  -- okno hodu se vytvori az po udalosti: chvili pockat
+  if C_Timer then C_Timer.After(0.3, function() pcall(onRoll, rollID) end) else pcall(onRoll, rollID) end
+end)
