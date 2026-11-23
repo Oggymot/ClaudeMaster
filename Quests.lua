@@ -558,6 +558,7 @@ function Q.push(id)
   elseif SelectQuestLogEntry and GetQuestLogIndexByID then pc(SelectQuestLogEntry, GetQuestLogIndexByID(id)) end
   if QuestLogPushQuest then pc(QuestLogPushQuest) end
   Q.sharedAt[id] = GetTime()
+  Q.lastPush = { id = id, at = GetTime() }
   -- zapamatovat (i po /reload), komu uz jsem ho nabidl - hra mu ho ukazala, dal ho neotravovat
   if ns.db then
     ns.db.qShared = ns.db.qShared or {}
@@ -566,11 +567,65 @@ function Q.push(id)
     for name, w in pairs(Q.wants) do if w.ids[id] then ns.db.qShared[name .. ':' .. id] = now end end
   end
 end
--- uz nabidnuto tomuhle partakovi v posledni hodine?
+-- uz nabidnuto tomuhle partakovi v posledni hodine? / quest pro nej nejde (hra rekla, nebo odmitnuto)
 local function offered(name, id)
-  local t = ns.db and ns.db.qShared and ns.db.qShared[name .. ':' .. id]
-  return t and time() - t < 3600
+  local db = ns.db
+  if not db then return false end
+  local t = db.qShared and db.qShared[name .. ':' .. id]
+  if t and time() - t < 3600 then return true end
+  local no = db.qNo and db.qNo[name .. ':' .. id]
+  return no and time() < no
 end
+local function markNo(name, id, secs)
+  if not (ns.db and name and id) then return end
+  ns.db.qNo = ns.db.qNo or {}
+  local now = time()
+  for k, t in pairs(ns.db.qNo) do if t < now then ns.db.qNo[k] = nil end end
+  ns.db.qNo[name .. ':' .. id] = now + secs
+end
+Q.markNo = markNo
+-- odpoved hry na sdileni ("X is not eligible for that quest" apod.) -> pamatovat, at se tip neopakuje
+local PUSH_ERR = {
+  { 'ERR_QUEST_PUSH_INVALID_S', 30 * 86400, 'quest vzit nemuze' },
+  { 'ERR_QUEST_PUSH_INVALID_TO_RECIPIENT_S', 30 * 86400, 'quest vzit nemuze' },
+  { 'ERR_QUEST_PUSH_ALREADY_DONE_S', 365 * 86400, 'quest uz splnil' },
+  { 'ERR_QUEST_PUSH_ALREADY_DONE_TO_RECIPIENT_S', 365 * 86400, 'quest uz splnil' },
+  { 'ERR_QUEST_PUSH_ONQUEST_S', 86400, 'quest uz ma' },
+  { 'ERR_QUEST_PUSH_ONQUEST_TO_RECIPIENT_S', 86400, 'quest uz ma' },
+  { 'ERR_QUEST_PUSH_DECLINED_S', 86400, 'quest odmitl' },
+  { 'ERR_QUEST_PUSH_LOG_FULL_S', 1800, 'ma plny quest log' },
+  { 'ERR_QUEST_PUSH_LOG_FULL_TO_RECIPIENT_S', 1800, 'ma plny quest log' },
+}
+local pushPats
+local function pats()
+  if pushPats then return pushPats end
+  pushPats = {}
+  for _, e in ipairs(PUSH_ERR) do
+    local g = _G[e[1]]
+    if type(g) == 'string' then
+      local p = '^' .. g:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1'):gsub('%%%%s', '(.+)'):gsub('%%%%d', '%%d+') .. '$'
+      pushPats[#pushPats + 1] = { p = p, secs = e[2], why = e[3] }
+    end
+  end
+  return pushPats
+end
+local pe = CreateFrame('Frame')
+pcall(pe.RegisterEvent, pe, 'CHAT_MSG_SYSTEM')
+pcall(pe.RegisterEvent, pe, 'UI_INFO_MESSAGE')
+pe:SetScript('OnEvent', function(_, ev, a1, a2)
+  local msg = ev == 'UI_INFO_MESSAGE' and a2 or a1
+  msg = safe(msg)
+  if type(msg) ~= 'string' or not Q.lastPush or GetTime() - Q.lastPush.at > 20 then return end
+  for _, p in ipairs(pats()) do
+    local who = msg:match(p.p)
+    if who then
+      who = who:gsub('%-.*$', '')
+      markNo(who, Q.lastPush.id, p.secs)
+      ns.say(('Quest: %s %s - uz ti ho nebudu nabizet.'):format(who, p.why))
+      return
+    end
+  end
+end)
 _G.ClaudeMaster_ShareQuest = function(id) pcall(Q.push, tonumber(id)) end
 -- vsechny questy, ktere nekdo z party chce: { {id, title, who = {jmena}} }
 function Q.toShare()
@@ -600,6 +655,8 @@ function Q.shareHint()
   for _, q in ipairs(Q.toShare()) do
     if GetTime() - (Q.sharedAt[q.id] or -99) > 120 then
       return { name = 'TARGET', kind = 'hint', icon = 'Interface\\GossipFrame\\AvailableQuestIcon',
+        dkey = 'quest:' .. q.id,
+        dismiss = function() for _, n in ipairs(q.who) do markNo(n, q.id, 7 * 86400) end end,
         reason = ('Sdilej quest %s (%s nema) - klik'):format(q.title, table.concat(q.who, ', ')),
         macro = '/run ClaudeMaster_ShareQuest(' .. q.id .. ')', macroLabel = 'sdilet quest: ' .. q.title }
     end

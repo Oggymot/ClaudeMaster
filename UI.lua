@@ -304,6 +304,7 @@ local function slotTip(self)
   local cn = UI.clickNames[key]
   if cn and not InCombatLockdown() then
     GameTooltip:AddLine('Klikni: ' .. cn, 0.55, 0.85, 1)
+    if key == 'util' and not a.urgent then GameTooltip:AddLine('Pravy klik: tenhle tip uz nenabizet', 0.6, 0.6, 0.6) end
   elseif InCombatLockdown() and (a.kind == 'item' or ns.known(a.name)) then
     GameTooltip:AddLine('V boji klik nejde (hra nedovoli) - pouzij klavesu', 0.6, 0.6, 0.6, true)
   end
@@ -333,7 +334,10 @@ local function makeClick(key)
   -- jen jedna faze kliknuti (podle nastaveni hry), jinak by se akce spustila dvakrat
   local down = GetCVarBool and GetCVarBool('ActionButtonUseKeyDown')
   btn:RegisterForClicks(down and 'AnyDown' or 'AnyUp')
-  btn:SetScript('PostClick', function(self)
+  -- tip (util): pravy klik = odmitnout (zadna akce, jen schovat tip)
+  if key == 'util' then btn:SetAttribute('type2', 'cmdismiss') end
+  btn:SetScript('PostClick', function(self, button)
+    if button == 'RightButton' and self.cmKey == 'util' then pcall(UI.dismissUtil) return end
     local t = self.cmTrade
     if not t or InCombatLockdown() then return end
     UI.pendingTrade = { item = t.item, at = GetTime() }
@@ -623,10 +627,29 @@ local function infoLines(c)
   return out
 end
 
+-- odmitnute tipy: klic -> do kdy neukazovat (tip muze mit vlastni dismiss(), napr. sdileni questu)
+UI.dismissed = {}
+local function utilKey(u)
+  return u.dkey or (u.kind == 'item' and u.item and ('item:' .. u.item)) or ((u.name or '?') .. '|' .. (u.macro or ''))
+end
+function UI.isDismissed(u)
+  local t = u and UI.dismissed[utilKey(u)]
+  return t and GetTime() < t
+end
+function UI.dismissUtil()
+  local u = UI.slotAct.util
+  if not u or u.urgent then return end
+  if u.dismiss then pcall(u.dismiss) end
+  UI.dismissed[utilKey(u)] = GetTime() + 1800
+  ns.say('Tip skryt: ' .. (u.reason or u.name or '?'):gsub(' %- klik.*$', ''))
+  if GameTooltip:IsOwned(UI.clicks.util) then GameTooltip:Hide() end
+end
+
 function UI.update(c, plan, util)
   local f = UI.frame
   if not f or not ns.db.shown then return end
   local db = ns.db
+  if util and UI.isDismissed(util) then util = nil end
 
   -- mana (warlock v kompaktnim rezimu ji nepotrebuje videt)
   local manaBox = f.mana:GetParent()
