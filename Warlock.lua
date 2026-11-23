@@ -1057,9 +1057,9 @@ end
 
 
 ------------------------------------------------------------------------------------------
--- Soul shardy nad maximum: mimo boj zahodit (nastaveni: shardTrim, shardMax; vychozi 10)
+-- Soul shardy nad maximum (nastaveni: shardTrim, shardMax; vychozi 10)
+-- Mazani itemu hra dovoli jen pri kliknuti / klavese hrace -> tlacitko nad panelem a /cm shardy.
 ------------------------------------------------------------------------------------------
-local trimQueued, trimWarned = false, false
 local function shardSlots()
   local getNum = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
   local getInfo = C_Container and C_Container.GetContainerItemInfo
@@ -1078,38 +1078,80 @@ local function shardSlots()
   end
   return out, total
 end
+function W.shardExcess()
+  local db = ns.db
+  if not db or db.shardTrim == false then return 0, 0 end
+  local _, total = shardSlots()
+  return math.max(0, total - (db.shardMax or 10)), total
+end
+-- volat jen z kliknuti / prikazu (hra jinak mazani zablokuje)
 function W.trimShards()
   local db = ns.db
-  if not db or db.shardTrim == false then return end
-  if InCombatLockdown() or ns.inCombat() or (CursorHasItem and CursorHasItem()) then return end
+  if not db then return end
+  if InCombatLockdown() then ns.say('Soul shardy: az po boji') return end
   local max = db.shardMax or 10
   local slots, total = shardSlots()
   local excess = total - max
-  if excess <= 0 then return end
-  local s = slots[#slots]   -- od posledniho slotu (nejspis v Soul Bagu az na konci)
+  if excess <= 0 then ns.say(('Soul shardy: mas %d, max %d - neni co zahodit'):format(total, max)) return end
   local pick = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
   local split = (C_Container and C_Container.SplitContainerItem) or SplitContainerItem
-  local ok
-  if s.n > excess and split then ok = pcall(split, s.bag, s.slot, excess)
-  else ok = pcall(pick, s.bag, s.slot) end
-  if ok and CursorHasItem and CursorHasItem() then ok = pcall(DeleteCursorItem) end
-  if CursorHasItem and CursorHasItem() then   -- hra mazani nedovolila: vratit a rict hraci
-    if ClearCursor then ClearCursor() end
-    if not trimWarned then
-      trimWarned = true
-      ns.say(('Mas %d soul shardu (max %d) - zahodit je automaticky hra nedovolila, zahod je rucne.'):format(total, max))
+  if CursorHasItem and CursorHasItem() and ClearCursor then ClearCursor() end
+  local done = 0
+  for i = #slots, 1, -1 do
+    if excess <= 0 then break end
+    local sl = slots[i]
+    local take = math.min(sl.n, excess)
+    local ok
+    if sl.n > take and split then ok = pcall(split, sl.bag, sl.slot, take) else ok = pcall(pick, sl.bag, sl.slot) end
+    if ok and CursorHasItem and CursorHasItem() then ok = pcall(DeleteCursorItem) end
+    if CursorHasItem and CursorHasItem() then
+      if ClearCursor then ClearCursor() end
+      ns.say('Soul shardy: hra zahozeni nedovolila - zahod je rucne.')
+      break
     end
-    return
+    if ok then done = done + take excess = excess - take end
   end
-  if ok then
-    ns.say(('Soul shardy: zahozeno %d (mas %d, max %d - zmenis v /cm config)'):format(math.min(excess, s.n), total - math.min(excess, s.n), max))
-    if C_Timer then C_Timer.After(0.6, function() pcall(W.trimShards) end) end
+  if done > 0 then ns.say(('Soul shardy: zahozeno %d, zbyva %d (max %d - zmenis v /cm config)'):format(done, total - done, max)) end
+  if C_Timer then C_Timer.After(0.5, function() pcall(W.updateShardButton) end) end
+end
+-- tlacitko nad panelem: jen mimo boj a kdyz je shardu vic nez max
+function W.updateShardButton()
+  local f = ns.UI and ns.UI.frame
+  if not f then return end
+  local b = W.shardBtn
+  if not b then
+    b = CreateFrame('Button', nil, UIParent, 'BackdropTemplate')   -- i kdyz je panel mimo boj schovany
+    b:SetSize(190, 20) b:SetFrameStrata('MEDIUM')
+    b:SetPoint('BOTTOM', f, 'TOP', 0, 4)
+    b:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 1 })
+    b:SetBackdropColor(0.15, 0.05, 0.2, 0.9) b:SetBackdropBorderColor(0.62, 0.32, 1, 1)
+    b.icon = b:CreateTexture(nil, 'ARTWORK') b.icon:SetSize(16, 16) b.icon:SetPoint('LEFT', 3, 0)
+    b.icon:SetTexture('Interface\\Icons\\INV_Misc_Gem_Amethyst_02')
+    b.text = b:CreateFontString(nil, 'OVERLAY') b.text:SetFont(STANDARD_TEXT_FONT or 'Fonts\\FRIZQT__.TTF', 11, '')
+    b.text:SetPoint('LEFT', b.icon, 'RIGHT', 5, 0) b.text:SetTextColor(1, 1, 1)
+    b:SetScript('OnClick', function() pcall(W.trimShards) end)
+    b:SetScript('OnEnter', function(self)
+      GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+      GameTooltip:AddLine('Soul shardy nad maximum', 1, 1, 1)
+      GameTooltip:AddLine('Klik = zahodit shardy navic. Maximum zmenis v /cm config (Boj a mana). Totez: /cm shardy', 0.85, 0.85, 0.85, true)
+      GameTooltip:Show()
+    end)
+    b:SetScript('OnLeave', function() GameTooltip:Hide() end)
+    W.shardBtn = b
   end
+  local ex, total = 0, 0
+  if not InCombatLockdown() and not ns.inCombat() then ex, total = W.shardExcess() end
+  if ex > 0 then
+    b.text:SetText(('Zahodit %d soul shard%s (mas %d)'):format(ex, ex == 1 and '' or (ex < 5 and 'y' or 'u'), total))
+    b:SetWidth(b.text:GetStringWidth() + 32)
+    b:Show()
+  else b:Hide() end
 end
 local tq = CreateFrame('Frame')
-for _, e in ipairs({ 'BAG_UPDATE_DELAYED', 'PLAYER_REGEN_ENABLED', 'PLAYER_ENTERING_WORLD' }) do pcall(tq.RegisterEvent, tq, e) end
-tq:SetScript('OnEvent', function()
-  if trimQueued or not C_Timer then return end
-  trimQueued = true
-  C_Timer.After(1.5, function() trimQueued = false pcall(W.trimShards) end)
+for _, e in ipairs({ 'BAG_UPDATE_DELAYED', 'PLAYER_REGEN_ENABLED', 'PLAYER_REGEN_DISABLED', 'PLAYER_ENTERING_WORLD' }) do
+  pcall(tq.RegisterEvent, tq, e)
+end
+tq:SetScript('OnEvent', function(_, ev)
+  if ev == 'PLAYER_REGEN_DISABLED' then if W.shardBtn then W.shardBtn:Hide() end return end
+  if C_Timer then C_Timer.After(0.5, function() pcall(W.updateShardButton) end) end
 end)

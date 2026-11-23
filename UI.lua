@@ -1016,6 +1016,7 @@ if ns.class == 'WARLOCK' then
   table.insert(HELP, '/cm curse auto|agony|elements|shadow|weakness|tongues|doom - ktera curse')
   table.insert(HELP, '/cm talents - prectene talenty a proc je filler takovy')
   table.insert(HELP, '/cm filler auto/shadowbolt/searing - hlavni kouzlo')
+  table.insert(HELP, '/cm shardy - zahodit soul shardy nad maximum (nastaveni v /cm config)')
 end
 
 SLASH_CLAUDEMASTER1 = '/cm'
@@ -1105,6 +1106,8 @@ SlashCmdList.CLAUDEMASTER = function(msg)
             ns.barrierBuff and ' (+mrazivy dmg - drzi ho porad)' or ''))
       end
     end
+  elseif (cmd == 'shardy' or cmd == 'shards') and ns.class == 'WARLOCK' then
+    if ns.Warlock and ns.Warlock.trimShards then ns.Warlock.trimShards() end
   elseif cmd == 'filler' and ns.class == 'WARLOCK' then
     local map = { shadowbolt = 'Shadow Bolt', sb = 'Shadow Bolt', searing = 'Searing Pain', sp = 'Searing Pain',
       incinerate = 'Incinerate', auto = 'auto' }
