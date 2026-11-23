@@ -355,11 +355,33 @@ dev:SetScript('OnEvent', function(_, _, prefix, msg, _, sender)
 end)
 
 -- parťák s addonem (cerstva data do 15 s)
-function Duo.peer()
-  local now = GetTime()
+-- vsichni partaci s addonem (serazeni podle jmena, at se poradi neprehazuje)
+function Duo.peerList()
+  local now, out = GetTime(), {}
   for nm, p in pairs(Duo.peers) do
-    if now - p.at < 15 then p.unit = p.unit or unitByName(nm) if p.unit then return p end end
+    if now - p.at < 15 then
+      p.unit = unitByName(nm) or p.unit   -- party1..4 se po zmene party prehazuji
+      if p.unit then out[#out + 1] = p end
+    end
   end
+  table.sort(out, function(a, b) return a.name < b.name end)
+  return out
+end
+function Duo.peer() return Duo.peerList()[1] end
+function Duo.peerOfClass(cls)
+  for _, p in ipairs(Duo.peerList()) do if p.cls == cls then return p end end
+end
+-- komu nejvic chybi vycarovana voda / jidlo (mimo boj, tridy, ktere to potrebuji)
+local NOWATER = { WARRIOR = true, ROGUE = true, MAGE = true }
+function Duo.neediest(kind)
+  local best, bestN
+  for _, p in ipairs(Duo.peerList()) do
+    local n
+    if kind == 'water' and not NOWATER[p.cls] then n = p.cw or p.water
+    elseif kind == 'food' and p.cls ~= 'MAGE' then n = p.cf or p.food end
+    if n and not p.combat and (bestN == nil or n < bestN) then best, bestN = p, n end
+  end
+  return best
 end
 -- HP spoluhrace z jeho addonu (Forever v boji cizi HP skryva). Cerstve: v boji 6 s (posila pri zmene), mimo 8 s.
 function Duo.hpOf(unit)
@@ -377,21 +399,25 @@ local function abbr(s)
   return a
 end
 function Duo.ready(c, short)
-  local p = Duo.peer()
-  if not p then return nil end
-  local me, them = {}, {}
+  local list = Duo.peerList()
+  if not list[1] then return nil end
+  local me = {}
   if c.php and c.php < 70 then me[#me + 1] = ('HP %d%%'):format(c.php) end
   if c.manaKnown and c.mana < 0.6 then me[#me + 1] = ('mana %d%%'):format(math.floor(c.mana * 100)) end
   if c.drinking or c.eating then me[#me + 1] = 'pijes' end
-  if p.drink then them[#them + 1] = 'pije' end
-  if p.prep and not p.combat and GetTime() - p.at < 6 then them[#them + 1] = short and abbr(p.prep) or p.prep end
-  if p.hp and p.hp < 70 then them[#them + 1] = ('HP %d%%'):format(p.hp) end
-  if p.mana and p.mana < 0.6 then them[#them + 1] = ('mana %d%%'):format(math.floor(p.mana * 100)) end
-  if p.unit and safeBool(pc(UnitIsDeadOrGhost, p.unit)) == true then them[#them + 1] = 'mrtvy' end
-  if #me == 0 and #them == 0 then return true, ns.ico('ready', 14) .. ' |cff66ee77READY|r' end
   local parts = {}
   if #me > 0 then parts[#parts + 1] = 'ty: ' .. table.concat(me, ', ') end
-  if #them > 0 then parts[#parts + 1] = ns.classIco(p.cls) .. ' ' .. p.name .. ': ' .. table.concat(them, ', ') end
+  -- kazdy partak zvlast; READY az kdyz jsou v poradku vsichni
+  for _, p in ipairs(list) do
+    local them = {}
+    if p.drink then them[#them + 1] = 'pije' end
+    if p.prep and not p.combat and GetTime() - p.at < 6 then them[#them + 1] = short and abbr(p.prep) or p.prep end
+    if p.hp and p.hp < 70 then them[#them + 1] = ('HP %d%%'):format(p.hp) end
+    if p.mana and p.mana < 0.6 then them[#them + 1] = ('mana %d%%'):format(math.floor(p.mana * 100)) end
+    if p.unit and safeBool(pc(UnitIsDeadOrGhost, p.unit)) == true then them[#them + 1] = 'mrtvy' end
+    if #them > 0 then parts[#parts + 1] = ns.classIco(p.cls) .. ' ' .. p.name .. ': ' .. table.concat(them, ', ') end
+  end
+  if #parts == 0 then return true, ns.ico('ready', 14) .. ' |cff66ee77READY|r' end
   return false, ns.ico('wait', 14) .. ' |cffe0d090' .. table.concat(parts, ' | ') .. '|r'
 end
 

@@ -513,15 +513,23 @@ local function infoLines(c)
     lines[#lines + 1] = ('Kouzli: %s%s|r (%s)'):format(col, c.tCastName or '?', word)
   end
   -- duo: partak s addonem
-  local peer = ns.Duo and ns.Duo.peer()
-  if peer and c.inCombat and ns.Duo.encounter then
-    lines[#lines + 1] = '|cffffcc00Boss: hra blokuje zpravy, s partakem nic nesdilime|r'
-  elseif peer and c.inCombat and ((peer.hp and peer.hp < 70) or (peer.mana and peer.mana < 0.3) or peer.drink) then
-    -- ikona tridy + HP (barevne) + mana (modre)
-    local col = (peer.hp and peer.hp < 35 and '|cffff5555') or (peer.hp and peer.hp < 60 and '|cffffcc00') or '|cff66ee77'
-    local hp = peer.hp and (col .. peer.hp .. '%|r') or '?'
-    local m = peer.mana and ('  |cff6fa8ff' .. math.floor(peer.mana * 100) .. '%|r') or ''
-    lines[#lines + 1] = ('%s %s  %s%s%s'):format(ns.classIco(peer.cls), peer.name, hp, m, peer.drink and ('  ' .. ns.ico('drink')) or '')
+  local plist = ns.Duo and ns.Duo.peerList and ns.Duo.peerList() or {}
+  if plist[1] and c.inCombat and ns.Duo.encounter then
+    lines[#lines + 1] = '|cffffcc00Boss: hra blokuje zpravy, s partaky nic nesdilime|r'
+  elseif c.inCombat then
+    -- kazdy partak, kteremu neco chybi (nejslabsi prvni, nejvys 3): ikona tridy + HP (barevne) + mana (modre)
+    local need = {}
+    for _, peer in ipairs(plist) do
+      if (peer.hp and peer.hp < 70) or (peer.mana and peer.mana < 0.3) or peer.drink then need[#need + 1] = peer end
+    end
+    table.sort(need, function(a, b) return (a.hp or 100) < (b.hp or 100) end)
+    for i, peer in ipairs(need) do
+      if i > 3 then break end
+      local col = (peer.hp and peer.hp < 35 and '|cffff5555') or (peer.hp and peer.hp < 60 and '|cffffcc00') or '|cff66ee77'
+      local hp = peer.hp and (col .. peer.hp .. '%|r') or '?'
+      local m = peer.mana and ('  |cff6fa8ff' .. math.floor(peer.mana * 100) .. '%|r') or ''
+      lines[#lines + 1] = ('%s %s  %s%s%s'):format(ns.classIco(peer.cls), peer.name, hp, m, peer.drink and ('  ' .. ns.ico('drink')) or '')
+    end
   end
   if ns.class == 'WARLOCK' and c.instance and c.ssKnown ~= nil and ns.Warlock and ns.Warlock.ssKnown then
     lines[#lines + 1] = c.ssOn and ('Soulstone: |cff9a7cffna ' .. c.ssOn .. '|r')

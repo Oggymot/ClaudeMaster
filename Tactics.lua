@@ -142,8 +142,7 @@ function TA.rate(c)
   for i = 1, 4 do if UnitExists('party' .. i) and safeBool(pc(UnitIsDeadOrGhost, 'party' .. i)) ~= true then players = players + 1 end end
   local mana = c.manaKnown and c.mana or 1
   local hp = (c.php or 100) / 100
-  local peer = ns.Duo and ns.Duo.peer()
-  if peer then
+  for _, peer in ipairs(ns.Duo and ns.Duo.peerList and ns.Duo.peerList() or {}) do
     if peer.mana then mana = math.min(mana, peer.mana) end
     if peer.hp then hp = math.min(hp, peer.hp / 100) end
   end
@@ -202,7 +201,9 @@ end
 TA.myCC = myCC
 
 function TA.ccPlanText(c, p)
-  local peer = ns.Duo and ns.Duo.peer()
+  -- v parte s vic lidmi: mag a warlock (kdo umi CC) maji prednost
+  local D = ns.Duo
+  local peer = D and D.peerOfClass and (D.peerOfClass(ns.class == 'MAGE' and 'WARLOCK' or 'MAGE') or D.peer())
   local mine = myCC(c)
   -- lecitel v packu: ten jde do CC (nebo ho bijte prvniho, kdyz je to cil)
   if p.healerName and mine then
@@ -217,8 +218,11 @@ function TA.ccPlanText(c, p)
   if ns.class ~= 'MAGE' and peer.cls ~= 'MAGE' then
     return mine and ('Plan: %s na druheho, bijte prvniho'):format(mine) or nil
   end
-  local me = ns.class == 'MAGE' and 'ty' or peer.name
-  local lock = ns.class == 'WARLOCK' and 'ty' or peer.name
+  local mageP = D.peerOfClass('MAGE')
+  local lockP = D.peerOfClass('WARLOCK')
+  local me = ns.class == 'MAGE' and 'ty' or (mageP and mageP.name) or peer.name
+  local lock = ns.class == 'WARLOCK' and 'ty' or (lockP and lockP.name)
+  if not lock then return ('Plan: %s ovce na druheho, bijte prvniho'):format(me) end
   if p.n == 2 then
     return ('Plan: %s ovce na druheho, oba bijte prvniho'):format(me)
   end
@@ -229,7 +233,10 @@ end
 -- Rozdeleny cil (duo bez tanka)
 ------------------------------------------------------------------------------------------
 local function partnerUnit()
-  local peer = ns.Duo and ns.Duo.peer()
+  -- jen ve dvou: s vic lidmi neni jasne, ke komu se pridat
+  local list = ns.Duo and ns.Duo.peerList and ns.Duo.peerList() or {}
+  if #list > 1 then return nil end
+  local peer = list[1]
   if peer and peer.unit then return peer.unit, peer.name end
   if GetNumGroupMembers and (safeNum(GetNumGroupMembers()) or 0) == 2 and UnitExists('party1') then
     return 'party1', safe(pc(UnitName, 'party1'))
@@ -280,7 +287,7 @@ function TA.ccInCombat(c)
   if not (c.inCombat and c.group) or c.tankUp then TA.ccWaitFrom, TA.lockClaimAt = nil, nil return nil end
   local n = (c.enemies and c.enemies.combat) or 0   -- bez ovci
   if n < 2 then TA.ccWaitFrom, TA.lockClaimAt = nil, nil return nil end
-  local peer = ns.Duo and ns.Duo.peer()
+  local peer = ns.Duo and ns.Duo.peerOfClass and ns.Duo.peerOfClass('MAGE')
   local claim = ns.Duo and ns.Duo.ccClaim
   local fresh = claim and GetTime() - claim.at < 6
   local mine = myCC(c)
@@ -290,7 +297,7 @@ function TA.ccInCombat(c)
     if GetTime() - (ns.castAt.Polymorph or -99) < 10 then return nil end   -- uz ovci
     if ns.Duo then ns.Duo.claimCC(mine) end
     return { name = 'Polymorph', kind = 'hint', reason = ('%d moby: Polymorph na druheho (focus makro)%s'):format(n,
-      peer and (', ' .. peer.name .. ' bije hlavni cil') or '') }
+      (ns.Duo and ns.Duo.peer and ns.Duo.peer()) and ', ostatni bijte hlavni cil' or '') }
   end
   -- warlock: kdyz mag ovci a jsou jeste dalsi, nebo mag po 1.5 s nic nehlasi
   TA.ccWaitFrom = TA.ccWaitFrom or GetTime()
@@ -302,7 +309,7 @@ function TA.ccInCombat(c)
   TA.lockClaimAt = TA.lockClaimAt or GetTime()
   if GetTime() - TA.lockClaimAt > 8 or GetTime() - (ns.castAt.Fear or -99) < 8 then return nil end
   if ns.Duo then ns.Duo.claimCC(mine) end
-  local who = mageSheeps and (peer.name .. ' ovci jednoho, ') or ''
+  local who = mageSheeps and ((claim.name or 'mag') .. ' ovci jednoho, ') or ''
   if mine == 'Seduction' then
     return hint(('%d moby: %szamer dalsiho a Seduction od %s (jen humanoid)'):format(n, who, c.petFamily),
       'Interface\\Icons\\Spell_Shadow_MindSteal')

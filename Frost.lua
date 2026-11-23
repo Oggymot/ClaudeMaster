@@ -378,7 +378,7 @@ local function decide(c, s)
     if ns.known('Conjure Water') and ns.Bags.count('water') < 6 and c.mana > 0.6 and not s.used['Conjure Water'] then
       return A('Conjure Water', 'Doplnit vodu (mas min nez 6)') end
     -- duo: partak s addonem nema vodu
-    local peer = ns.Duo and ns.Duo.peer()
+    local peer = ns.Duo and ns.Duo.neediest and ns.Duo.neediest('water')
     -- vycarovana voda/jidlo stoji jen manu: parťák nemusi kupovat (pocita se jen vycarovane, kdyz to posila)
     local pw = peer and (peer.cw or peer.water)
     if peer and peer.cls ~= 'WARRIOR' and peer.cls ~= 'ROGUE' and peer.cls ~= 'MAGE' and pw < 5 and not peer.combat and s.step == 1 then
@@ -391,6 +391,7 @@ local function decide(c, s)
         return A('Conjure Water', ('%s ma jen %d vycarovane vody: vyrob a posli (trade)'):format(peer.name, pw))
       end
     end
+    peer = ns.Duo and ns.Duo.neediest and ns.Duo.neediest('food')
     local pf = peer and (peer.cf or peer.food)
     if peer and peer.cls ~= 'MAGE' and pf and pf < 4 and not peer.combat and s.step == 1 then
       if ns.Bags.countConj('food') >= 10 then

@@ -377,6 +377,12 @@ local function update()
   local peerT, peerName = PL.peerTarget()
   local peerUnit = ns.Duo and ns.Duo.peer and ns.Duo.peer()
   peerUnit = peerUnit and peerUnit.unit
+  -- vsichni partaci: jednotka + jejich cil ze zpravy
+  local peerAll = {}
+  for _, pp in ipairs(ns.Duo and ns.Duo.peerList and ns.Duo.peerList() or {}) do
+    local t = PL.peerT[pp.name]
+    peerAll[#peerAll + 1] = { name = pp.name, unit = pp.unit, t = (t and GetTime() - t.at < 4) and t or nil }
+  end
   local myHex = classHex('player')
   local myL = (safe(pc(UnitName, 'player')) or '?'):sub(1, 1)
   -- kolik jmenovek ma jaky creature ID (shoda podle druhu jen kdyz je jediny)
@@ -411,7 +417,9 @@ local function update()
           if mine or peer then
             if mine then o.quest:SetVertexColor(1, 1, 1)
             else
-              local pu = ns.Duo and ns.Duo.peer and ns.Duo.peer()
+              -- barva toho partaka, kteremu quest patri
+              local pu = ns.Duo and ns.Duo.peers and type(peer) == 'string' and ns.Duo.peers[peer]
+              pu = (pu and pu.unit) and pu or (ns.Duo and ns.Duo.peer and ns.Duo.peer())
               local _, cls = pu and pu.unit and UnitClass(pu.unit)
               local cc = cls and RAID_CLASS_COLORS and RAID_CLASS_COLORS[cls]
               if cc then o.quest:SetVertexColor(cc.r, cc.g, cc.b) else o.quest:SetVertexColor(0.6, 0.8, 1) end
@@ -424,9 +432,12 @@ local function update()
         if grouped then
           local who = {}
           if is(u, 'target') then who[#who + 1] = ('|c%s%s|r'):format(myHex, myL) end
-          local dm = direct(u, peerUnit)
-          if dm == true or (dm == nil and peerT and peerT.id and match(u, peerT.id, myId, peerT.hp)) then
-            who[#who + 1] = ('|c%s%s|r'):format(peerUnit and classHex(peerUnit) or 'ffffffff', (peerName or '?'):sub(1, 1))
+          -- kazdy partak s addonem (pismeno v barve jeho tridy)
+          for _, pp in ipairs(peerAll) do
+            local dm = direct(u, pp.unit)
+            if dm == true or (dm == nil and pp.t and pp.t.id and match(u, pp.t.id, myId, pp.t.hp)) then
+              who[#who + 1] = ('|c%s%s|r'):format(pp.unit and classHex(pp.unit) or 'ffffffff', (pp.name or '?'):sub(1, 1))
+            end
           end
           if #who > 0 then o.who:SetText(table.concat(who, ' ')) end
         end
@@ -439,9 +450,16 @@ local function update()
           elseif st == 1 then
             -- mas vic threatu nez ten, koho bije: za chvili pujde po tobe
             o.aggro:SetText('|cffff9900!TY|r')
-          elseif peerUnit and ns.mobTargets and ns.mobTargets(u, peerUnit) == true then
-            -- primo ze hry (jmeno cile moba / threat parťáka), bez zprav
-            o.aggro:SetText('|cffffcc33>' .. tostring(safe(pc(UnitName, peerUnit)) or '?') .. '|r')
+          elseif ns.mobTargets and (function()
+              for _, pp in ipairs(peerAll) do
+                if pp.unit and ns.mobTargets(u, pp.unit) == true then
+                  -- primo ze hry (jmeno cile moba / threat partaka), bez zprav
+                  o.aggro:SetText('|cffffcc33>' .. pp.name .. '|r')
+                  return true
+                end
+              end
+            end)() then
+            -- uz nastaveno
           else
             for nm, a in pairs(PL.peerA) do
               if now - a.at < 4 then
