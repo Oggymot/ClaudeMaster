@@ -877,7 +877,7 @@ function G.refreshBags()
   if not ns.db or ns.db.gearTips == false or InCombatLockdown() then return end
   pcall(G.upgrades)
   local map = G.upMap or {}
-  local show = G.merchant or G.bank   -- mince / postavicka jen u vendora nebo v bance
+  local show = G.merchant or G.bank   -- mince / postavicka jen u vendora nebo v bance (vykricnik vzdy)
   local function upd(b, forceBag)
     local okB, bag = pcall(function()
       if forceBag then return forceBag end
@@ -893,7 +893,7 @@ function G.refreshBags()
     mark(b, up)
     sellMark(b, show and key and not up and G.sellMap and G.sellMap[key])
     giftMark(b, show and key and not up and G.giftMap and G.giftMap[key])
-    questMark(b, show and key and not up and G.questMap and G.questMap[key])
+    questMark(b, key and not up and G.questMap and G.questMap[key])
   end
   eachButton(_G.ContainerFrameCombinedBags, upd)
   for i = 1, 13 do eachButton(_G['ContainerFrame' .. i], upd) end
