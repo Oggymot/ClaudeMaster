@@ -2,8 +2,7 @@
 -- Jeden prikaz, ktery do ClaudeMasterDB.fullDump ulozi vse, co addon potrebuje k doladeni:
 -- postavu, staty, talenty, spellbook (s popisy, cenou, castem), akcni listy, batohy, vybaveni a buffy.
 -- WoW zapisuje SavedVariables az pri /reload nebo odhlaseni, proto se na konci pise "dej /reload".
-local ADDON, ns = ...
-if not ns.enabled then return end
+local ADDON, ns = ...   -- bezi u kazde tridy (dump/sonda pro nove tridy)
 local pc, safe, safeNum, safeBool = ns.pc, ns.safe, ns.safeNum, ns.safeBool
 
 local function str(v) v = safe(v) if type(v) == 'string' then return (v:gsub('[\r\n]+', ' ')) end end

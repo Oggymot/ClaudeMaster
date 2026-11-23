@@ -5,7 +5,18 @@
 -- Duvod doporuceni
 -- Moby / cil / stavy
 local ADDON, ns = ...
-if not ns.enabled then return end
+if not ns.enabled then
+  -- trida zatim bez rotace: aspon /cm dump a /cm sonda, at muzu pripravit podporu
+  SLASH_CLAUDEMASTER1 = '/cm'
+  SLASH_CLAUDEMASTER2 = '/claudemaster'
+  SlashCmdList.CLAUDEMASTER = function(msg)
+    local cmd = (msg or ''):lower():match('^(%S*)')
+    if cmd == 'dump' then ns.fullDump()
+    elseif cmd == 'sonda' or cmd == 'probe' then ns.apiProbe()
+    else ns.say(tostring(ns.class) .. ' zatim neumim radit. Funguje: /cm dump, /cm sonda') end
+  end
+  return
+end
 local pc, safe, safeNum, safeBool = ns.pc, ns.safe, ns.safeNum, ns.safeBool
 
 local UI = {}
