@@ -6,7 +6,7 @@
 local ADDON, ns = ...
 local _, playerClass = UnitClass('player')
 ns.class = playerClass
-ns.enabled = (playerClass == 'MAGE' or playerClass == 'WARLOCK')
+ns.enabled = (playerClass == 'MAGE' or playerClass == 'WARLOCK' or playerClass == 'PALADIN')
 
 local issecret = issecretvalue or function() return false end
 ns.issecret = issecret
@@ -105,7 +105,19 @@ local WARLOCK_SPELLS = {
   'Create Healthstone', 'Create Soulstone', 'Unending Breath', 'Detect Invisibility', 'Shoot',
   'Will to Survive', 'Perception',
 }
-ns.SPELLS = (playerClass == 'WARLOCK') and WARLOCK_SPELLS or MAGE_SPELLS
+local PALADIN_SPELLS = {
+  'Attack', 'Seal of Righteousness', 'Seal of Command', 'Seal of the Crusader', 'Seal of Wisdom', 'Seal of Light',
+  'Seal of Justice', 'Seal of Vengeance', 'Seal of Blood', 'Seal of Martyrdom', 'Judgement', 'Holy Strike', 'Crusader Strike',
+  'Hammer of Justice', 'Hammer of Wrath', 'Exorcism', 'Consecration', 'Holy Shock', 'Holy Wrath', "Avenger's Shield",
+  'Holy Shield', 'Righteous Fury', 'Repentance', 'Turn Undead', 'Holy Light', 'Flash of Light', 'Lay on Hands',
+  'Divine Protection', 'Divine Shield', 'Blessing of Protection', 'Blessing of Freedom', 'Divine Favor', 'Purify', 'Cleanse',
+  'Devotion Aura', 'Retribution Aura', 'Concentration Aura', 'Sanctity Aura', 'Crusader Aura', 'Shadow Resistance Aura',
+  'Frost Resistance Aura', 'Fire Resistance Aura', 'Blessing of Might', 'Blessing of Wisdom', 'Blessing of Kings',
+  'Blessing of Sanctuary', 'Blessing of Light', 'Blessing of Salvation', 'Greater Blessing of Might',
+  'Greater Blessing of Wisdom', 'Greater Blessing of Kings', 'Greater Blessing of Sanctuary', 'Redemption',
+  'Will to Survive', 'Perception',
+}
+ns.SPELLS = (playerClass == 'WARLOCK') and WARLOCK_SPELLS or (playerClass == 'PALADIN') and PALADIN_SPELLS or MAGE_SPELLS
 -- Zakladni cooldowny (prepisou se skutecnymi, ktere klient ukaze mimo boj)
 ns.BASE_CD = {
   ['Frost Nova'] = 25, ['Cone of Cold'] = 10, ['Fire Blast'] = 8, ['Counterspell'] = 24, ['Ice Barrier'] = 30,
@@ -116,6 +128,11 @@ ns.BASE_CD = {
   -- warlock
   ['Conflagrate'] = 10, ['Shadowburn'] = 15, ['Death Coil'] = 120, ['Howl of Terror'] = 40, ['Soul Fire'] = 60,
   ['Shadow Ward'] = 30, ['Amplify Curse'] = 180, ['Fel Domination'] = 900, ['Inferno'] = 3600, ['Curse of Doom'] = 60,
+  -- paladin
+  ['Judgement'] = 10, ['Holy Strike'] = 10, ['Crusader Strike'] = 6, ['Hammer of Justice'] = 60, ['Hammer of Wrath'] = 6,
+  ['Exorcism'] = 15, ['Consecration'] = 8, ['Holy Shock'] = 30, ['Divine Protection'] = 300, ['Divine Shield'] = 300,
+  ['Lay on Hands'] = 3600, ['Blessing of Protection'] = 300, ['Holy Wrath'] = 60, ["Avenger's Shield"] = 30,
+  ['Holy Shield'] = 10, ['Repentance'] = 60, ['Turn Undead'] = 30, ['Divine Favor'] = 120, ['Blessing of Freedom'] = 20,
 }
 -- Kouzla bez globalniho cooldownu
 ns.OFF_GCD = { ['Cold Snap'] = true, ['Icy Veins'] = true, ['Presence of Mind'] = true, ['Counterspell'] = true,

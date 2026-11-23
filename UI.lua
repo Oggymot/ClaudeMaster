@@ -35,7 +35,10 @@ local MANA_H = 12
 local TEXT_W = WIDTH - PAD * 2
 
 -- barvy podle classy: mag = mrazive modra, warlock = fialova
-local T = (ns.class == 'WARLOCK') and {
+local T = (ns.class == 'PALADIN') and {
+  a1 = { 1, 0.78, 0.3, 0.95 }, a2 = { 1, 0.9, 0.6, 0.15 }, bg = { 0.08, 0.065, 0.04 }, border = { 0.45, 0.36, 0.2, 0.9 },
+  title = { 1, 0.85, 0.5 }, icon = 'Interface\\Icons\\Spell_Holy_HolyBolt', ui = { 1, 0.8, 0.4 },
+} or (ns.class == 'WARLOCK') and {
   a1 = { 0.62, 0.32, 1, 0.95 }, a2 = { 0.88, 0.6, 1, 0.15 }, bg = { 0.06, 0.035, 0.09 }, border = { 0.34, 0.22, 0.48, 0.9 },
   title = { 0.8, 0.6, 1 }, icon = 'Interface\\Icons\\Spell_Shadow_ShadowBolt', ui = { 0.68, 0.45, 1 },
 } or {
