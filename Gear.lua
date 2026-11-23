@@ -827,7 +827,7 @@ local function sellMark(btn, on)
   if not btn then return end
   if on and not btn.cmSell then
     local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
-    t:SetTexture(COIN_T) t:SetSize(14, 14) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', 1, -1)
+    t:SetTexture(COIN_T) t:SetSize(14, 14) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', 2, -4)
     btn.cmSell = t
   end
   if btn.cmSell then btn.cmSell:SetShown(on and true or false) end
@@ -837,7 +837,7 @@ local function giftMark(btn, on)
   if not btn then return end
   if on and not btn.cmGift then
     local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
-    t:SetTexture(GIFT_T) t:SetSize(16, 16) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', 0, 0)
+    t:SetTexture(GIFT_T) t:SetSize(16, 16) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', 1, -4)
     btn.cmGift = t
   end
   if btn.cmGift then btn.cmGift:SetShown(on and true or false) end
@@ -847,7 +847,7 @@ local function questMark(btn, on)
   if not btn then return end
   if on and not btn.cmQuest then
     local t = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
-    t:SetTexture(QUEST_T) t:SetSize(16, 16) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', 0, 0)
+    t:SetTexture(QUEST_T) t:SetSize(16, 16) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', 1, -4)
     btn.cmQuest = t
   end
   if btn.cmQuest then btn.cmQuest:SetShown(on and true or false) end
