@@ -521,7 +521,10 @@ function G.upgrades(force)
       if value and safeNum(info.quality) == 0 then sell = 'seda vec (junk)' end
       -- materialy a recepty pro profese, ktere nemas
       if value and not sell then sell = G.tradeWhy(link, bag, slot) end
-      if type(link) == 'string' and equipLocOf(link) and SLOTS[equipLocOf(link)] then
+      local toolP = type(link) == 'string' and G.toolProf(link, select(2, G.itemInfo(link)))
+      local toolMine = toolP and ((G.myProfs() or {})[toolP] or G.profPeers({ toolP })[1])
+      if toolMine then sell = nil end
+      if type(link) == 'string' and not toolMine and equipLocOf(link) and SLOTS[equipLocOf(link)] then
         local st, blocked, req, fl = G.parse(tipData('bag', bag, slot, link))
         fl = fl or {}
         local why
@@ -625,20 +628,30 @@ local function myProfs()
     local list = { pc(GetProfessions) }
     for i = 1, 6 do
       local idx = safeNum(list[i])
-      local n = idx and safe(pc(GetProfessionInfo, idx))
-      if type(n) == 'string' then t[n] = true end
+      local n, _, rank
+      if idx then n, _, rank = pc(GetProfessionInfo, idx) end
+      n = safe(n)
+      if type(n) == 'string' then t[n] = safeNum(rank) or true end
     end
   end
   if GetNumSkillLines and GetSkillLineInfo then
     any = true
     for i = 1, safeNum(pc(GetNumSkillLines)) or 0 do
-      local n, hdr = pc(GetSkillLineInfo, i)
+      local n, hdr, _, rank = pc(GetSkillLineInfo, i)
       n = safe(n)
-      if type(n) == 'string' and not safeBool(hdr) then t[n] = true end
+      if type(n) == 'string' and not safeBool(hdr) then t[n] = safeNum(rank) or true end
     end
   end
   profCache, profAt = any and t or nil, GetTime()
   return profCache
+end
+-- nastroje profesi: neprodavat a nebrat jako gear, kdyz profesi mas ty (nebo partak)
+local TOOLS = { { 'Fishing', 'Fishing' }, { 'Mining Pick', 'Mining' }, { 'Skinning Knife', 'Skinning' },
+  { 'Blacksmith Hammer', 'Blacksmithing' }, { 'Arclight Spanner', 'Engineering' }, { 'Gyromatic', 'Engineering' } }
+function G.toolProf(link, sub)
+  local n = type(link) == 'string' and link:match('%[(.-)%]') or ''
+  if sub == 'Fishing Poles' or sub == 'Fishing Pole' then return 'Fishing' end
+  for _, t in ipairs(TOOLS) do if n:find(t[1], 1, true) then return t[2] end end
 end
 local function itemInfo(link)
   local f = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
@@ -646,17 +659,31 @@ local function itemInfo(link)
   local _, typ, sub, loc, _, cls = pc(f, link)
   return safe(typ), safe(sub), safe(loc), safeNum(cls)
 end
+G.itemInfo, G.myProfs = itemInfo, myProfs
 -- kdo z party (s addonem) ma nekterou z profesi -> { {name, prof}, ... }
 G.peerProfs = {}
 -- profese partaku si pamatujeme (i po /reload) 14 dni od posledni zpravy - i kdyz zrovna nejsou v parte,
 -- at addon neradi prodat bylinky, ktere pravidelne davas parťakovi (driv to zapomnel po 15 min)
-function G.profPeers(list)
+-- ilvl: level materialu -> potrebny skill zhruba ilvl*5 - 40 (Peacebloom ~0, Kingsblood ~85, Sungrass ~190);
+-- bez skillu ve zprave (stary addon) aspon podle levelu partaka. Nizky skill = material mu zatim k nicemu.
+local function skillOk(rank, plvl, ilvl)
+  if not ilvl or ilvl <= 1 then return true end
+  if type(rank) == 'number' then return rank >= ilvl * 5 - 40 end
+  if plvl then return plvl >= ilvl - 5 end
+  return true
+end
+G.skillOk = skillOk
+function G.itemLevel(link)
+  local il = GetItemInfo and select(4, pc(GetItemInfo, link))
+  return safeNum(il)
+end
+function G.profPeers(list, ilvl)
   local out, now = {}, time()
   local saved = ns.db and ns.db.peerProfs or {}
   for name, pp in pairs(saved) do
     if now - (pp.t or 0) < 14 * 86400 then
       for _, p in ipairs(list) do
-        if pp.set[p] then out[#out + 1] = { name = name, prof = p } break end
+        if pp.set[p] and skillOk(pp.set[p], pp.lvl, ilvl) then out[#out + 1] = { name = name, prof = p } break end
       end
     end
   end
@@ -668,7 +695,7 @@ function G.matPeers(link, data)
   if type(data) == 'function' and (cls == 9 or typ == 'Recipe') then data = data() end
   if cls == 7 or typ == 'Trade Goods' or typ == 'Tradeskill' then
     local need = sub and PROFMAT[sub]
-    return need and G.profPeers(need) or {}
+    return need and G.profPeers(need, G.itemLevel(link)) or {}
   end
   if (cls == 9 or typ == 'Recipe') and type(data) == 'table' and type(data.lines) == 'table' then
     for _, l in ipairs(data.lines) do
@@ -687,7 +714,7 @@ function G.tradeWhy(link, bag, slot)
     local need = sub and PROFMAT[sub]
     if not need then return nil end
     for _, p in ipairs(need) do if pr[p] then return nil end end
-    if G.profPeers(need)[1] then return nil end
+    if G.profPeers(need, G.itemLevel(link))[1] then return nil end
     return ('material pro %s - tu profesi nemas (na AH vic)'):format(table.concat(need, ' / '))
   end
   if cls == 9 or typ == 'Recipe' then
@@ -790,11 +817,14 @@ function G.recv(name, msg)
   for v in (msg .. '^'):gmatch('([^%^]*)%^') do f[#f + 1] = v end
   if f[2] == 'P' then
     local set = {}
-    for pr in (f[3] or ''):gmatch('[^,]+') do set[pr] = true end
+    for pr in (f[3] or ''):gmatch('[^,]+') do
+      local n, r = pr:match('^(.-):(%d+)$')
+      if n then set[n] = tonumber(r) else set[pr] = true end
+    end
     G.peerProfs[name] = { set = set, at = GetTime() }
     if ns.db then
       ns.db.peerProfs = ns.db.peerProfs or {}
-      ns.db.peerProfs[name] = { set = set, t = time() }
+      ns.db.peerProfs[name] = { set = set, t = time(), lvl = G.peers[name] and G.peers[name].lvl }
     end
     upCache = nil
     return
@@ -803,6 +833,7 @@ function G.recv(name, msg)
   local p = { cls = f[2], spec = f[3], lvl = tonumber(f[4]) or 60, two = f[5] == '1', sc = {}, at = GetTime() }
   for s, v in (f[6] or ''):gmatch('(%d+):([%d%.]+)') do p.sc[tonumber(s)] = tonumber(v) end
   G.peers[name] = p
+  if ns.db and ns.db.peerProfs and ns.db.peerProfs[name] then ns.db.peerProfs[name].lvl = p.lvl end
   upCache = nil
   -- novy partak: poslat mu i nase
   if not old or GetTime() - old.at > 120 then G.shareSoon(1) end
@@ -833,7 +864,9 @@ function G.share()
   local pr = myProfs()
   if pr then
     local names = {}
-    for n in pairs(pr) do if n:find('^%a[%a ]*$') then names[#names + 1] = n end end
+    for n, r in pairs(pr) do
+      if n:find('^%a[%a ]*$') then names[#names + 1] = type(r) == 'number' and (n .. ':' .. r) or n end
+    end
     pcall(ns.Duo.rawSend, ('G^P^' .. table.concat(names, ',')):sub(1, 250))
   end
 end
@@ -1336,39 +1369,90 @@ local function onRoll(rollID)
   local link = safe(pc(GetLootRollItemLink, rollID))
   if type(link) ~= 'string' then return end
   local loc = equipLocOf(link)
-  if not (loc and SLOTS[loc]) then return end
   local d = C_TooltipInfo and C_TooltipInfo.GetLootRollItem and pc(C_TooltipInfo.GetLootRollItem, rollID)
   if type(d) ~= 'table' then d = tipData(nil, nil, nil, link) end
-  local st, blocked, req, fl = G.parse(d)
-  if not st then return end
-  local pct, oldLink = G.compare(link, st)
-  local lvl = safeNum(UnitLevel('player')) or 60
   local txt, tex
-  if blocked then txt = '|cff888888neumis nosit - Greed|r'
-  elseif pct and pct > 0.02 then
-    tex = ARROW
-    txt = ('%s |cff40ff60+%d %%|r vs %s - |cff40ff60Need|r'):format(UP, math.floor(pct * 100 + 0.5),
-      oldLink and oldLink:match('%[(.-)%]') or 'prazdny slot')
-    if req and req > lvl then txt = txt .. (' |cffffcc00(od lvl %d)|r'):format(req) end
-  elseif pct then
-    txt = ('%s |cffff6060%d %%|r - Greed'):format(DOWN, math.floor(pct * 100 - 0.5))
-  else return end
-  -- parta s addonem: komu jinemu je to vylepsenim (o hod se jeste nehraje, Soulbound neresime)
-  local ok, ups = pcall(G.peerUps, link, st, req, fl or {})
-  if ok and ups and ups[1] then
-    local mine = (not blocked and pct and pct > 0.02) and pct or 0
-    for i, p in ipairs(ups) do
+  if loc and SLOTS[loc] and not G.toolProf(link, select(2, itemInfo(link))) then
+    -- vybaveni: vylepseni pro me / pro partaky
+    local st, blocked, req, fl = G.parse(d)
+    if not st then return end
+    local pct, oldLink = G.compare(link, st)
+    local lvl = safeNum(UnitLevel('player')) or 60
+    if blocked then txt = '|cff888888neumis nosit - Greed|r'
+    elseif pct and pct > 0.02 then
+      tex = ARROW
+      txt = ('%s |cff40ff60+%d %%|r vs %s - |cff40ff60Need|r'):format(UP, math.floor(pct * 100 + 0.5),
+        oldLink and oldLink:match('%[(.-)%]') or 'prazdny slot')
+      if req and req > lvl then txt = txt .. (' |cffffcc00(od lvl %d)|r'):format(req) end
+    elseif pct then
+      txt = ('%s |cffff6060%d %%|r - Greed'):format(DOWN, math.floor(pct * 100 - 0.5))
+    else txt = '|cff888888uz to mas - Greed|r' end
+    -- parta s addonem: komu jinemu je to vylepsenim
+    local ok, ups = pcall(G.peerUps, link, st, req, fl or {})
+    if ok and ups and ups[1] then
+      local mine = (not blocked and pct and pct > 0.02) and pct or 0
+      for i, p in ipairs(ups) do
+        if i > 2 then break end
+        local s2 = p.empty and ('|cff66ccff%s|r |cff40ff60prazdny slot|r'):format(p.name)
+          or ('|cff66ccff%s|r |cff40ff60+%d %%|r'):format(p.name, math.floor(p.pct * 100 + 0.5))
+        if p.req then s2 = s2 .. (' |cffffcc00(od lvl %d)|r'):format(p.req) end
+        txt = txt .. '\n' .. UP .. ' ' .. s2
+      end
+      local best = ups[1]
+      if best.pct > mine * 1.5 + 0.02 then
+        txt = txt .. ('\n|cffffcc00Vic se hodi: %s - zvaz Greed / Pass|r'):format(best.name)
+      end
+    end
+  else
+    -- ostatni veci (material, recept, kamen, bedynka, quest item): komu se k necemu hodi
+    local typ, sub, _, cls = itemInfo(link)
+    local lines, useMe, usePeer = {}, nil, {}
+    local qn = G.questNeed(link)
+    if qn and qn.title then useMe = 'na quest: ' .. qn.title end
+    local need
+    if cls == 7 or typ == 'Trade Goods' or typ == 'Tradeskill' then need = sub and PROFMAT[sub]
+    elseif cls == 9 or typ == 'Recipe' then
+      for _, l in ipairs(type(d) == 'table' and type(d.lines) == 'table' and d.lines or {}) do
+        local t = safe(l.leftText)
+        local pr = type(t) == 'string' and t:match('^Requires ([%a ]+) %(%d+%)')
+        if pr then need = { pr } break end
+        if t == 'Already known' then useMe = nil need = nil break end
+      end
+    end
+    local tp = G.toolProf(link, sub)
+    if tp then need = { tp } end
+    if need then
+      local mine = myProfs() or {}
+      for _, pr in ipairs(need) do if mine[pr] then useMe = useMe or ('do ' .. pr) end end
+      usePeer = G.profPeers(need, G.itemLevel(link))
+    end
+    if useMe then
+      tex = ARROW
+      lines[#lines + 1] = ('%s |cff40ff60Hodi se ti %s - Need|r'):format(UP, useMe)
+    end
+    for i, p in ipairs(usePeer) do
       if i > 2 then break end
-      local s = p.empty and ('|cff66ccff%s|r |cff40ff60prazdny slot|r'):format(p.name)
-        or ('|cff66ccff%s|r |cff40ff60+%d %%|r'):format(p.name, math.floor(p.pct * 100 + 0.5))
-      if p.req then s = s .. (' |cffffcc00(od lvl %d)|r'):format(p.req) end
-      txt = txt .. '\n' .. UP .. ' ' .. s
+      lines[#lines + 1] = ('%s |cff66ccff%s|r |cff40ff60vyuzije (%s)|r'):format(UP, p.name, p.prof)
     end
-    local best = ups[1]
-    if best.pct > mine * 1.5 + 0.02 then
-      txt = txt .. ('\n|cffffcc00Vic se hodi: %s - zvaz Greed / Pass|r'):format(best.name)
+    if not useMe and usePeer[1] then lines[#lines + 1] = '|cffffcc00Tobe ne - nech ho partakovi (Pass / Greed)|r' end
+    if not useMe and not usePeer[1] then
+      local price = GetItemInfo and safeNum(select(11, pc(GetItemInfo, link)))
+      local box = (type(d) == 'table' and type(d.lines) == 'table') and (function()
+        for _, l in ipairs(d.lines) do
+          local t = safe(l.leftText)
+          if type(t) == 'string' and (t == 'Locked' or t:find('Right Click to Open') or t:find('<Right Click to Open>')) then return true end
+        end
+      end)()
+      local what = box and 'bedynka - k nicemu se nehodi' or 'nikomu z party se nehodi'
+      lines[#lines + 1] = ('|cff9aa6b8%s - Greed%s|r'):format(what, (price and price > 0) and (' (prodej ' .. (GetCoinTextureString and GetCoinTextureString(price) or (math.floor(price / 100) .. 's')) .. ')') or '')
     end
+    txt = table.concat(lines, '\n')
   end
+  -- plny batoh: item se nevejde
+  local free = 0
+  local gf = (C_Container and C_Container.GetContainerNumFreeSlots) or GetContainerNumFreeSlots
+  if gf then for bag = 0, 4 do free = free + (safeNum(pc(gf, bag)) or 0) end end
+  if gf and free == 0 then txt = txt .. '\n|cffff5555Plny batoh - kdyz vyhrajes, nevejde se (jen do neplneho stacku)|r' end
   local shown = false
   for _, fr in ipairs(rollFrames()) do
     if fr.cmUp and fr.rollID == rollID then fr.cmUp:Hide() end
