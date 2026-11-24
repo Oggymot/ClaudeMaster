@@ -460,9 +460,15 @@ end
 local function decide(c, s)
   local db = c.db
   local function bad(n) return c.imm ~= nil and ns.Immune.bad(c.imm, n) end
-  local function can(n) return ns.known(n) and not bad(n) end
+  -- Drain Life / Drain Soul nejdou na mechanicke cile (roboti, golemy...)
+  local ctype = safe(pc(UnitCreatureType, 'target'))
+  local noDrain = ctype == 'Mechanical'
+  local function can(n)
+    if noDrain and (n == 'Drain Life' or n == 'Drain Soul' or n == 'Drain Mana') then return false end
+    return ns.known(n) and not bad(n)
+  end
   local function ready(n)
-    if not ns.known(n) or s.used[n] or bad(n) then return false end
+    if not can(n) or s.used[n] then return false end
     if ns.cost(n) > 0 and s.mana * ns.manaMax() < ns.cost(n) then return false end
     return (s.cd[n] or 0) <= s.t + c.lead
   end
