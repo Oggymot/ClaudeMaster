@@ -790,7 +790,19 @@ local function decide(c, s)
   end
   -- 7) dorazeni
   local dying = c.tLow10 or (c.tLow20 and (ttd == nil or ttd < 4)) or (ttd and ttd < 3)
-  if c.tLow20 and c.shards < math.min(db.shardWant or 6, db.shardTrim ~= false and (db.shardMax or 10) or 99) and can('Drain Soul') and not c.moving and not c.boss
+  -- sedy (trivialni) mob shard neda -> Drain Soul nema smysl
+  local function trivial()
+    if UnitIsTrivial then
+      local t = safeBool(pc(UnitIsTrivial, 'target'))
+      if t ~= nil then return t end
+    end
+    local ml, tl = safeNum(pc(UnitLevel, 'player')), safeNum(pc(UnitLevel, 'target'))
+    if not (ml and tl) or tl < 0 then return false end
+    -- sedy level (classic): do 5 lvl 0, pak lvl - 5 - floor(lvl/10) ... do 39, od 40 lvl - 1 - floor(lvl/5)
+    local grey = ml <= 5 and 0 or (ml <= 39 and (ml - 5 - math.floor(ml / 10)) or (ml - 1 - math.floor(ml / 5)))
+    return tl <= grey
+  end
+  if c.tLow20 and not trivial() and c.shards < math.min(db.shardWant or 6, db.shardTrim ~= false and (db.shardMax or 10) or 99) and can('Drain Soul') and not c.moving and not c.boss
     and not c.tPlayer and (ttd == nil or ttd < 15) then
     return A('Drain Soul', ('Dorazit Drain Soulem: shard navic (mas %d)'):format(c.shards))
   end
