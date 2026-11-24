@@ -731,7 +731,7 @@ function O.updateMinimap()
   if not b then
     b = CreateFrame('Button', 'ClaudeMasterMinimapButton', Minimap)
     O.mini = b
-    b:SetSize(31, 31) b:SetFrameStrata('MEDIUM') b:SetFrameLevel(8)
+    b:SetSize(31, 31) b:SetFrameStrata('MEDIUM') b:SetFrameLevel((Minimap:GetFrameLevel() or 0) + 10)
     b:RegisterForClicks('LeftButtonUp', 'RightButtonUp') b:RegisterForDrag('LeftButton')
     local bg = b:CreateTexture(nil, 'BACKGROUND') bg:SetTexture('Interface\\Minimap\\UI-Minimap-Background')
     bg:SetSize(20, 20) bg:SetPoint('TOPLEFT', 7, -5)
@@ -778,6 +778,19 @@ function O.updateMinimap()
   b:SetShown(not db.minimap.hide)
 end
 
+-- GW2 UI a jine addony meni velikost / tvar minimapy az po prihlaseni -> pozici prepocitat znovu
 local ev = CreateFrame('Frame')
 ev:RegisterEvent('PLAYER_LOGIN')
-ev:SetScript('OnEvent', function() pcall(O.updateMinimap) end)
+ev:RegisterEvent('PLAYER_ENTERING_WORLD')
+local hooked = false
+ev:SetScript('OnEvent', function()
+  pcall(O.updateMinimap)
+  if C_Timer then
+    C_Timer.After(2, function() pcall(O.updateMinimap) end)
+    C_Timer.After(8, function() pcall(O.updateMinimap) end)
+  end
+  if not hooked and Minimap and Minimap.HookScript then
+    hooked = true
+    Minimap:HookScript('OnSizeChanged', function() if O.mini then pcall(placeMinimap, O.mini) end end)
+  end
+end)
