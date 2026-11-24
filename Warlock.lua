@@ -1102,35 +1102,37 @@ function W.shardExcess()
   local _, total = shardSlots()
   return math.max(0, total - (db.shardMax or 10)), total
 end
--- volat jen z kliknuti / prikazu (hra jinak mazani zablokuje)
+-- volat jen z kliknuti / prikazu (hra jinak mazani zablokuje).
+-- Hra dovoli JEDNO zahozeni na jedno kliknuti -> vzit naraz cely prebytek z jednoho stacku (split),
+-- kdyz to nejde, zahodit jeden stack; tlacitko pak ukaze, kolik jeste zbyva. Do chatu nic (jen chyba, jednou).
+local trimWarned = false
 function W.trimShards()
   local db = ns.db
   if not db then return end
-  if InCombatLockdown() then ns.say('Soul shardy: az po boji') return end
+  if InCombatLockdown() then return end
   local max = db.shardMax or 10
   local slots, total = shardSlots()
   local excess = total - max
-  if excess <= 0 then ns.say(('Soul shardy: mas %d, max %d - neni co zahodit'):format(total, max)) return end
+  if excess <= 0 then return end
   local pick = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
   local split = (C_Container and C_Container.SplitContainerItem) or SplitContainerItem
-  if CursorHasItem and CursorHasItem() and ClearCursor then ClearCursor() end
-  local done = 0
+  if CursorHasItem and CursorHasItem() then return end
+  -- stack, ze ktereho jde vzit cely prebytek; jinak nejvetsi stack, ktery prebytek neprekroci
+  local best
   for i = #slots, 1, -1 do
-    if excess <= 0 then break end
     local sl = slots[i]
-    local take = math.min(sl.n, excess)
-    local ok
-    if sl.n > take and split then ok = pcall(split, sl.bag, sl.slot, take) else ok = pcall(pick, sl.bag, sl.slot) end
-    if ok and CursorHasItem and CursorHasItem() then ok = pcall(DeleteCursorItem) end
-    if CursorHasItem and CursorHasItem() then
-      if ClearCursor then ClearCursor() end
-      ns.say('Soul shardy: hra zahozeni nedovolila - zahod je rucne.')
-      break
-    end
-    if ok then done = done + take excess = excess - take end
+    if sl.n > excess and split then best = best or { sl = sl, take = excess, split = true }
+    elseif sl.n <= excess and (not best or (not best.split and sl.n > best.take)) then best = { sl = sl, take = sl.n } end
   end
-  if done > 0 then ns.say(('Soul shardy: zahozeno %d, zbyva %d (max %d - zmenis v /cm config)'):format(done, total - done, max)) end
-  if C_Timer then C_Timer.After(0.5, function() pcall(W.updateShardButton) end) end
+  if not best then return end
+  local ok
+  if best.split then ok = pcall(split, best.sl.bag, best.sl.slot, best.take) else ok = pcall(pick, best.sl.bag, best.sl.slot) end
+  if ok and CursorHasItem and CursorHasItem() then ok = pcall(DeleteCursorItem) end
+  if CursorHasItem and CursorHasItem() then
+    if ClearCursor then ClearCursor() end
+    if not trimWarned then trimWarned = true ns.say('Soul shardy: hra zahozeni nedovolila - zkus kliknout znovu, pripadne zahod rucne.') end
+  end
+  if C_Timer then C_Timer.After(0.4, function() pcall(W.updateShardButton) end) end
 end
 -- tlacitko nad panelem: jen mimo boj a kdyz je shardu vic nez max
 function W.updateShardButton()
