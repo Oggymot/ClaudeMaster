@@ -12,6 +12,7 @@ ns.Camp = C
 
 -- slovo ve statu -> klic vah z Gear.lua
 local STATS = {
+  { 'all stats', 'all' }, { 'all attributes', 'all' },
   { 'melee attack power', 'ap' }, { 'ranged attack power', 'ap' }, { 'attack power', 'ap' },
   { 'spell power', 'sp' }, { 'spell damage', 'sp' }, { 'healing', 'heal' },
   { 'strength', 'str' }, { 'agility', 'agi' }, { 'stamina', 'sta' }, { 'intellect', 'int' }, { 'spirit', 'spi' },
@@ -29,6 +30,7 @@ end
 -- jak moc se ti bonus hodi: 2 = hodi, 1 = trochu, 0 = k nicemu, nil = nevim
 local function worth(text)
   local key = statOf(text)
+  if key == 'all' then return 2 end
   if not key or not (ns.Gear and ns.Gear.weights) then return nil end
   local w = ns.Gear.weights()
   local v = w[key]
@@ -162,20 +164,41 @@ end
 ------------------------------------------------------------------------------------------
 -- Tooltip vybaveni kempu: co dava (pokud uz ho addon videl) a jestli se ti hodi
 ------------------------------------------------------------------------------------------
+-- tooltip objektu ve svete se pri dalsim najeti jen prepise (OnShow znovu neprijde) -> hak na sestaveni
+-- tooltipu (TooltipDataProcessor, kazde sestaveni); OnShow jen jako zaloha pro starsi klienty
+local function campLine(tt, name)
+  if not ns.db or ns.db.campTip == false or not ns.db.campItems then return end
+  if type(name) ~= 'string' or tt:IsForbidden() then return end
+  local eff = ns.db.campItems[name]
+  if not eff or tt.cmCamp == name then return end
+  tt.cmCamp = name
+  local w = worth(eff)
+  tt:AddLine(('|cff66ccffClaudeMaster:|r %s%s|r%s'):format(WCOL[w] or '|cffffffff', eff, w and (' - ' .. WTXT[w]) or ''),
+    1, 1, 1, true)
+end
+if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall then
+  pcall(TooltipDataProcessor.AddTooltipPostCall, TooltipDataProcessor.AllTypes, function(tt, data)
+    if tt ~= GameTooltip then return end
+    local l = type(data) == 'table' and type(data.lines) == 'table' and data.lines[1]
+    pcall(campLine, tt, l and safe(l.leftText))
+  end)
+end
 if GameTooltip then
-  GameTooltip:HookScript('OnShow', function(tt)
-    if not ns.db or ns.db.campTip == false or not ns.db.campItems then return end
-    local okU, _, unit = pcall(tt.GetUnit, tt)
-    if okU and unit then return end
+  GameTooltip:HookScript('OnTooltipCleared', function(tt) tt.cmCamp = nil end)
+  GameTooltip:HookScript('OnHide', function(tt) tt.cmCamp = nil end)
+  -- zaloha: objekt ve svete (tooltip se prepisuje bez OnShow) - kontrola 5x za sekundu
+  local acc = 0
+  GameTooltip:HookScript('OnUpdate', function(tt, el)
+    acc = acc + el
+    if acc < 0.2 then return end
+    acc = 0
+    if tt.cmCamp or not (ns.db and ns.db.campItems) then return end
     local fs = _G[tt:GetName() .. 'TextLeft1']
     local name = fs and safe(fs:GetText())
-    if type(name) ~= 'string' then return end
-    local eff = ns.db.campItems[name]
-    if not eff then return end
-    local w = worth(eff)
-    tt:AddLine(('|cff66ccffClaudeMaster:|r %s%s|r%s'):format(WCOL[w] or '|cffffffff', eff, w and (' - ' .. WTXT[w]) or ''),
-      1, 1, 1, true)
-    tt:Show()
+    if type(name) == 'string' and ns.db.campItems[name] then
+      pcall(campLine, tt, name)
+      tt:Show()
+    end
   end)
 end
 
