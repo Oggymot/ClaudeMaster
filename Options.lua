@@ -549,6 +549,10 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
   p.add(checkbox(p.c, 'Pripominat Find Herbs / Find Minerals', 'Kdyz sledovani bylin nebo rud na minimape neni zapnute '
     .. '(typicky po smrti), ukaze se tip - klik ho zapne. Pravy klik na tip = skryt na 30 min.',
     function() return db.trackHint ~= false end, function(v) db.trackHint = (not v) and false or nil end), 12)
+  p.add(checkbox(p.c, 'Kempy: co kemp dava a jestli se ti hodi', 'U ohne ukaze okenko s bonusy kempu (Camp Benefits) a u kazdeho, '
+    .. 'jestli se ti hodi podle vah statu. V tooltipu vybaveni kempu napise jeho bonus, kdyz ho addon uz nekdy videl.',
+    function() return db.campTip ~= false end, function(v) db.campTip = (not v) and false or nil
+      if ns.Camp then pcall(ns.Camp.update) end end), 12)
   p.section('Questy pod minimapou')
   p.add(checkbox(p.c, 'Jen questy z aktualni oblasti', 'Seznam ukaze jen questy z mista, kde jsi.',
     function() return db.questZone == true end, function(v) db.questZone = v questsUpd() end))
