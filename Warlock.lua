@@ -20,7 +20,7 @@ local function auraSS(u)
     if not ok or type(a) ~= 'table' then return false end
     local n = safe(a.name)
     if type(n) ~= 'string' then return nil end      -- skryte
-    if n == 'Soulstone Resurrection' or n == 'Soulstone' then return true end
+    if n:find('Soulstone') then return true end   -- "Soulstone Resurrection" (Forever muze mit jine jmeno)
   end
   return false
 end
@@ -178,8 +178,9 @@ ev:SetScript('OnEvent', function(_, event, unit, arg2, spellID)
       end
     elseif name == 'Demon Armor' or name == 'Demon Skin' then
       W.armorUntil = now + 1800
-    elseif name == 'Soulstone Resurrection' then
+    elseif name:find('Soulstone') and not name:find('^Create') then
       ns.db.ssAt = time and time() or 0
+      W.ssAt = 0   -- po boji hned znovu projit aury
     end
   elseif unit:find('^party%d$') and UNIQUE[name] then
     -- jiny warlock v parte dal curse na svuj cil
@@ -560,15 +561,15 @@ local function decide(c, s)
       return A('PET', 'Imp ma Phase Shift: v parte ho vypni, at bije a dava Blood Pact', 'hint',
         { icon = 'Interface\\Icons\\Spell_Shadow_ImpPhaseShift' })
     end
-    if c.instance and c.healer and ns.known('Create Soulstone') and ns.Bags.count('soulstone') == 0 and c.shards >= spare
-      and not s.used.ss then
-      s.used.ss = true
-      return A('Create Soulstone', 'V parte: vyrob Soulstone')
-    end
-    -- soulstone: jen na healera (kdyz ho nikdo v parte nema a kamen je ready)
+    -- soulstone: nekdo ho uz ma (aura mimo boj), nebo jsem ho dal pred mene nez 30 min (cooldown kamene)
     local ssItem = ns.Bags.best('soulstone')
     local ssAgo = (time and time() or 0) - (db.ssAt or 0)
-    local nobodyHas = c.ssKnown and not c.ssOn or (not c.ssKnown and ssAgo > 1800)
+    local nobodyHas = (c.ssKnown and not c.ssOn and ssAgo > 60) or (not c.ssKnown and ssAgo > 1800)
+    if c.instance and c.healer and ns.known('Create Soulstone') and ns.Bags.count('soulstone') == 0 and c.shards >= spare
+      and nobodyHas and ssAgo > 1680 and not s.used.ss then
+      s.used.ss = true
+      return A('Create Soulstone', 'V parte: vyrob Soulstone (nikdo ho nema)')
+    end
     if ssItem and c.instance and c.group and nobodyHas and s.step == 1 and ns.itemReady(ssItem, 'soulstone', 1800) then
       if c.healer and c.healer.alive ~= false then
         return A('item:' .. ssItem, ('Nikdo nema Soulstone: dej ho healerovi (%s)'):format(c.healer.name), 'item',
