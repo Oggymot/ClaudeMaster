@@ -12,7 +12,7 @@ ns.Camp = C
 
 -- slovo ve statu -> klic vah z Gear.lua
 local STATS = {
-  { 'all stats', 'all' }, { 'all attributes', 'all' },
+  { 'all stats', 'all' }, { 'all attributes', 'all' }, { 'experience', 'xp' }, { ' xp', 'xp' },
   { 'melee attack power', 'ap' }, { 'ranged attack power', 'ap' }, { 'attack power', 'ap' },
   { 'spell power', 'sp' }, { 'spell damage', 'sp' }, { 'healing', 'heal' },
   { 'strength', 'str' }, { 'agility', 'agi' }, { 'stamina', 'sta' }, { 'intellect', 'int' }, { 'spirit', 'spi' },
@@ -31,6 +31,7 @@ end
 local function worth(text)
   local key = statOf(text)
   if key == 'all' then return 2 end
+  if key == 'xp' then return (safeNum(pc(UnitLevel, 'player')) or 60) < (GetMaxPlayerLevel and GetMaxPlayerLevel() or 60) and 2 or 0 end
   if not key or not (ns.Gear and ns.Gear.weights) then return nil end
   local w = ns.Gear.weights()
   local v = w[key]
@@ -41,6 +42,11 @@ local function worth(text)
   return 0
 end
 C.worth = worth
+-- vybaveni, ktere addon zna i bez predchoziho setkani (bonus neni v "Camp Benefits")
+local KNOWN = { ['Camp Tent'] = 'bonus experience (vic XP)' }
+local function effOf(name)
+  return (ns.db and ns.db.campItems and ns.db.campItems[name]) or KNOWN[name]
+end
 local WCOL = { [2] = '|cff40ff60', [1] = '|cffffd200', [0] = '|cff888888' }
 local WTXT = { [2] = 'hodi se ti', [1] = 'trochu', [0] = 'k nicemu' }
 
@@ -70,6 +76,16 @@ function C.scan()
     local n = safe(a.name)
     if type(n) == 'string' then
       if n == 'Campfire Nearby' or n:find('Campfire') then st.near = true end
+      -- stan (bonus XP) a jine kempove buffy mimo "Camp Benefits"
+      if n ~= 'Camp Benefits' and (n:find('Tent') or n:find('Camp')) and not n:find('Campfire') then
+        local id = safeNum(a.spellId)
+        local d = id and C_Spell and C_Spell.GetSpellDescription and safe(pc(C_Spell.GetSpellDescription, id))
+        if type(d) ~= 'string' or d == '' then d = auraTip(i, a) end
+        if type(d) == 'string' and d ~= '' then
+          st.extra = st.extra or {}
+          st.extra[#st.extra + 1] = { item = n:find('Tent') and 'Camp Tent' or n, eff = d:gsub('%s*%d+ minutes? remaining.*$', '') }
+        end
+      end
       if n == 'Camp Benefits' then
         local txt = auraTip(i, a)
         if txt then
@@ -85,6 +101,10 @@ function C.scan()
         end
       end
     end
+  end
+  if st.extra then
+    st.benefits = st.benefits or {}
+    for _, e in ipairs(st.extra) do st.benefits[#st.benefits + 1] = e end
   end
   return st
 end
@@ -167,9 +187,9 @@ end
 -- tooltip objektu ve svete se pri dalsim najeti jen prepise (OnShow znovu neprijde) -> hak na sestaveni
 -- tooltipu (TooltipDataProcessor, kazde sestaveni); OnShow jen jako zaloha pro starsi klienty
 local function campLine(tt, name)
-  if not ns.db or ns.db.campTip == false or not ns.db.campItems then return end
+  if not ns.db or ns.db.campTip == false then return end
   if type(name) ~= 'string' or tt:IsForbidden() then return end
-  local eff = ns.db.campItems[name]
+  local eff = effOf(name)
   if not eff or tt.cmCamp == name then return end
   tt.cmCamp = name
   local w = worth(eff)
@@ -192,10 +212,10 @@ if GameTooltip then
     acc = acc + el
     if acc < 0.2 then return end
     acc = 0
-    if tt.cmCamp or not (ns.db and ns.db.campItems) then return end
+    if tt.cmCamp or not ns.db then return end
     local fs = _G[tt:GetName() .. 'TextLeft1']
     local name = fs and safe(fs:GetText())
-    if type(name) == 'string' and ns.db.campItems[name] then
+    if type(name) == 'string' and effOf(name) then
       pcall(campLine, tt, name)
       tt:Show()
     end
