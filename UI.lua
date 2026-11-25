@@ -14,6 +14,7 @@ if not ns.enabled then
     local arg = (msg or ''):lower():match('^%S*%s*(.-)%s*$')
     if cmd == 'dump' then ns.fullDump()
     elseif cmd == 'sonda' or cmd == 'probe' then ns.apiProbe()
+    elseif cmd == 'kemp' or cmd == 'camp' then ns.campProbe()
     elseif cmd == 'gear' and ns.Gear then ns.Gear.setSpec(arg)
     elseif cmd == 'vahy' and ns.Gear then ns.Gear.setWeights(arg)
     else ns.say(tostring(ns.class) .. ' zatim neumim radit. Funguje: /cm dump, /cm sonda, /cm gear, /cm vahy') end
@@ -1049,6 +1050,8 @@ SlashCmdList.CLAUDEMASTER = function(msg)
   elseif cmd == 'status' then status()
   elseif cmd == 'config' or cmd == 'options' or cmd == 'nastaveni' then
     if ns.Options then ns.Options.toggle(arg ~= '' and arg or nil) end
+  elseif cmd == 'kemp' or cmd == 'camp' then
+    if ns.campProbe then ns.campProbe() end
   elseif cmd == 'sonda' or cmd == 'probe' then
     if ns.apiProbe then ns.apiProbe() end
   elseif cmd == 'test' then

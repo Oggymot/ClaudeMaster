@@ -446,3 +446,107 @@ function ns.apiProbe()
     inC and 'v boji' or 'mimo boj', n, sec, err,
     inC and ' Udelej to i mimo boj, pak /reload.' or ' Udelej to i v boji (s cilem), pak /reload.'))
 end
+
+------------------------------------------------------------------------------------------
+-- /cm kemp: sonda pro kempy Foreveru (polozene vybaveni u ohne -> buffy).
+-- Zatim nevime, jak hra kemp addonum ukazuje, tak sbirame vse, co jde:
+--  * globalni API s "camp"/"fire"/"encamp" v nazvu (a funkce v C_ tabulkach)
+--  * tooltipy objektu ve svete, na ktere hrac najede mysi (5 minut)
+--  * udalosti hry s CAMP / FIRE / GAMEOBJECT v nazvu (5 minut)
+--  * buffy hrace s popisem (na zacatku a na konci)
+-- Vysledek v ClaudeMasterDB.campProbe (po /reload).
+------------------------------------------------------------------------------------------
+local campOn, campUntil = false, 0
+local campFrame
+local function campAuras()
+  local out = {}
+  local get = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+  if not get then return out end
+  for i = 1, 40 do
+    local ok, a = pcall(get, 'player', i, 'HELPFUL')
+    if not ok or type(a) ~= 'table' then break end
+    local id = safeNum(a.spellId)
+    local d = id and C_Spell and C_Spell.GetSpellDescription and str(pc(C_Spell.GetSpellDescription, id))
+    out[#out + 1] = { name = str(a.name), id = id, desc = d, src = str(a.sourceUnit) }
+  end
+  return out
+end
+function ns.campProbe()
+  local db = ns.db or ClaudeMasterDB
+  if not db then return end
+  local P = { at = date and date('%Y-%m-%d %H:%M') or '', zone = str(pc(GetRealZoneText)), api = {}, tips = {}, events = {},
+    aurasStart = campAuras() }
+  db.campProbe = P
+  -- 1) API
+  local pat = { 'camp', 'fire', 'encamp', 'bonfire', 'rest' }
+  for k, v in pairs(_G) do
+    if type(k) == 'string' then
+      local lk = k:lower()
+      for _, p in ipairs(pat) do
+        if lk:find(p, 1, true) and (type(v) == 'function' or type(v) == 'table') and #P.api < 300 then
+          local e = k .. ' (' .. type(v) .. ')'
+          if type(v) == 'table' and k:find('^C_') then
+            local fns = {}
+            for fk, fv in pairs(v) do if type(fv) == 'function' then fns[#fns + 1] = fk end end
+            table.sort(fns)
+            e = e .. ': ' .. table.concat(fns, ', ')
+          end
+          P.api[#P.api + 1] = e
+          break
+        end
+      end
+    end
+  end
+  table.sort(P.api)
+  -- 2) + 3) tooltipy objektu a udalosti po dobu 5 minut
+  campOn, campUntil = true, GetTime() + 300
+  if not campFrame then
+    campFrame = CreateFrame('Frame')
+    campFrame:SetScript('OnEvent', function(_, ev, ...)
+      if not campOn then return end
+      if GetTime() > campUntil then
+        campOn = false
+        pcall(campFrame.UnregisterAllEvents, campFrame)
+        local Q = (ns.db or ClaudeMasterDB).campProbe
+        if Q then Q.aurasEnd = campAuras() end
+        ns.say('Kemp sonda: hotovo - dej /reload a posli soubor ClaudeMaster.lua ze SavedVariables.')
+        return
+      end
+      local up = ev:upper()
+      if up:find('CAMP') or up:find('FIRE') or up:find('GAMEOBJECT') or up:find('INTERACT') or up:find('ENCAMP') then
+        local Q = (ns.db or ClaudeMasterDB).campProbe
+        if Q and #Q.events < 200 then
+          local a = {}
+          for i = 1, select('#', ...) do local v = select(i, ...) a[#a + 1] = tostring(safe(v)) end
+          Q.events[#Q.events + 1] = ev .. ' ' .. table.concat(a, ',')
+        end
+      end
+    end)
+    GameTooltip:HookScript('OnShow', function(tt)
+      if not campOn then return end
+      local okU, _, unit = pcall(tt.GetUnit, tt)
+      if okU and unit then return end                       -- postavy a moby ne
+      local okI, _, link = pcall(tt.GetItem, tt)
+      if okI and link then return end                       -- itemy z batohu ne
+      local lines = {}
+      local name = tt:GetName()
+      for i = 1, tt:NumLines() do
+        local l = _G[name .. 'TextLeft' .. i]
+        local r = _G[name .. 'TextRight' .. i]
+        local a = l and str(l:GetText())
+        local b = r and r:IsShown() and str(r:GetText())
+        if a and a ~= '' then lines[#lines + 1] = b and (a .. ' | ' .. b) or a end
+      end
+      if #lines == 0 then return end
+      local key = table.concat(lines, ' / ')
+      local Q = (ns.db or ClaudeMasterDB).campProbe
+      if not Q or Q.tips[key] then return end
+      Q.tips[key] = true
+      Q.tipList = Q.tipList or {}
+      table.insert(Q.tipList, lines)
+    end)
+  end
+  pcall(campFrame.RegisterAllEvents, campFrame)
+  ns.say(('Kemp sonda bezi 5 minut: najed mysi na kazdy polozeny predmet v kempu i na ohen, klidne si sedni k ohni. '
+    .. 'Nalezeno %d API s "camp/fire" v nazvu. Pak /reload a posli ClaudeMaster.lua.'):format(#P.api))
+end
