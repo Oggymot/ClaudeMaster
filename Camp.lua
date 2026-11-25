@@ -43,8 +43,18 @@ local function worth(text)
 end
 C.worth = worth
 -- vybaveni, ktere addon zna i bez predchoziho setkani (bonus neni v "Camp Benefits")
-local KNOWN = { ['Camp Tent'] = 'bonus experience (vic XP)' }
+-- Camp Tent: da rested XP navic, pak buff "Boosted Rest" = dalsi az za hodinu
+local KNOWN = { ['Camp Tent'] = 'rested experience navic (jednou za hodinu)' }
+C.tentUntil = 0
+local function tentText()
+  local left = C.tentUntil - GetTime()
+  if left > 0 then return ('rested XP ze stanu uz mas - dalsi za %d min'):format(math.ceil(left / 60)), 0 end
+  local lvl, max = safeNum(pc(UnitLevel, 'player')) or 60, GetMaxPlayerLevel and GetMaxPlayerLevel() or 60
+  if lvl >= max then return 'rested experience - na max levelu k nicemu', 0 end
+  return KNOWN['Camp Tent'], 2
+end
 local function effOf(name)
+  if name == 'Camp Tent' then return (tentText()) end
   return (ns.db and ns.db.campItems and ns.db.campItems[name]) or KNOWN[name]
 end
 local WCOL = { [2] = '|cff40ff60', [1] = '|cffffd200', [0] = '|cff888888' }
@@ -76,6 +86,11 @@ function C.scan()
     local n = safe(a.name)
     if type(n) == 'string' then
       if n == 'Campfire Nearby' or n:find('Campfire') then st.near = true end
+      if n == 'Boosted Rest' then
+        local exp = safeNum(a.expirationTime)
+        C.tentUntil = (exp and exp > 0) and exp or (GetTime() + 3600)
+        st.tent = true
+      end
       -- stan (bonus XP) a jine kempove buffy mimo "Camp Benefits"
       if n ~= 'Camp Benefits' and (n:find('Tent') or n:find('Camp')) and not n:find('Campfire') then
         local id = safeNum(a.spellId)
@@ -156,6 +171,9 @@ function C.update()
   if not st.near then if frame then frame:Hide() end lastSig = nil return end
   if C.closedAt and GetTime() - C.closedAt < 600 then return end   -- zavreno krizkem: 10 min klid
   local lines, good, bad = {}, 0, 0
+  if st.tent or C.tentUntil > GetTime() then
+    lines[#lines + 1] = '|cff888888Camp Tent: ' .. (tentText()) .. '|r'
+  end
   if st.benefits and #st.benefits > 0 then
     lines[#lines + 1] = '|cffffd200Mas z kempu' .. (st.left and (' (' .. st.left .. ' min)') or '') .. ':|r'
     for _, b in ipairs(st.benefits) do
@@ -193,6 +211,7 @@ local function campLine(tt, name)
   if not eff or tt.cmCamp == name then return end
   tt.cmCamp = name
   local w = worth(eff)
+  if name == 'Camp Tent' then w = select(2, tentText()) end
   tt:AddLine(('|cff66ccffClaudeMaster:|r %s%s|r%s'):format(WCOL[w] or '|cffffffff', eff, w and (' - ' .. WTXT[w]) or ''),
     1, 1, 1, true)
 end
