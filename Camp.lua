@@ -35,6 +35,7 @@ local function worth(text)
   if not key or not (ns.Gear and ns.Gear.weights) then return nil end
   local w = ns.Gear.weights()
   local v = w[key]
+  if key == 'crit' then v = math.max(w.crit or 0, w.spcrit or 0) / 8 end   -- "2 % Critical Strike" (asi i kouzla)
   if key == 'mp5' then v = w.mp5 or (w.int and w.int * 2) end
   if key == 'sp' and (w.sp or 0) == 0 then v = w.heal end
   v = v or 0
@@ -43,20 +44,73 @@ local function worth(text)
 end
 C.worth = worth
 -- vybaveni, ktere addon zna i bez predchoziho setkani (bonus neni v "Camp Benefits")
--- Camp Tent: da rested XP navic, pak buff "Boosted Rest" = dalsi az za hodinu
-local KNOWN = { ['Camp Tent'] = 'rested experience navic (jednou za hodinu)' }
+-- Vybaveni kempu podle Wowhead (Camping Overview, patch 1.60.1): 3 tiery, vyssi dava stejny buff + funkci.
+-- { text, klic vah } - presna cisla doplni addon, az predmet jednou uvidi v "Camp Benefits".
+local KNOWN = {
+  ['Mana Well'] = { 'mana regenerace (nejde s Blessing of Wisdom)', 'mp5' },
+  ['Fermenter'] = { 'mana regenerace (nejde s Blessing of Wisdom)', 'mp5' },
+  ['Alchemy Laboratory'] = { 'mana regenerace (nejde s Blessing of Wisdom) + alchymicka laborator', 'mp5' },
+  ['Sharpening Wheel'] = { 'Strength', 'str' }, ['Anvil'] = { 'Strength + kovadlina', 'str' },
+  ['Master Forge'] = { 'Strength + vyhen', 'str' },
+  ['Enchanted Lute'] = { 'Armor, All Stats a odolnosti', 'all' }, ['Arcane Salvager'] = { 'Armor, All Stats a odolnosti', 'all' },
+  ['Arcane Forge'] = { 'Armor, All Stats a odolnosti', 'all' },
+  ['Reagent Bot'] = { 'obchod s reagenty (zadny buff)', 'none' }, ['Repair Bot'] = { 'reagenty a oprava vybaveni (zadny buff)', 'none' },
+  ["Anarchist's Workbench"] = { 'inzenyrsky stul (zadny buff)', 'none' },
+  ['Incense Candle'] = { 'Intellect', 'int' }, ['Greenhouse'] = { 'Intellect + pestovani bylin', 'int' },
+  ['Seed Hybridizer'] = { 'Intellect', 'int' },
+  ['Camp Tent'] = { 'rested XP az 5 % levelu (jednou za hodinu)', 'xp' }, ['Tanning Rack'] = { 'rested XP ze stanu', 'xp' },
+  ['Sewing Machine'] = { 'rested XP ze stanu', 'xp' },
+  ['Lodestone'] = { 'melee Attack Power', 'ap' }, ['Rock Garden'] = { 'melee Attack Power + rudna zila', 'ap' },
+  ['Molten Foundry'] = { 'melee Attack Power', 'ap' },
+  ['Camp Chair'] = { '2 % Critical Strike', 'critall' }, ['Field Guide'] = { '2 % Critical Strike + Track Beasts', 'critall' },
+  ["Trapper's Workbench"] = { '2 % Critical Strike', 'critall' },
+  ['Faction Banner'] = { 'Spirit', 'spi' }, ['Spinning Wheel'] = { 'Spirit', 'spi' }, ['Loom'] = { 'Spirit', 'spi' },
+  ["Cookie's Feast"] = { 'jidlo se Staminou', 'sta' }, ['First Aid Kit'] = { 'Stamina', 'sta' },
+  ['Toxin Study'] = { 'healing potiony a antivenom', 'none' }, ["Plague Doctor's Laboratory"] = { 'healing potiony a obklady', 'none' },
+  ['Fish Bowl'] = { '8 % ke vsem statum', 'all' }, ['Fishing Rack'] = { '8 % ke vsem statum + lepsi ryby', 'all' },
+  ['Fishing Hut'] = { '8 % ke vsem statum + vzacne ryby', 'all' },
+  ['Basic Campfire'] = { 'ohen: vareni + 3 dalsi vybaveni kempu', 'none' },
+  ['Journeyman Campfire'] = { 'ohen: vareni + 5 dalsich vybaveni', 'none' },
+  ['Expert Campfire'] = { 'ohen: vareni + 10 dalsich vybaveni', 'none' },
+  ['Iron Oven'] = { 'pec na nejlepsi recepty (zadny buff)', 'none' },
+}
 C.tentUntil = 0
 local function tentText()
   local left = C.tentUntil - GetTime()
   if left > 0 then return ('rested XP ze stanu uz mas - dalsi za %d min'):format(math.ceil(left / 60)), 0 end
   local lvl, max = safeNum(pc(UnitLevel, 'player')) or 60, GetMaxPlayerLevel and GetMaxPlayerLevel() or 60
   if lvl >= max then return 'rested experience - na max levelu k nicemu', 0 end
-  return KNOWN['Camp Tent'], 2
+  return KNOWN['Camp Tent'][1], 2
 end
+-- hodnoceni podle klice vah (KNOWN)
+local function worthKey(key)
+  if key == 'none' then return nil end
+  if key == 'all' then return 2 end
+  if key == 'xp' then return select(2, tentText()) end
+  if not (ns.Gear and ns.Gear.weights) then return nil end
+  local w = ns.Gear.weights()
+  local v
+  if key == 'critall' then v = math.max(w.crit or 0, w.spcrit or 0) / 8   -- krit vahy jsou "za 1 %", bonus je 2 %
+  elseif key == 'mp5' then
+    v = w.mp5 or 0
+    -- Mana Well nejde dohromady s Blessing of Wisdom
+    if ns.auraHas and ns.auraHas('player', { 'Blessing of Wisdom', 'Greater Blessing of Wisdom' }) == true then return 0 end
+  else v = w[key] or 0 end
+  if v >= 0.45 then return 2 elseif v >= 0.04 then return 1 end
+  return 0
+end
+-- text a hodnoceni predmetu: naucene (s cisly) > Wowhead
 local function effOf(name)
-  if name == 'Camp Tent' then return (tentText()) end
-  return (ns.db and ns.db.campItems and ns.db.campItems[name]) or KNOWN[name]
+  if name == 'Camp Tent' or name == 'Tanning Rack' or name == 'Sewing Machine' then
+    local t, w = tentText()
+    return t, w
+  end
+  local learned = ns.db and ns.db.campItems and ns.db.campItems[name]
+  local k = KNOWN[name]
+  if learned then return learned, worth(learned) end
+  if k then return k[1], worthKey(k[2]) end
 end
+C.KNOWN = KNOWN
 local WCOL = { [2] = '|cff40ff60', [1] = '|cffffd200', [0] = '|cff888888' }
 local WTXT = { [2] = 'hodi se ti', [1] = 'trochu', [0] = 'k nicemu' }
 
@@ -186,7 +240,7 @@ function C.update()
       lines[#lines + 1] = '|cffff7070Tenhle kemp ti skoro nic neda - vyplati se vlastni kemp.|r'
     end
   else
-    lines[#lines + 1] = '|cffffd200U ohne:|r sedni si, at ziskas bonusy (Camp Benefits).'
+    lines[#lines + 1] = '|cffffd200U ohne:|r sedni si na 1 min, at ziskas bonusy (Camp Benefits).'
     lines[#lines + 1] = '|cff9aa6b8Najed mysi na vybaveni kempu - co addon zna, rekne v tooltipu.|r'
   end
   local sig = table.concat(lines, '\n')
@@ -207,11 +261,9 @@ end
 local function campLine(tt, name)
   if not ns.db or ns.db.campTip == false then return end
   if type(name) ~= 'string' or tt:IsForbidden() then return end
-  local eff = effOf(name)
+  local eff, w = effOf(name)
   if not eff or tt.cmCamp == name then return end
   tt.cmCamp = name
-  local w = worth(eff)
-  if name == 'Camp Tent' then w = select(2, tentText()) end
   tt:AddLine(('|cff66ccffClaudeMaster:|r %s%s|r%s'):format(WCOL[w] or '|cffffffff', eff, w and (' - ' .. WTXT[w]) or ''),
     1, 1, 1, true)
 end
