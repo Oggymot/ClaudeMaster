@@ -1373,14 +1373,46 @@ end
 ------------------------------------------------------------------------------------------
 -- Need / Greed: hned ukaz, zda je to vylepseni (radek do chatu + sipka u okna hodu)
 ------------------------------------------------------------------------------------------
+-- okna hodu jinych UI (GW2 UI, ElvUI...): najdou se podle pole rollID, pak se pamatuji
+local extraRoll = setmetatable({}, { __mode = 'k' })
+local function rollIdOf(fr)
+  local ok, id = pcall(function() return fr.rollID or fr.rollId or fr.RollID end)
+  return ok and type(id) == 'number' and id or nil
+end
+local function findRollFrame(rollID)
+  local function scan(f, depth)
+    if depth > 3 then return end
+    local kids = { pcall(function() return f:GetChildren() end) }
+    for i = 2, #kids do
+      local k = kids[i]
+      if type(k) == 'table' then
+        if rollIdOf(k) == rollID then extraRoll[k] = true return k end
+        local r = scan(k, depth + 1)
+        if r then return r end
+      end
+    end
+  end
+  local r = scan(UIParent, 1)
+  if r then return r end
+  -- posledni moznost: vsechny ramce (jednou za hod)
+  if EnumerateFrames then
+    local f = EnumerateFrames()
+    while f do
+      if rollIdOf(f) == rollID then extraRoll[f] = true return f end
+      f = EnumerateFrames(f)
+    end
+  end
+end
 local function rollFrames()
   local out = {}
   local c = _G.GroupLootContainer
   if c and c.rollFrames then for _, fr in pairs(c.rollFrames) do out[#out + 1] = fr end end
   for i = 1, 4 do local fr = _G['GroupLootFrame' .. i] if fr then out[#out + 1] = fr end end
+  for fr in pairs(extraRoll) do out[#out + 1] = fr end
   return out
 end
-local function onRoll(rollID)
+local function onRoll(rollID, attempt)
+  attempt = attempt or 1
   if not ns.db or ns.db.gearTips == false then return end
   local link = safe(pc(GetLootRollItemLink, rollID))
   if type(link) ~= 'string' then return end
@@ -1470,15 +1502,19 @@ local function onRoll(rollID)
   if gf then for bag = 0, 4 do free = free + (safeNum(pc(gf, bag)) or 0) end end
   if gf and free == 0 then txt = txt .. '\n|cffff5555Plny batoh - kdyz vyhrajes, nevejde se (jen do neplneho stacku)|r' end
   local shown = false
+  local known = false
+  for _, fr in ipairs(rollFrames()) do if fr:IsShown() and rollIdOf(fr) == rollID then known = true break end end
+  if not known then findRollFrame(rollID) end
   for _, fr in ipairs(rollFrames()) do
-    if fr.cmUp and fr.rollID == rollID then fr.cmUp:Hide() end
+    if fr.cmUp and rollIdOf(fr) == rollID then fr.cmUp:Hide() end
     -- bublina vedle okna hodu (jako Pawn), zmizi s oknem
-    if fr:IsShown() and fr.rollID == rollID then
+    if fr:IsShown() and rollIdOf(fr) == rollID then
       if not fr.cmTip then
         local t = CreateFrame('Frame', nil, fr, 'BackdropTemplate')
         t:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 2 })
         t:SetBackdropColor(0.05, 0.04, 0.02, 0.92) t:SetBackdropBorderColor(1, 0.8, 0.2, 0.9)
         t:SetPoint('LEFT', fr, 'RIGHT', 6, 0)
+        t:SetFrameStrata('DIALOG')
         t.text = t:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
         t.text:SetPoint('CENTER') t.text:SetJustifyH('LEFT')
         fr.cmTip = t
@@ -1491,18 +1527,22 @@ local function onRoll(rollID)
       fr.cmTip:Hide()
     end
   end
-  if not shown then ns.say(link .. ' ' .. txt) end   -- okno hodu jsme nenasli: aspon do chatu
+  if not shown then
+    -- okno hodu se jeste neukazalo (jine UI ho vytvori pozdeji): zkusit znovu, pak aspon do chatu
+    if attempt < 4 and C_Timer then C_Timer.After(0.5, function() pcall(onRoll, rollID, attempt + 1) end) return end
+    ns.say(link .. ' ' .. txt)
+  end
   if tex then
     for _, fr in ipairs(rollFrames()) do
-      if fr:IsShown() and fr.rollID == rollID then
-        local ic = fr.IconFrame or fr.Icon or fr
+      if fr:IsShown() and rollIdOf(fr) == rollID then
+        local ic = fr.IconFrame or fr.Icon or fr.icon or fr.button or fr
         if not fr.cmUp then
           local t = fr:CreateTexture(nil, 'OVERLAY', nil, 7)
           t:SetSize(20, 20) t:SetPoint('BOTTOMRIGHT', ic, 'BOTTOMRIGHT', 4, -4)
           fr.cmUp = t
         end
         fr.cmUp:SetTexture(tex) fr.cmUp:Show()
-      elseif fr.cmUp and fr.rollID ~= rollID and not fr:IsShown() then
+      elseif fr.cmUp and rollIdOf(fr) ~= rollID and not fr:IsShown() then
         fr.cmUp:Hide()
       end
     end
