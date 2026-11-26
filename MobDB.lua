@@ -51,7 +51,7 @@ end
 function MD.cacheFresh()
   local c = C(true)
   local v = fdbVersion()
-  return c ~= nil and (v == nil or c.ver == v)
+  return c ~= nil and c.schema == 2 and (v == nil or c.ver == v)
 end
 -- sestavi cache z nactene databaze
 function MD.buildCache()
@@ -109,7 +109,50 @@ function MD.buildCache()
     local q = D.quest[qid]
     if q and q[1] then start[item] = ('%d|%d|%d|%s'):format(qid, q[3] or 1, q[2] or 0, q[1]) end
   end
-  ns.db.fdbc = { ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start }
+  -- zony questu: kde se plni (cil, moby, zdroje itemu) a kde se odevzdava -> "1425,1446|1453"
+  local cont = {}
+  local function zoneMap(m)
+    if cont[m] == nil then
+      local i = C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, m)
+      local t = type(i) == 'table' and safeNum(i.mapType)
+      cont[m] = (t ~= nil and t <= 2)   -- svet / kontinent: neurcuje zonu
+    end
+    return not cont[m]
+  end
+  local spotsOf = ns.Route and ns.Route.spots
+  local function addMaps(set, key)
+    local m = D.spm[key]
+    local direct = false
+    if type(m) == 'table' then for map in pairs(m) do if zoneMap(map) then set[map] = true direct = true end end end
+    -- jen svetove souradnice / kontinent: prevod pres trasu (zona podle polohy)
+    if not direct and spotsOf then
+      local ok, sp = pcall(spotsOf, key)
+      if ok and type(sp) == 'table' then
+        for i, p in ipairs(sp) do if i > 8 then break end if p.map and zoneMap(p.map) then set[p.map] = true end end
+      end
+    end
+  end
+  local qz = {}
+  for qid in pairs(D.quest) do
+    local x = type(D.qx[qid]) == 'table' and D.qx[qid] or {}
+    local o, e = {}, {}
+    local sp = (D.qsp and D.qsp[qid]) or x[16]
+    if type(sp) == 'table' then for map in pairs(sp) do if zoneMap(map) then o[map] = true end end end
+    for _, nid in ipairs(type(x[8]) == 'table' and x[8] or {}) do addMaps(o, 'c' .. nid) end
+    for _, iid in ipairs(type(x[10]) == 'table' and x[10] or {}) do
+      local dl = D.drop[iid]
+      if dl then for j = 1, math.min(#dl - 1, 6), 2 do addMaps(o, 'c' .. dl[j]) end end
+      local od = D.odrop and D.odrop[iid]
+      if od then for j = 1, math.min(#od - 1, 6), 2 do addMaps(o, 'o' .. od[j]) end end
+    end
+    for _, k in ipairs(D.qe[qid] or {}) do addMaps(e, k) end
+    -- o plneni nic nevime: quest se obvykle plni v oblasti, kde se bere
+    if not next(o) then for _, k in ipairs(D.qg[qid] or {}) do addMaps(o, k) end end
+    local function list(t) local r = {} for m in pairs(t) do r[#r + 1] = m end table.sort(r) return table.concat(r, ',') end
+    local so, se = list(o), list(e)
+    if so ~= '' or se ~= '' then qz[qid] = so .. '|' .. se end
+  end
+  ns.db.fdbc = { schema = 2, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz }
   MD.reset()
   return true
 end
@@ -148,6 +191,21 @@ function MD.money(id, force)
   if not a then return nil end
   return { avg = tonumber(a), min = tonumber(mn), max = tonumber(mx), n = tonumber(n) }
 end
+-- zony questu z ForeverDB: obj = { [uiMap] = true } (plneni), turn = { ... } (odevzdani); nil = nevime
+local qzc = {}
+function MD.questMaps(qid)
+  local c = C(true)
+  local s = c and c.qz and c.qz[qid]
+  if not s then return nil end
+  local e = qzc[qid]
+  if e then return e.obj, e.turn end
+  local so, se = s:match('^([^|]*)|(.*)$')
+  e = { obj = {}, turn = {} }
+  for m in (so or ''):gmatch('%d+') do e.obj[tonumber(m)] = true end
+  for m in (se or ''):gmatch('%d+') do e.turn[tonumber(m)] = true end
+  qzc[qid] = e
+  return e.obj, e.turn
+end
 -- item zacina quest: { qid, minLvl, lvl, title }
 function MD.startsQuest(item)
   local c = C()
@@ -165,7 +223,7 @@ function MD.coin(c)
 end
 function MD.dropsOf(id) return fdbDrops(id, true) end
 -- databaze se nacetla: zahodit cache, at se dropy prepocitaji
-function MD.reset() MD.cache = {} dcache = {} end
+function MD.reset() MD.cache = {} dcache = {} qzc = {} end
 
 local function parse(id)
   local c = MD.cache[id]

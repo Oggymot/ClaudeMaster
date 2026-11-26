@@ -76,6 +76,34 @@ local function onMapSet()
   return set, any
 end
 
+-- mapa hrace a jeji nadrazene mapy az po zonu (mesto / podzona / patro dungeonu)
+local function myMaps()
+  local set = {}
+  local m = C_Map and C_Map.GetBestMapForUnit and safeNum(pc(C_Map.GetBestMapForUnit, 'player'))
+  local guard = 0
+  while m and m > 0 and guard < 6 do
+    set[m] = true
+    local i = C_Map.GetMapInfo and pc(C_Map.GetMapInfo, m)
+    local t = type(i) == 'table' and safeNum(i.mapType)
+    if not t or t <= 3 then break end   -- zona (3) a vys uz ne
+    m = safeNum(i.parentMapID)
+    guard = guard + 1
+  end
+  return set
+end
+-- ForeverDB: je quest v teto oblasti? (true / false / nil = databaze nevi)
+local function dbHere(qid, complete, mine)
+  local MD = ns.MobDB
+  if not (MD and MD.questMaps) then return nil end
+  local obj, turn = MD.questMaps(qid)
+  if not obj then return nil end
+  local t = complete and turn or obj
+  if not next(t) then t = complete and obj or turn end   -- chybi data o jedne casti: vezmi druhou
+  if not next(t) then return nil end
+  for m in pairs(mine) do if t[m] then return true end end
+  return false
+end
+
 function Q.update()
   local db = ns.db
   if not (db and QL and QL.GetNumQuestLogEntries and QL.GetInfo) then return end
@@ -88,6 +116,7 @@ function Q.update()
   local sup = superId()
 
   local set, anySet = onMapSet()
+  local mine = myMaps()
   local n = safeNum(pc(QL.GetNumQuestLogEntries)) or 0
   local quests = {}
   for i = 1, n do
@@ -95,7 +124,14 @@ function Q.update()
     if type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID) then
       local qid = info.questID
       local here = info.isOnMap == true or set[qid] == true
-      quests[#quests + 1] = { id = qid, here = here, known = info.isOnMap ~= nil or anySet }
+      local known = info.isOnMap ~= nil or anySet
+      -- hra o questu nevi nic (casto na Foreveru): rozhodne databaze
+      if not here then
+        local comp = QL.IsComplete and safeBool(pc(QL.IsComplete, qid)) == true
+        local d = dbHere(qid, comp, mine)
+        if d ~= nil then here, known = d, true end
+      end
+      quests[#quests + 1] = { id = qid, here = here, known = known }
     end
   end
 
