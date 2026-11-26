@@ -365,7 +365,9 @@ function R.valueText(v, noPct)
     p[#p + 1] = ('%s%s%d XP%s|r'):format(col, v.est and '~' or '+', v.xp, (v.pctLvl and not noPct) and (' (%d %%)'):format(math.floor(v.pctLvl + 0.5)) or '')
   end
   if v.best then
-    p[#p + 1] = ('%s|cff40ff60%s +%d %%|r'):format(UP, (v.best.link:match('%[(.-)%]') or '?'), math.floor(v.best.pct * 100 + 0.5))
+    -- v trase (uzky radek) jen zelena sipka; item a procenta jsou v tooltipu
+    if noPct then table.insert(p, 1, UP)
+    else p[#p + 1] = ('%s|cff40ff60%s +%d %%|r'):format(UP, (v.best.link:match('%[(.-)%]') or '?'), math.floor(v.best.pct * 100 + 0.5)) end
   end
   return table.concat(p, ' ')
 end
