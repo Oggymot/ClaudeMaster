@@ -947,13 +947,28 @@ local function collect()
           for _, w in ipairs(o.who or {}) do if w ~= me then oth[#oth + 1] = w end end
           local tag = oth[1] and people(#oth, o.mine, 12) or ''
           local ico = o.kind == 'turnin' and '|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t' or '|TInterface\\GossipFrame\\IncompleteQuestIcon:12:12|t'
-          add({ small = true, text = ('        %s %s%s'):format(ico, o.q.title, tag), right = ov and R.valueText(ov, true) or '',
+          local oobjs = {}
+          if o.kind == 'obj' and o.mine then
+            for _, ob in ipairs(objectives(o.q.id)) do
+              oobjs[#oobjs + 1] = { (ob.done and '|cff40ff60' or '|cffffffff') .. (ob.need and ((ob.have or 0) .. '/' .. ob.need .. ' ') or '') .. ob.text .. '|r' }
+            end
+          end
+          local ott = { title = o.q.title, zone = o.p and mapName(o.p.map) or nil, v = ov or nil, objs = oobjs, pvp = R.isPvP(o.q.id),
+            who = oth[1] and (o.mine and ('ty + ' .. table.concat(oth, ', ')) or (table.concat(oth, ', ') .. ' (ty ho nemas)')) or nil,
+            action = (o.kind == 'turnin' and ('|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff60Odevzdat|r u ' .. (o.npc and npcName(o.npc) or (s.npc and npcName(s.npc)) or '?'))
+              or '|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t |cffffd200Splnit|r') .. ' |cff9aa6b8(na stejnem miste)|r' }
+          add({ small = true, tt = ott, text = ('        %s %s%s'):format(ico, o.q.title, tag), right = ov and R.valueText(ov, true) or '',
             p = o.p, label = o.q.title, qid = o.q.id,
             tip = ('Na stejnem miste %s i: %s'):format(o.kind == 'turnin' and 'odevzdat' or 'splnit', o.q.title) .. ' (' .. table.concat(who, ' + ') .. ')' })
         end
         if s.next then
           local far = s.next.far and s.next.far > 400
+          local nq = DB.quest[s.next.id]
+          local gv = DB.qg[s.next.id] and DB.qg[s.next.id][1]
           add({ small = true, qid = s.next.id, detailFirst = true, right = R.valueText(s.next.v, true),
+            tt = { title = (nq and nq[2] and ('[%d] '):format(nq[2]) or '') .. s.next.title, zone = s.next.where, v = s.next.v, pvp = R.isPvP(s.next.id),
+              dist = s.next.far and (math.floor(s.next.far + 0.5) .. ' yd od kroku') or nil,
+              action = '|TInterface\\ChatFrame\\ChatFrameExpandArrow:14:14|t |cffd8d8d8Navazuje|r - vezmes u ' .. (gv and npcName(gv) or '?') },
             tip = 'Navazujici quest: ' .. s.next.title .. (s.next.where and ('\n' .. s.next.where .. (far and ' (daleko)' or ' (blizko)')) or ''),
             text = ('        |TInterface\\ChatFrame\\ChatFrameExpandArrow:12:12|t |cff9aa6b8dal:|r |cffd8d8d8%s|r'):format(s.next.title) })
         end
