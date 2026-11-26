@@ -678,7 +678,7 @@ local function build()
     return b
   end
   local x = CreateFrame('Button', nil, f, 'UIPanelCloseButton') x:SetSize(20, 20) x:SetPoint('TOPRIGHT', 2, 2)
-  x:SetScript('OnClick', function() f:Hide() end)
+  x:SetScript('OnClick', function() cfg().routeOpen, cfg().routeMin = nil, nil f:Hide() end)
   f.btns = {}
   f.btns.m = hb('_', 'Minimalizovat', 'Schova okno do ikony. Najeti na ikonu ukaze trasu, klik ji zase otevre.', function() R.minimize(true) end)
   f.btns.m:SetPoint('RIGHT', x, 'LEFT', -2, 0)
@@ -964,7 +964,7 @@ local function buildIcon()
   elseif frame then b:SetPoint('TOPRIGHT', frame, 'TOPRIGHT', 0, 0) else b:SetPoint('RIGHT', -260, 80) end
   b:RegisterForClicks('LeftButtonUp', 'RightButtonUp')
   b:SetScript('OnClick', function(_, btn)
-    if btn == 'RightButton' then cfg().routeMin = nil b:Hide() return end
+    if btn == 'RightButton' then cfg().routeMin, cfg().routeOpen = nil, nil b:Hide() return end
     R.minimize(false)
   end)
   b:SetScript('OnEnter', function(self)
@@ -999,7 +999,7 @@ end
 function R.minimize(on)
   if not frame then frame = build() end
   if on then
-    cfg().routeMin = true
+    cfg().routeMin, cfg().routeOpen = true, true
     frame:Hide()
     icon = icon or buildIcon()
     local ok, _, _, steps = pcall(collect)
@@ -1015,7 +1015,7 @@ end
 
 function R.toggle()
   if not frame then frame = build() end
-  if frame:IsShown() then frame:Hide() return end
+  if frame:IsShown() then cfg().routeOpen = nil frame:Hide() return end
   if icon and icon:IsShown() then R.minimize(false) return end
   if not DB then
     if not R.available() then
@@ -1026,8 +1026,34 @@ function R.toggle()
     local ok, why = R.load()
     if not ok then ns.say('ForeverDB se nepodarilo nacist: ' .. tostring(why)) return end
   end
+  cfg().routeOpen = true
   frame:Show()
   R.refresh()
+end
+
+-- po restartu hry / /reload: okno trasy (nebo ikona) zase tam, kde bylo, ve stejnem stylu
+do
+  local f = CreateFrame('Frame')
+  pcall(f.RegisterEvent, f, 'PLAYER_ENTERING_WORLD')
+  local tries = 0
+  local function restore()
+    local db = ns.db
+    if not db or not (db.routeOpen or db.routeMin) then return end
+    if frame and (frame:IsShown() or (icon and icon:IsShown())) then return end
+    tries = tries + 1
+    if InCombatLockdown() then if tries < 30 and C_Timer then C_Timer.After(5, restore) end return end
+    if not DB then
+      if not R.available() then return end
+      local ok = R.load()
+      if not ok then return end
+    end
+    if not frame then frame = build() end
+    if db.routeMin then R.minimize(true) else frame:Show() R.refresh() end
+  end
+  f:SetScript('OnEvent', function()
+    f:UnregisterEvent('PLAYER_ENTERING_WORLD')
+    if C_Timer then C_Timer.After(3, restore) else restore() end
+  end)
 end
 
 -- prubezne obnovovani okna (mimo boj, kazde 3 s)
