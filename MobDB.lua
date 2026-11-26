@@ -4,7 +4,7 @@
 -- Hledame podle jmena (venku citelne); v dungeonu hra jmeno i ID skryva -> databaze tam nepomuze.
 local ADDON, ns = ...
 if not ns.enabled then return end
-local pc, safe, safeNum = ns.pc, ns.safe, ns.safeNum
+local pc, safe, safeNum, safeBool = ns.pc, ns.safe, ns.safeNum, ns.safeBool
 
 local MD = { byName = nil, cache = {}, spellTag = nil }
 ns.MobDB = MD
@@ -51,7 +51,7 @@ end
 function MD.cacheFresh()
   local c = C(true)
   local v = fdbVersion()
-  return c ~= nil and c.schema == 2 and (v == nil or c.ver == v)
+  return c ~= nil and c.schema == 3 and (v == nil or c.ver == v)
 end
 -- sestavi cache z nactene databaze
 function MD.buildCache()
@@ -152,7 +152,34 @@ function MD.buildCache()
     local so, se = list(o), list(e)
     if so ~= '' or se ~= '' then qz[qid] = so .. '|' .. se end
   end
-  ns.db.fdbc = { schema = 2, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz }
+  -- questove itemy: item -> questy, ktere ho potrebuji (x[10]); info o questu pro stav v tooltipu moba
+  local iq, qi = {}, {}
+  local fok = ns.Route and ns.Route.factionOk
+  for qid, info in pairs(D.quest) do
+    local x = type(D.qx[qid]) == 'table' and D.qx[qid] or {}
+    local items = type(x[10]) == 'table' and x[10] or nil
+    if items and items[1] then
+      local gk, any
+      for _, k in ipairs(D.qg[qid] or {}) do
+        any = true
+        if not fok or fok(k) then gk = k break end
+      end
+      if gk or not any then
+        local gname, gmap = '', 0
+        if gk then
+          local id = tonumber(gk:sub(2))
+          local t = gk:sub(1, 1) == 'c' and D.npc[id] or (D.obj and D.obj[id])
+          gname = (t and t[1] or ''):gsub('|', '')
+          local ok, sp = pcall(spotsOf or function() return {} end, gk)
+          if ok and type(sp) == 'table' and sp[1] and sp[1].map then gmap = sp[1].map end
+        end
+        local pre = type(x[3]) == 'table' and table.concat(x[3], ',') or ''
+        qi[qid] = ('%d|%d|%d|%s|%d|%s|%s'):format(info[2] or 0, info[3] or 1, safeNum(x[2]) or 0, gname, gmap, pre, (info[1] or '?'):gsub('|', ''))
+        for _, it in ipairs(items) do iq[it] = iq[it] and (iq[it] .. ',' .. qid) or tostring(qid) end
+      end
+    end
+  end
+  ns.db.fdbc = { schema = 3, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
   MD.reset()
   return true
 end
@@ -205,6 +232,50 @@ function MD.questMaps(qid)
   for m in (se or ''):gmatch('%d+') do e.turn[tonumber(m)] = true end
   qzc[qid] = e
   return e.obj, e.turn
+end
+-- questovy item: k jakemu questu je a jak na tom jsem -> kratky barevny stav + popis do tooltipu
+local CB = { WARRIOR = 1, PALADIN = 2, HUNTER = 4, ROGUE = 8, PRIEST = 16, SHAMAN = 64, MAGE = 128, WARLOCK = 256, DRUID = 1024 }
+function MD.questFor(item)
+  local c = C(true)
+  local s = c and c.iq and c.iq[item]
+  if not s then return nil end
+  local QL = C_QuestLog
+  local lvl = safeNum(pc(UnitLevel, 'player')) or 1
+  local _, cls = pc(UnitClass, 'player')
+  local cbit = CB[safe(cls) or ''] or 0
+  local best, br
+  for qs in s:gmatch('%d+') do
+    local q = tonumber(qs)
+    local e = c.qi[q]
+    if e then
+      local ql, mn, cm, gname, gmap, pre, title = e:match('^(%d+)|(%d+)|(%d+)|([^|]*)|(%d+)|([^|]*)|(.*)$')
+      ql, mn, cm, gmap = tonumber(ql), tonumber(mn), tonumber(cm), tonumber(gmap)
+      local okClass = not cm or cm == 0 or cbit == 0 or math.floor(cm / cbit) % 2 == 1
+      if okClass then
+        local r, txt
+        local inLog = QL and QL.GetLogIndexForQuestID and (safeNum(pc(QL.GetLogIndexForQuestID, q)) or 0) > 0
+        local done = QL and QL.IsQuestFlaggedCompleted and safeBool(pc(QL.IsQuestFlaggedCompleted, q)) == true
+        if inLog then r, txt = 1, '|cff40ff60mas quest|r'
+        elseif done then r, txt = 6, '|cff888888uz hotovo|r'
+        elseif mn and mn > lvl then r, txt = 4, ('|cffff5555quest od lvl %d|r'):format(mn)
+        else
+          local missing = false
+          for p in (pre or ''):gmatch('%d+') do
+            if not (QL and QL.IsQuestFlaggedCompleted and safeBool(pc(QL.IsQuestFlaggedCompleted, tonumber(p))) == true) then missing = true end
+          end
+          if missing then r, txt = 5, '|cffffcc00chybi predchozi quest|r'
+          elseif ql and ql < lvl - 9 then r, txt = 3, '|cff9d9d9dsedy quest|r'
+          else r, txt = 2, '|cffffd200vezmi quest|r' end
+        end
+        if not br or r < br then
+          local zone = gmap and gmap > 0 and C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, gmap)
+          zone = type(zone) == 'table' and safe(zone.name) or nil
+          best, br = { short = txt, title = title, giver = gname ~= '' and gname or nil, zone = zone, lvl = ql, min = mn, rank = r }, r
+        end
+      end
+    end
+  end
+  return best
 end
 -- item zacina quest: { qid, minLvl, lvl, title }
 function MD.startsQuest(item)
@@ -368,7 +439,10 @@ function MD.dropRows(r, level)
       local gi = C_Item and C_Item.GetItemInfo and safe(pc(C_Item.GetItemInfo, d.id)) or safe(pc(GetItemInfo, d.id))
       if type(gi) == 'string' and gi ~= '' then nm = gi end
       local ch = d.kind == 'q' and 'quest' or (d.chance >= 1 and ('%d %%'):format(math.floor(d.chance + 0.5)) or ('%.1f %%'):format(d.chance))
-      rows[#rows + 1] = { ('|c%s%s|r'):format(QCOL[d.kind] or 'ffffffff', nm), ch }
+      local qf = MD.questFor and MD.questFor(d.id)
+      if qf then ch = qf.short
+      elseif MD.startsQuest and MD.startsQuest(d.id) then ch = ch .. ' |cffffd200(zacina quest)|r' end
+      rows[#rows + 1] = { ('|c%s%s|r'):format(QCOL[d.kind] or 'ffffffff', nm), ch, qf = qf }
     end
   end
   if #rows == 0 then return nil end

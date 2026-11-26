@@ -581,6 +581,12 @@ function X.item(id)
     out[#out + 1] = { head = 'Odmena z questu' }
     for _, q in ipairs(qs) do local qr = qrow(q, me) if qr then out[#out + 1] = qr end end
   end
+  -- questy, ktere tenhle item potrebuji (cil questu)
+  local need = X.neededBy(id)
+  if need[1] then
+    out[#out + 1] = { head = 'Potreba na quest' }
+    for i, q in ipairs(need) do if i > 8 then break end local r = qrow(q, me, 'cil questu') if r then out[#out + 1] = r end end
+  end
   local vs = D.vend and D.vend[id]
   if vs then
     out[#out + 1] = { head = 'Prodavaji' }
@@ -708,4 +714,27 @@ function X.npc(id)
     end
   end
   return out, n[1]
+end
+
+-- item -> questy, ktere ho maji jako cil (x[10])
+local needIdx
+function X.neededBy(item)
+  if not needIdx then
+    needIdx = {}
+    for q, x in pairs(DB().qx) do
+      if type(x) == 'table' and type(x[10]) == 'table' then
+        for _, it in ipairs(x[10]) do local l = needIdx[it] or {} l[#l + 1] = q needIdx[it] = l end
+      end
+    end
+  end
+  local out = {}
+  for _, q in ipairs(needIdx[item] or {}) do
+    local okC = not R().classOk or R().classOk(q)
+    local okF = false
+    for _, k in ipairs(DB().qg[q] or {}) do if R().factionOk(k) then okF = true break end end
+    if not DB().qg[q] then okF = true end
+    if okC and okF then out[#out + 1] = q end
+  end
+  table.sort(out, function(a, b) return ((DB().quest[a] or {})[2] or 0) < ((DB().quest[b] or {})[2] or 0) end)
+  return out
 end
