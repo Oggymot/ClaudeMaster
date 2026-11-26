@@ -50,7 +50,8 @@ a u zastavky napise, kdo tam co odevzda nebo splni navic.
 
 Kdyz je ForeverDB nainstalovana, addon ji po prihlaseni nacte (vypnout v Pruzkumniku) a tooltip moba
 ukazuje dropy podle Foreveru (vc. dat ze skutecnych killu) misto classic databaze; itemy, ktere zacinaji quest,
-to napisou v tooltipu.
+to napisou v tooltipu. Tooltip moba ukazuje i kolik penez z nej pada (prumer a rozsah ze skutecnych killu)
+a v Pruzkumniku jde rozkliknout moba/NPC (boj, naucene imunity, penize, kde se spawnuje, dropy, questy).
 
 Bez ForeverDB funguje zbytek addonu normalne, tyto funkce jen napisou, ze ForeverDB chybi.
 

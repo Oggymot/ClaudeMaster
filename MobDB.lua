@@ -69,6 +69,20 @@ local function fdbDrops(npc)
   end
   return fdrops[npc]
 end
+-- penize z moba (ForeverDB, skutecne killy): { avg, min, max, n } v copperech
+function MD.money(id)
+  local D = FDB()
+  local g = D and D.gold and type(id) == 'number' and D.gold[id]
+  if type(g) ~= 'table' or not g[1] then return nil end
+  return { avg = g[1], min = g[2] or g[1], max = g[3] or g[1], n = g[4] or 0 }
+end
+function MD.coin(c)
+  c = math.floor(c + 0.5)
+  if c >= 10000 then return ('%dg %ds'):format(math.floor(c / 10000), math.floor(c / 100) % 100) end
+  if c >= 100 then return ('%ds %dc'):format(math.floor(c / 100), c % 100) end
+  return c .. 'c'
+end
+function MD.dropsOf(id) return fdbDrops(id) end
 -- databaze se nacetla: zahodit cache, at se dropy prepocitaji
 function MD.reset() MD.cache = {} fdrops = nil fname = nil end
 

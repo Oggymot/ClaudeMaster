@@ -32,6 +32,7 @@ local function unknown(key)
   return 'neznama poloha'
 end
 -- kde je zdroj: { p, d, text } (svet / dungeon / nic)
+
 local function locate(key, me)
   local p, d = firstSpot(key, me)
   if p then return p, d, where(p) end
@@ -284,7 +285,8 @@ function X.search(text)
       do
         nn = nn + 1
         add({ icon = ICON.npc, title = ('|cff66ccff%s|r |cff9aa6b8[%s]|r'):format(n[1], n[3] or '?'),
-          sub = ('NPC%s - %s'):format(n[2] and (' <' .. n[2] .. '>') or '', wt), right2 = yd(d), p = p })
+          sub = ('NPC%s - %s'):format(n[2] and (' <' .. n[2] .. '>') or '', wt), right2 = yd(d), p = p,
+          open = function() return X.npc(id) end })
       end
     end
   end
@@ -374,7 +376,7 @@ local function itemRow(id, sub, me)
     right = pct and pct > 0.03 and ('|cff40ff60+%d %%|r'):format(math.floor(pct * 100 + 0.5)) or '',
     link = 'item:' .. id, open = function() return X.item(id) end }
 end
-local function spotRow(icon, key, me, label)
+local function spotRow0(icon, key, me, label)
   local p, d = firstSpot(key, me)
   if p then return { icon = icon, title = R().npcName(key), sub = label .. ' - ' .. where(p), right2 = yd(d), p = p } end
   local ins = R().instance and R().instance(key)
@@ -384,6 +386,12 @@ local function spotRow(icon, key, me, label)
       right2 = ed and ed < 99999 and ('vchod ' .. yd(ed)) or '', p = ins.p, tip = ins.p and 'Klik = sipka ke vchodu do dungeonu.' or nil }
   end
   return { icon = icon, title = R().npcName(key), sub = label .. ' - ' .. unknown(key), p = nil }
+end
+local function spotRow(icon, key, me, label)
+  local row = spotRow0(icon, key, me, label)
+  local id = key:sub(1, 1) == 'c' and tonumber(key:sub(2))
+  if id then row.open = function() return X.npc(id) end end
+  return row
 end
 
 function X.quest(qid)
@@ -492,4 +500,89 @@ local function onItem(tt, data)
 end
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
   pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Item, function(tt, data) pcall(onItem, tt, data) end)
+end
+
+------------------------------------------------------------------------------------------
+-- Detail moba / NPC: co o nem vime (vmangos + naucene ve hre + ForeverDB)
+------------------------------------------------------------------------------------------
+local RANK = { [1] = '|cffffcc00elite|r', [2] = '|cffff9933rare elite|r', [3] = '|cffff5555boss|r', [4] = '|cffc0c0ffrare|r' }
+function X.npc(id)
+  local D, out = DB(), {}
+  local n = D.npc[id]
+  if not n then return { { text = '|cff9aa6b8NPC neni v databazi.|r' } }, '?' end
+  local me = R().playerPos()
+  local key = 'c' .. id
+  local MD = ns.MobDB
+  local rec = MD and MD.byNameLevel(n[1], n[3])
+  local lv = n[3] and ((n[4] and n[4] ~= n[3]) and (n[3] .. '-' .. n[4]) or tostring(n[3])) or '?'
+  local typ = D.ctype and D.ctype[id] and D.ctype[id][1]
+  out[#out + 1] = { icon = ICON.npc, title = ('|cff66ccff%s|r |cff9aa6b8[%s]|r%s'):format(n[1], lv, RANK[n[5] or 0] and (' ' .. RANK[n[5]]) or ''),
+    sub = (n[2] and ('<' .. n[2] .. '>  ') or '') .. (typ and typ ~= 'Not specified' and typ or '') }
+  -- boj: databaze (classic) + co se addon naucil
+  local fight = {}
+  local desc = rec and not rec.fdbOnly and MD.describe(rec)
+  if desc then fight[#fight + 1] = { t = 'Databaze', s = desc } end
+  local learned = {}
+  local e = ns.db and ns.db.immune and ns.db.immune[n[1]]
+  if e and ns.Immune and ns.Immune.describe then
+    local ok, im = pcall(ns.Immune.describe, { schools = e.schools or {}, spells = e.spells or {} })
+    if ok and type(im) == 'table' and im[1] then learned[#learned + 1] = '|cffff7070imunni:|r ' .. table.concat(im, ', ') end
+  end
+  local casts = ns.db and ns.db.mobCasts and ns.db.mobCasts[n[1]]
+  if casts then
+    local l = {}
+    for sp, k in pairs(casts) do l[#l + 1] = sp .. (k == 'heal' and ' (leci)' or (k == 'CC' and ' (CC)' or '')) end
+    table.sort(l)
+    if l[1] then learned[#learned + 1] = 'kouzli: ' .. table.concat(l, ', ') end
+  end
+  if learned[1] then fight[#fight + 1] = { t = 'Naucene ve hre', s = table.concat(learned, ', ') } end
+  local money = MD and MD.money and MD.money(id)
+  if #fight > 0 or money then out[#out + 1] = { head = 'Boj a odmena' } end
+  for _, f in ipairs(fight) do out[#out + 1] = { icon = 'Interface\\Icons\\Ability_Warrior_BattleShout', title = f.t, sub = f.s, tip = f.s } end
+  if money and money.avg > 0 then
+    out[#out + 1] = { icon = 'Interface\\Icons\\INV_Misc_Coin_02', title = 'Penize ~' .. MD.coin(money.avg),
+      sub = ('%s - %s, z %d zabiti'):format(MD.coin(money.min), MD.coin(money.max), money.n) }
+  end
+  -- kde: zony a pocet spawnu
+  local zones, order = {}, {}
+  for _, sp in ipairs(R().spots(key)) do
+    if sp.map then
+      local z = zones[sp.map]
+      if not z then z = { map = sp.map, n = 0 } zones[sp.map] = z order[#order + 1] = z end
+      z.n = z.n + 1
+      local d = me and R().dist(me, sp.w) or 99999
+      if not z.d or d < z.d then z.d, z.p = d, sp end
+    end
+  end
+  table.sort(order, function(a, b) return (a.d or 99999) < (b.d or 99999) end)
+  out[#out + 1] = { head = 'Kde' }
+  for i, z in ipairs(order) do
+    if i > 6 then break end
+    out[#out + 1] = { icon = ICON.zone, title = R().mapName(z.map), sub = ('%d spawn%s'):format(z.n, z.n == 1 and '' or (z.n < 5 and 'y' or 'u')),
+      right2 = yd(z.d), p = z.p, open = function() return X.zone(z.map) end }
+  end
+  if not order[1] then local r = spotRow0(ICON.npc, key, me, 'poloha') r.title = 'Poloha' r.sub = r.sub:gsub('^poloha %- ', '') out[#out + 1] = r end
+  -- dropy
+  local dl = MD and MD.dropsOf and MD.dropsOf(id)
+  if dl and dl[1] then
+    out[#out + 1] = { head = 'Dropy' }
+    for _, d in ipairs(dl) do
+      local r = itemRow(d.id, d.kind == 'q' and 'questovy item' or ('%.1f %%'):format(d.chance), me)
+      out[#out + 1] = r
+    end
+  end
+  -- questy: dava / odevzdava se u nej
+  local qs = {}
+  for qid, ks in pairs(D.qg) do for _, k in ipairs(ks) do if k == key then qs[#qs + 1] = { qid, 'dava' } break end end end
+  for qid, ks in pairs(D.qe) do for _, k in ipairs(ks) do if k == key then qs[#qs + 1] = { qid, 'odevzdava se' } break end end end
+  if qs[1] then
+    table.sort(qs, function(a, b) return ((D.quest[a[1]] or {})[2] or 0) < ((D.quest[b[1]] or {})[2] or 0) end)
+    out[#out + 1] = { head = 'Questy' }
+    for i, q in ipairs(qs) do
+      if i > 10 then break end
+      local r = qrow(q[1], me, q[2])
+      if r then out[#out + 1] = r end
+    end
+  end
+  return out, n[1]
 end
