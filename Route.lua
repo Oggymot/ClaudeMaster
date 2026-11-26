@@ -857,8 +857,8 @@ local function collect()
       local me = R.lastMyName
       -- partak ma quest taky: modra postavicka (jen partak, ty ne: oranzova); jmena jsou v tooltipu
       local function people(n, mine, size)
-        local c = mine and '102:204:255' or '255:170:60'
-        local one = ('|TInterface\\FriendsFrame\\UI-Toast-FriendOnlineIcon:%d:%d:0:0:32:32:2:30:2:30:%s|t'):format(size, size, c)
+        local c = mine and '150:215:255' or '255:180:80'
+        local one = ('|TInterface\\Icons\\INV_Misc_GroupNeedMore:%d:%d:0:0:64:64:6:58:6:58:%s|t'):format(size, size, c)
         return ' ' .. one:rep(math.min(n, 3))
       end
       local function whoTag(s)
