@@ -1029,10 +1029,12 @@ function R.refresh()
       r.text:ClearAllPoints() r.sub:SetText((not compact) and l.sub or '')
       r.stripe:SetShown(l.color ~= nil and not l.head)
       local focus = sup and l.qid == sup and not l.small and not l.head
+      local herePlus = l.here and not focus and not l.small and not l.head
       r.stripe:SetWidth(focus and 4 or 2)
       local fc = (l.color and l.color[2]) and l.color or { '', 1, 0.82, 0 }
       if focus then r.stripe:Show() r.stripe:SetVertexColor(fc[2], fc[3], fc[4], 1)
-      elseif l.color then r.stripe:SetVertexColor(l.color[2], l.color[3], l.color[4], l.first and 1 or 0.45) end
+      elseif l.color then r.stripe:SetVertexColor(l.color[2], l.color[3], l.color[4], (l.first or herePlus) and 1 or (l.here == false and 0.25 or 0.45)) end
+      if herePlus then r.stripe:SetWidth(3) end
       local a = tr and 0.5 or 1
       r.text:SetAlpha(1) r.sub:SetAlpha(1) r.right:SetAlpha(1) r.num:SetAlpha(1)
       if l.head then
@@ -1047,10 +1049,10 @@ function R.refresh()
       else
         odd = not odd
         if focus then r.bg:SetColorTexture(fc[2], fc[3], fc[4], 0.16 * a)
-        elseif l.here then r.bg:SetColorTexture(0.45, 0.75, 1, (l.first and 0.11 or (odd and 0.075 or 0.055)) * a)   -- v teto zone: lehce modre
+        elseif l.here then r.bg:SetColorTexture(0.45, 0.75, 1, (l.first and 0.17 or (odd and 0.13 or 0.105)) * a)   -- v teto zone: modre
         else r.bg:SetColorTexture(1, 1, 1, (l.first and 0.08 or (odd and 0.035 or 0.012)) * a) end
         -- jinde nez v teto zone: o trochu tlumenejsi
-        local dim = (l.here == false and not focus) and 0.72 or 1
+        local dim = (l.here == false and not focus) and 0.55 or 1
         r.text:SetAlpha(dim) r.sub:SetAlpha(dim) r.right:SetAlpha(dim) r.num:SetAlpha(dim)
         local rw = math.max(r.right:GetStringWidth() or 0, compact and 0 or (r.right2:GetStringWidth() or 0))
         local left = l.num and 28 or 10
