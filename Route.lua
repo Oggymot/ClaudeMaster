@@ -1026,14 +1026,14 @@ local function collect()
         for i, o in ipairs(obj) do
           nobj = nobj + 1
           if nobj > 4 then break end
-          add({ small = true, obj = true, qid = s.q.id, p = s.p, label = s.q.title,
+          add({ small = true, obj = true, here = isHere or false, qid = s.q.id, p = s.p, label = s.q.title,
             text = ('        %s%s%s|r%s'):format(o.done and '|cff40ff60' or '|cffdddddd', o.need and ((o.have or 0) .. '/' .. o.need .. ' ') or '- ', o.text, peerTxt(i)) })
         end
         -- quest ma jen partak (moje cile nezname): aspon jeho pocty
         if not obj[1] and peerAny then
           for i in ipairs(peerAt) do
             if i > 4 then break end
-            add({ small = true, obj = true, qid = s.q.id, p = s.p, label = s.q.title, text = '        ' .. peerTxt(i):sub(3) })
+            add({ small = true, obj = true, here = isHere or false, qid = s.q.id, p = s.p, label = s.q.title, text = '        ' .. peerTxt(i):sub(3) })
           end
         end
         for _, o in ipairs(s.also or {}) do
@@ -1058,7 +1058,7 @@ local function collect()
               or '|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t |cffffd200Splnit|r') .. ' |cff9aa6b8(na stejnem miste)|r' }
           ott.qid = o.q.id
           local oci = R.classIcon(o.q.id, 12)
-          add({ small = true, tt = ott, text = ('        %s %s%s%s'):format(ico, oci ~= '' and (oci .. ' ') or '', o.q.title, tag), right = ov and R.valueText(ov, true) or '',
+          add({ small = true, here = isHere or false, tt = ott, text = ('        %s %s%s%s'):format(ico, oci ~= '' and (oci .. ' ') or '', o.q.title, tag), right = ov and R.valueText(ov, true) or '',
             p = o.p, label = o.q.title, qid = o.q.id,
             tip = ('Na stejnem miste %s i: %s'):format(o.kind == 'turnin' and 'odevzdat' or 'splnit', o.q.title) .. ' (' .. table.concat(who, ' + ') .. ')' })
         end
@@ -1066,7 +1066,7 @@ local function collect()
           local far = s.next.far and s.next.far > 400
           local nq = DB.quest[s.next.id]
           local gv = DB.qg[s.next.id] and DB.qg[s.next.id][1]
-          add({ small = true, qid = s.next.id, detailFirst = true, right = R.valueText(s.next.v, true),
+          add({ small = true, here = isHere or false, qid = s.next.id, detailFirst = true, right = R.valueText(s.next.v, true),
             tt = { qid = s.next.id, title = (nq and nq[2] and ('[%d] '):format(nq[2]) or '') .. s.next.title, zone = s.next.where, v = s.next.v, pvp = R.isPvP(s.next.id),
               dist = s.next.far and (math.floor(s.next.far + 0.5) .. ' yd od kroku') or nil,
               action = '|TInterface\\ChatFrame\\ChatFrameExpandArrow:14:14|t |cffd8d8d8Navazuje|r - vezmes u ' .. (gv and npcName(gv) or '?') },
@@ -1164,6 +1164,8 @@ function R.refresh()
         r.right:ClearAllPoints() r.right:SetPoint('RIGHT', -6, 0)
         local rw = (l.right and l.right ~= '') and (r.right:GetStringWidth() or 0) + 8 or 0
         r.text:SetPoint('LEFT', 4, 0) r.text:SetText(l.text or l.msg) r.text:SetWidth(w - 24 - rw)
+        local dim = l.here == false and 0.55 or 1   -- pod krokem z jine zony: taky tlumene
+        r.text:SetAlpha(dim) r.right:SetAlpha(dim)
       else
         odd = not odd
         if focus then r.bg:SetColorTexture(fc[2], fc[3], fc[4], 0.16 * a)
