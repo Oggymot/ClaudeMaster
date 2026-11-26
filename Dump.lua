@@ -79,6 +79,16 @@ local function collect()
       if t.spellId and C_Spell and C_Spell.GetSpellDescription then
         t.desc = str(pc(C_Spell.GetSpellDescription, t.spellId))
       end
+      -- nevybrane talenty: popis kouzla nemusi byt nacteny -> tooltip talentu (ukazuje i dalsi rank)
+      if (not t.desc or t.desc == '') and C_TooltipInfo then
+        local lines = t.entry and C_TooltipInfo.GetTraitEntry and tipLines(pc(C_TooltipInfo.GetTraitEntry, t.entry, 1))
+        if not lines and t.spellId and C_TooltipInfo.GetSpellByID then lines = tipLines(pc(C_TooltipInfo.GetSpellByID, t.spellId)) end
+        if lines then
+          table.remove(lines, 1)   -- prvni radek = jmeno
+          t.desc = table.concat(lines, ' ')
+        end
+      end
+      if t.desc == '' then t.desc = nil end
     end
   end
   d.talentsReadable, d.talentAPI = ns.talentsRead, ns.talentAPI
@@ -189,7 +199,14 @@ function ns.fullDump()
       end
     end
   end
-  C_Timer.After(1.5, function()
+  -- popisy talentu (i nevybranych): vyzadat nacteni dat kouzel, dump az po chvili
+  pcall(ns.scanTalents)
+  if C_Spell and C_Spell.RequestLoadSpellData then
+    for _, t in ipairs(ns.talentList or {}) do
+      if t.spellId then pcall(C_Spell.RequestLoadSpellData, t.spellId) end
+    end
+  end
+  C_Timer.After(3, function()
     local ok, d = pcall(collect)
     if not ok then ns.say('Chyba pri dumpu: ' .. tostring(d)) return end
     ns.db.fullDump = d
