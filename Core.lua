@@ -141,7 +141,7 @@ local SHAMAN_SPELLS = {
   'Healing Stream Totem', 'Mana Spring Totem', 'Poison Cleansing Totem', 'Disease Cleansing Totem', 'Fire Resistance Totem',
   'Mana Tide Totem', 'Windfury Totem', 'Grace of Air Totem', 'Grounding Totem', 'Nature Resistance Totem', 'Windwall Totem',
   'Tranquil Air Totem', 'Astral Recall', 'Water Breathing', 'Water Walking', 'Far Sight', 'Reincarnation',
-  'War Stomp', 'Cultivation', 'Will to Survive', 'Perception',
+  'War Stomp', 'Cultivation', 'Berserking', 'Rapid Regeneration', 'Will to Survive', 'Perception',
 }
 ns.SPELLS = (playerClass == 'WARLOCK') and WARLOCK_SPELLS or (playerClass == 'PALADIN') and PALADIN_SPELLS
   or (playerClass == 'DRUID') and DRUID_SPELLS or (playerClass == 'SHAMAN') and SHAMAN_SPELLS or MAGE_SPELLS
@@ -156,7 +156,7 @@ ns.BASE_CD = {
   ['Earth Shock'] = 6, ['Flame Shock'] = 6, ['Frost Shock'] = 6, ['Chain Lightning'] = 6, ['Stormstrike'] = 20,
   ["Nature's Swiftness"] = 180, ['Mana Tide Totem'] = 300, ['Stoneclaw Totem'] = 30, ['Fire Nova Totem'] = 15,
   ['Earthbind Totem'] = 15, ['Grounding Totem'] = 15, ['War Stomp'] = 90, ['Elemental Mastery'] = 180, ['Riptide'] = 6,
-  ['Reincarnation'] = 3600, ['Cultivation'] = 900,
+  ['Reincarnation'] = 3600, ['Cultivation'] = 900, ['Berserking'] = 180, ['Rapid Regeneration'] = 180,
   -- warlock
   ['Conflagrate'] = 10, ['Shadowburn'] = 15, ['Death Coil'] = 120, ['Howl of Terror'] = 40, ['Soul Fire'] = 60,
   ['Shadow Ward'] = 30, ['Amplify Curse'] = 180, ['Fel Domination'] = 900, ['Inferno'] = 3600, ['Curse of Doom'] = 60,

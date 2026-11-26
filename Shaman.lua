@@ -286,6 +286,11 @@ local function decide(c, s)
       local h = partyHeal(c, s, ready)
       if h then return h end
     end
+    -- troll: Rapid Regeneration = 50 % HP za 6 s zadarmo (nesmis se hybat) - lepsi nez kouzlo i jidlo
+    if s.step == 1 and php < 70 and not c.hostile and ready('Rapid Regeneration') then
+      return A('Rapid Regeneration', ('HP ~%d%%: Rapid Regeneration - 6 s stuj na miste, vyleci pulku HP zadarmo'):format(math.floor(php)),
+        'spell', { unit = 'player' })
+    end
     if s.step == 1 and php < 70 and (not c.manaKnown or c.mana > 0.45) then
       local h = bestHeal(false)
       if h and ready(h) then
@@ -461,7 +466,7 @@ local function apply(c, s, a)
   s.t = s.t + (ns.OFF_GCD[n] and 0 or math.max(1.5, ct))
 end
 
-local TRACK = { 'Earth Shock', 'Flame Shock', 'Frost Shock', 'Stormstrike', 'Chain Lightning', "Nature's Swiftness",
+local TRACK = { 'Berserking', 'Rapid Regeneration', 'Earth Shock', 'Flame Shock', 'Frost Shock', 'Stormstrike', 'Chain Lightning', "Nature's Swiftness",
   'Mana Tide Totem', 'Stoneclaw Totem', 'Fire Nova Totem', 'Earthbind Totem', 'Grounding Totem', 'War Stomp',
   'Elemental Mastery', 'Riptide', 'Fire Nova', 'Reincarnation' }
 
@@ -499,6 +504,11 @@ function E.plan(c)
     end
     if not util and c.manaKnown and c.mana < 0.3 and ns.known('Mana Tide Totem') and ns.cdLeft('Mana Tide Totem') <= 0 then
       util = A('Mana Tide Totem', 'Malo many: Mana Tide Totem', 'spell')
+    end
+    -- troll: Berserking na tezky boj nebo vic mobu (rychlejsi kouzla i leceni)
+    if not util and ns.known('Berserking') and ns.cdLeft('Berserking') <= 0
+      and (c.tough or c.elite or (c.enemies.onMe or 0) >= 2 or ns.hpBelow('player', 40) == true) then
+      util = A('Berserking', 'Tezky boj: Berserking (+10 % rychlost castu a utoku na 15 s)', 'spell')
     end
     if not util and c.group and c.enemies.skull and c.mark ~= 8 then
       util = A('TARGET', 'Bij lebku - tank na ni jde prvni', 'hint', { icon = 'Interface\\TargetingFrame\\UI-RaidTargetingIcon_8' })
