@@ -530,7 +530,7 @@ function X.active()
       list[#list + 1] = { icon = comp and 'Interface\\GossipFrame\\ActiveQuestIcon' or ICON.quest,
         title = ('|cff9aa6b8[%d]|r %s'):format(safeNum(info.level) or (D.quest[id] and D.quest[id][2]) or 0, safe(info.title) or (D.quest[id] and D.quest[id][1]) or ('#' .. id)),
         sub = comp and ('|cff40ff60hotovo|r - odevzdat u %s, %s'):format(k and R().npcName(k) or '?', where2) or ('plnit - ' .. where2),
-        right = v and R().valueText(v) or '', right2 = yd(d), p = p, comp = comp, d = d or 99999,
+        right = v and R().valueText(v) or '', right2 = yd(d), p = p, comp = comp, d = d or 99999, link = 'quest:' .. id,
         open = function() return X.quest(id) end }
     end
   end

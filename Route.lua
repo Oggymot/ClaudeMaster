@@ -575,6 +575,41 @@ function R.waypoint(p, title)
   ns.say('Sipka: ' .. (title or '?'))
 end
 
+-- aktivovat quest jako ve hre (zluta oblast na mape, sipka, nahore v seznamu); kdyz ho hra na mape
+-- nezna (casto na Foreveru) nebo neni v logu, sipka na misto z databaze. Shift = otevrit mapu.
+function R.focus(qid, p, title)
+  local inLog = qid and QL.GetLogIndexForQuestID and (safeNum(pc(QL.GetLogIndexForQuestID, qid)) or 0) > 0
+  if inLog then
+    local w = QL.GetQuestWatchType and pc(QL.GetQuestWatchType, qid)
+    if w == nil and QL.AddQuestWatch and not InCombatLockdown() then pc(QL.AddQuestWatch, qid) end
+    -- zna hra polohu? (quest je na mape cile / hra ma dalsi bod cesty)
+    local known = gameWaypoint(qid) ~= nil
+    if not known and p and p.map and QL.GetQuestsOnMap then
+      local l = pc(QL.GetQuestsOnMap, p.map)
+      for _, q in ipairs(type(l) == 'table' and l or {}) do if safeNum(q.questID) == qid then known = true break end end
+    end
+    if known and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+      if C_Map and C_Map.ClearUserWaypoint then pc(C_Map.ClearUserWaypoint) end
+      pc(C_SuperTrack.SetSuperTrackedQuestID, qid)
+      ns.say('Aktivni quest: ' .. (title or ('#' .. qid)))
+    elseif p then
+      if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then pc(C_SuperTrack.SetSuperTrackedQuestID, qid) end
+      R.waypoint(p, title)
+    elseif C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+      pc(C_SuperTrack.SetSuperTrackedQuestID, qid)
+      ns.say('Aktivni quest: ' .. (title or ('#' .. qid)) .. ' (polohu hra ani databaze nezna)')
+    end
+    if ns.Quests and ns.Quests.update then pcall(ns.Quests.update) end
+  elseif p then
+    R.waypoint(p, title)
+  end
+  -- Shift: otevrit mapu na zone cile
+  if IsShiftKeyDown and IsShiftKeyDown() and p and p.map and not InCombatLockdown() then
+    if WorldMapFrame and not WorldMapFrame:IsShown() and ToggleWorldMap then pcall(ToggleWorldMap) end
+    if WorldMapFrame and WorldMapFrame.SetMapID then pcall(WorldMapFrame.SetMapID, WorldMapFrame, p.map) end
+  end
+end
+
 ------------------------------------------------------------------------------------------
 -- Okno
 ------------------------------------------------------------------------------------------
@@ -685,7 +720,7 @@ local function build()
     b:SetScript('OnClick', function(self, btn)
       -- navazujici quest: klik = detail; krok: klik = sipka, pravy klik = detail
       if self.qid and (btn == 'RightButton' or self.detailFirst) then openQuest(self.qid) return end
-      if self.p then R.waypoint(self.p, self.label) elseif self.qid then openQuest(self.qid) end
+      if self.qid or self.p then R.focus(self.qid, self.p, self.label) end
     end)
     b:SetScript('OnEnter', function(self)
       if not (self.tip or self.qid) then return end
@@ -693,7 +728,8 @@ local function build()
       if self.tip then GameTooltip:AddLine(self.tip, 1, 1, 1, true) end
       if self.detailFirst then GameTooltip:AddLine('Klik = detail questu', 0.55, 0.85, 1)
       else
-        if self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
+        if self.qid then GameTooltip:AddLine('Klik = aktivovat quest (oblast na mape, sipka), Shift = i otevrit mapu', 0.55, 0.85, 1)
+        elseif self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
         if self.qid then GameTooltip:AddLine('Pravy klik = detail questu', 0.55, 0.85, 1) end
       end
       GameTooltip:Show()

@@ -733,9 +733,10 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
         view(list, what or '', true)
         return
       end
-      if self.p and ns.Route then
+      if (self.p or self.link) and ns.Route then
         local t = (self.title:GetText() or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', '')
-        ns.Route.waypoint(self.p, t)
+        local qid = type(self.link) == 'string' and tonumber(self.link:match('^quest:(%d+)'))
+        if qid and ns.Route.focus then ns.Route.focus(qid, self.p, t) elseif self.p then ns.Route.waypoint(self.p, t) end
       end
     end)
     r:SetScript('OnEnter', function(self)
@@ -745,7 +746,8 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
       if self.link then pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
       else GameTooltip:AddLine(self.title:GetText() or '', 1, 1, 1, true) GameTooltip:AddLine(self.sub:GetText() or '', 0.7, 0.7, 0.7, true) end
       if self.tipText then GameTooltip:AddLine(self.tipText, 0.8, 0.8, 0.8, true) end
-      if self.open then GameTooltip:AddLine('Klik = detail' .. (self.p and ', pravy klik = sipka na mape' or ''), 0.55, 0.85, 1)
+      local isQ = type(self.link) == 'string' and self.link:find('^quest:')
+      if self.open then GameTooltip:AddLine('Klik = detail' .. (isQ and ', pravy klik = aktivovat quest / sipka' or (self.p and ', pravy klik = sipka na mape' or '')), 0.55, 0.85, 1)
       elseif self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
       GameTooltip:Show()
     end)
