@@ -45,6 +45,9 @@ local T = (ns.class == 'PALADIN') and {
 } or (ns.class == 'DRUID') and {
   a1 = { 1, 0.49, 0.04, 0.95 }, a2 = { 1, 0.75, 0.45, 0.15 }, bg = { 0.07, 0.05, 0.03 }, border = { 0.45, 0.3, 0.12, 0.9 },
   title = { 1, 0.7, 0.35 }, icon = 'Interface\\Icons\\Spell_Nature_Regeneration', ui = { 1, 0.6, 0.2 },
+} or (ns.class == 'HUNTER') and {
+  a1 = { 0.55, 0.8, 0.3, 0.95 }, a2 = { 0.8, 1, 0.6, 0.15 }, bg = { 0.04, 0.06, 0.03 }, border = { 0.3, 0.42, 0.18, 0.9 },
+  title = { 0.7, 0.9, 0.45 }, icon = 'Interface\\Icons\\Ability_Hunter_BeastTaming', ui = { 0.6, 0.85, 0.35 },
 } or (ns.class == 'SHAMAN') and {
   a1 = { 0.15, 0.55, 1, 0.95 }, a2 = { 0.5, 0.8, 1, 0.15 }, bg = { 0.03, 0.05, 0.09 }, border = { 0.16, 0.3, 0.5, 0.9 },
   title = { 0.45, 0.75, 1 }, icon = 'Interface\\Icons\\Spell_Nature_BloodLust', ui = { 0.3, 0.65, 1 },
@@ -924,6 +927,7 @@ function UI.makeMacros()
     or ns.class == 'PALADIN' and { 'Judgement', 'Crusader Strike', 'Holy Strike', 'Exorcism' }
     or ns.class == 'DRUID' and { 'Wrath', 'Moonfire', 'Starfire', 'Maul', 'Claw' }
     or ns.class == 'SHAMAN' and { 'Lightning Bolt', 'Earth Shock', 'Flame Shock', 'Stormstrike' }
+    or ns.class == 'HUNTER' and { 'Arcane Shot', 'Serpent Sting', 'Concussive Shot', 'Raptor Strike' }
     or { 'Frostbolt', 'Ice Lance', 'Fire Blast' }
   local start = (ns.class == 'PALADIN' or ns.class == 'SHAMAN') and '/startattack\n' or ''   -- melee: zaroven zapne auto attack
   for _, sp in ipairs(attacks) do
@@ -1132,6 +1136,11 @@ SlashCmdList.CLAUDEMASTER = function(msg)
       command = 'Seal of Command', light = 'Seal of Light', justice = 'Seal of Justice', auto = 'auto' }
     db.palSeal = map[arg] or 'auto'
     ns.say('seal: ' .. db.palSeal .. '   (/cm seal auto/righteousness/crusader/wisdom/command/light)')
+  elseif cmd == 'hunter' and ns.class == 'HUNTER' then
+    local map = { bm = 'bm', beast = 'bm', mm = 'mm', marks = 'mm', sv = 'sv', survival = 'sv' }
+    db.hunterSpec = map[arg]
+    ns.say('hunter: ' .. (db.hunterSpec or ('auto (podle talentu: ' .. tostring(ns.Hunter and ns.Hunter.spec() or '?') .. ')'))
+      .. '   (/cm hunter bm/mm/sv/auto)')
   elseif cmd == 'shaman' and ns.class == 'SHAMAN' then
     local map = { resto = 'resto', ele = 'ele', elemental = 'ele', enh = 'enh', enhancement = 'enh', hybrid = 'hybrid' }
     db.shamanSpec = map[arg]

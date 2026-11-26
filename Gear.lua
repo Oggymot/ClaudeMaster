@@ -49,9 +49,11 @@ G.SPECS = {
     spcrit = { 4, 9 }, sphit = { 4.5, 11 }, mp5 = 1, armor = 0.003 },
   shenh = { label = 'Enhancement Shaman', str = 1, agi = 0.9, ap = 0.5, sta = 0.4, int = 0.2, crit = 12, hit = 11, dps = 5,
     armor = 0.01, sp = 0.2 },
+  hunter = { label = 'Hunter', agi = 1, ap = 0.45, str = 0.05, int = 0.2, sta = 0.35, crit = 12, hit = 12, dps = 6,
+    armor = 0.01, mp5 = 0.5 },
   generic = { label = 'obecne', sta = 0.5, armor = 0.01, str = 0.5, agi = 0.5, int = 0.5, sp = 0.5 },
 }
-local CLASS_DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'balance', SHAMAN = 'shhybrid' }
+local CLASS_DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'balance', SHAMAN = 'shhybrid', HUNTER = 'hunter' }
 
 function G.spec()
   local s = ns.db and ns.db.gearSpec

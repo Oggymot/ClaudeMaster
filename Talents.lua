@@ -514,11 +514,75 @@ local BUILDS = {
       'Restoration - pro melee tu nic.',
     },
   },
+  ------------------------------------------------------------------ HUNTER
+  hbm = {
+    class = 'HUNTER', band = 1, gear = 'hunter', hunter = 'bm',
+    label = 'Beast Mastery (silny pet)', desc = 'Pet tankuje a bije, ty strilis z dalky. Nejlehci na leveling.',
+    trees = { 'Beast Mastery', 'Marksmanship', 'Survival' },
+    list = {
+      { 'Endurance Training', 5, 'Vic HP petovi - vydrzi tankovat dele.' },
+      { 'Unleashed Fury', 5, 'Pet bije vic = vic threatu, moby zustanou na nem.' },
+      { 'Improved Mend Pet', 2, 'Mend Pet leci vic a cisti petovi debuffy.' },
+      { 'Intimidation', 1, 'Pet omraci moba a ziska hodne threatu - kdyz mob bezi k tobe.' },
+      { 'Ferocity', 5, '+krit peta.' },
+      { 'Spirit Bond', 2, 'Ty i pet se lecite samy.' },
+      { 'Bestial Discipline', 2, 'Pet ma vic focusu = vic schopnosti (Growl, utoky).' },
+      { 'Frenzy', 5, 'Po kritu peta rychlejsi utoky.' },
+      { 'Bestial Wrath', 1, 'Pet na chvili bije mnohem vic.' },
+      { 'Deadly Aspects', 5, 'Silnejsi aspekty (Forever).' },
+      { 'Focused Fire', 2, 'Talent Foreveru z Beast Mastery.' },
+      { 'Bestial Swiftness', 1, 'Rychlejsi pet - dobehne moba driv nez k tobe.' },
+      { 'Improved Revive Pet', 2, 'Rychlejsi oziveni peta.' },
+      { 'Pathfinding', 2, 'Rychlejsi Aspect of the Cheetah.' },
+      { 'Improved Aspect of the Monkey', 3, '+dodge s Aspect of the Monkey.' },
+      { 'Summon Hawk', 1, 'Talent Foreveru z Beast Mastery.' },
+      { 'Lethal Attacks', 5, '+krit strelby (z Marksmanship).' },
+      { 'Efficiency', 5, 'Levnejsi strely (z Marksmanship).' },
+    },
+    no = {},
+    tree = {
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Marksmanship - pro BM odsud jen Lethal Attacks a Efficiency.',
+      'Survival - pro BM tu nic.',
+    },
+  },
+  hmm = {
+    class = 'HUNTER', band = 2, gear = 'hunter', hunter = 'mm',
+    label = 'Marksmanship (strelba)', desc = 'Silna strelba (Aimed Shot, Trueshot Aura), pet slabsi.',
+    trees = { 'Beast Mastery', 'Marksmanship', 'Survival' },
+    list = {
+      { 'Lethal Attacks', 5, '+krit strelby.' }, { 'Efficiency', 5, 'Levnejsi strely.' }, { 'Hawk Eye', 3, 'Delsi dosah.' },
+      { 'Improved Arcane Shot', 5, 'Arcane Shot casteji.' }, { 'Careful Aim', 5, 'Talent Foreveru z Marksmanship.' },
+      { 'Improved Stings', 3, 'Silnejsi Serpent Sting.' }, { 'Mortal Shots', 5, 'Silnejsi krity strelby.' },
+      { 'Trueshot Aura', 1, 'Attack Power pro celou partu.' }, { 'Rapid Killing', 2, 'Rapid Fire casteji.' },
+      { 'Barrage', 3, 'Silnejsi Multi-Shot.' }, { 'Ranged Weapon Specialization', 5, '+damage strelby.' },
+      { 'Scatter Shot', 1, 'Omraceni strelou.' }, { 'Sniper Shot', 1, 'Talent Foreveru.' },
+      { 'Endurance Training', 5, 'Vic HP petovi (z Beast Mastery).' },
+    },
+    no = {},
+    tree = { 'Beast Mastery - pro MM odsud jen Endurance Training.', 'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Survival - pro MM tu nic.' },
+  },
+  hsv = {
+    class = 'HUNTER', band = 3, gear = 'hunter', hunter = 'sv',
+    label = 'Survival (pasti, melee)', desc = 'Pasti, Counterattack, vic HP. Odolny, ale slozitejsi.',
+    trees = { 'Beast Mastery', 'Marksmanship', 'Survival' },
+    list = {
+      { 'Survivalist', 5, '+10 % HP.' }, { 'Savage Strikes', 2, '+krit melee schopnosti.' }, { 'Deflection', 5, '+parry.' },
+      { 'Improved Wing Clip', 3, 'Wing Clip muze moba zastavit.' }, { 'Entrapment', 5, 'Pasti mobu znehybni.' },
+      { 'Surefooted', 3, '+hit.' }, { 'Deterrence', 1, 'Obrana: +25 % dodge/parry.' }, { 'Counterattack', 1, 'Protiutok.' },
+      { "Predator's Edge", 5, 'Silnejsi krity melee.' }, { 'Lightning Reflexes', 5, '+Agility.' },
+      { 'Lethal Attacks', 5, '+krit strelby (z Marksmanship).' },
+    },
+    no = {},
+    tree = { 'Beast Mastery - pro Survival tu nic.', 'Marksmanship - pro Survival odsud jen Lethal Attacks.',
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.' },
+  },
 }
 T.BUILDS = BUILDS
-local DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'resto', SHAMAN = 'shhybrid' }
+local DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'resto', SHAMAN = 'shhybrid', HUNTER = 'hbm' }
 local ORDER = { 'frost', 'fire', 'arcane', 'destro', 'affli', 'demo', 'ret', 'prot', 'holy', 'balance', 'feral', 'resto',
-  'shhybrid', 'shresto', 'shele', 'shenh' }
+  'shhybrid', 'shresto', 'shele', 'shenh', 'hbm', 'hmm', 'hsv' }
 
 -- vlastni build = ulozene talenty postavy (poradi: vetev s nejvic body, pak shora dolu)
 function T.custom()
@@ -600,6 +664,7 @@ function T.select(k)
   local b = T.get(k or T.autoKey())
   if ns.class == 'DRUID' and k then db.druidSpec = b and b.druid or nil end
   if ns.class == 'SHAMAN' then db.shamanSpec = (k and b and b.shaman) or nil end
+  if ns.class == 'HUNTER' then db.hunterSpec = (k and b and b.hunter) or nil end
   if db.gearSpec ~= 'custom' and ns.Gear and ns.Gear.applySpec then pcall(ns.Gear.applySpec, (k and b and b.gear) or 'auto') end
 end
 

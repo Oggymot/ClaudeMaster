@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: ClaudeMaster
-## Notes: Mage / Warlock / Paladin / Druid / Shaman poradce: analyzuje cil, skupinu mobu, tvou manu, cooldowny a procy a doporucuje, co castit.
+## Notes: Mage / Warlock / Paladin / Druid / Shaman / Hunter poradce: analyzuje cil, skupinu mobu, tvou manu, cooldowny a procy a doporucuje, co castit.
 ## Author: Claude
 ## Version: 1.0.0
 ## SavedVariablesPerCharacter: ClaudeMasterDB
@@ -15,6 +15,7 @@ Warlock.lua
 Paladin.lua
 Druid.lua
 Shaman.lua
+Hunter.lua
 AutoSpells.lua
 Dump.lua
 Extras.lua
