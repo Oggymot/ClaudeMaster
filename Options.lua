@@ -569,17 +569,71 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
 end }
 
 PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\Icons\\INV_Misc_Map_01', build = function(p, db)
-  p.section('Pruzkumnik', 'Vyhledavani a chytre filtry nad databazi ForeverDB (questy, NPC, itemy, dropy, oblasti). Klik na radek = sipka na mape.')
+  p.section('Pruzkumnik', 'Hledani a chytre filtry nad databazi ForeverDB. Klik na vysledek = sipka na mape.')
   local status = p.note('', 11)
-  -- vysledky (pevny pocet radku, plni se podle filtru)
-  local rows = {}
-  local function show(list)
+  local function setStatus(t) status.fs:SetText(t or '') status.fit() p.layout() end
+  -- hledani s lupou
+  local eb = CreateFrame('EditBox', nil, p.c, 'BackdropTemplate')
+  eb:SetSize(CW, 28) eb:SetAutoFocus(false)
+  eb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+  eb:SetBackdropColor(0, 0, 0, 0.55) eb:SetBackdropBorderColor(0.3, 0.34, 0.42, 1)
+  eb:SetFont(FONT, 12, '') eb:SetTextInsets(28, 8, 0, 0) eb:SetTextColor(1, 1, 1)
+  local mag = eb:CreateTexture(nil, 'ARTWORK')
+  mag:SetTexture('Interface\\Common\\UI-Searchbox-Icon') mag:SetSize(14, 14) mag:SetPoint('LEFT', 9, -1) mag:SetVertexColor(0.7, 0.75, 0.85)
+  eb.hint = label(eb, 'Hledat quest, NPC nebo item...   |cff667080z:tanaris = questy v oblasti|r', 11, 0.5, 0.52, 0.58)
+  eb.hint:SetPoint('LEFT', 28, 0)
+  eb:SetScript('OnEditFocusGained', function() eb:SetBackdropBorderColor(accent()) end)
+  eb:SetScript('OnEditFocusLost', function() eb:SetBackdropBorderColor(0.3, 0.34, 0.42, 1) end)
+  p.add(eb, 8)
+  -- filtry (aktivni zvyrazneny)
+  local filters, active = {}, nil
+  local function paint(b)
+    if b == active then b:SetBackdropColor(accent(0.45)) b:SetBackdropBorderColor(accent(1))
+    else b:SetBackdropColor(accent(0.12)) b:SetBackdropBorderColor(accent(0.5)) end
+  end
+  local function activate(b) active = b for _, f in ipairs(filters) do paint(f) end end
+  -- hlavicka vysledku
+  local head = CreateFrame('Frame', nil, p.c) head:SetSize(CW, 20)
+  head.t = label(head, '', 11, 0.75, 0.78, 0.85) head.t:SetPoint('BOTTOMLEFT', 2, 4)
+  local line = head:CreateTexture(nil, 'ARTWORK') line:SetTexture(WHITE) line:SetHeight(1)
+  line:SetPoint('BOTTOMLEFT') line:SetPoint('BOTTOMRIGHT') line:SetVertexColor(accent(0.35))
+  -- radky vysledku (karty)
+  local rows, RH = {}, 34
+  local function show(list, what)
+    local n = 0
+    for _, l in ipairs(list or {}) do if l.title then n = n + 1 end end
+    head.t:SetText(what and ('|cffffffff%s|r   |cff8a93a6%d vysledku|r'):format(what, n) or '')
+    local odd = false
     for i, r in ipairs(rows) do
       local l = list and list[i]
-      if l then
-        r.text:SetText(l.text) r.p, r.link, r.tipText = l.p, l.link, l.tip
+      r.p, r.link, r.tipText = nil, nil, nil
+      if not l then r:Hide()
+      elseif l.head then
+        r:SetHeight(24) r.kind = 'head'
+        r.icon:Hide() r.sub:SetText('') r.right:SetText('') r.right2:SetText('') r.bar:Hide() r.bg:Hide() r.stripe:Hide()
+        r.title:ClearAllPoints() r.title:SetPoint('BOTTOMLEFT', 2, 4)
+        r.title:SetText(l.head) r.title:SetTextColor(accent())
+        odd = false r:Show()
+      elseif not l.title then
+        r:SetHeight(26) r.kind = 'msg'
+        r.icon:Hide() r.sub:SetText('') r.right:SetText('') r.right2:SetText('') r.bar:Hide() r.bg:Hide() r.stripe:Hide()
+        r.title:ClearAllPoints() r.title:SetPoint('LEFT', 8, 0) r.title:SetText(l.text or '') r.title:SetTextColor(1, 1, 1)
         r:Show()
-      else r:Hide() end
+      else
+        r:SetHeight(RH) r.kind = 'item'
+        odd = not odd
+        r.bg:Show() r.bg:SetColorTexture(1, 1, 1, odd and 0.035 or 0.012)
+        r.stripe:Hide()
+        r.icon:SetTexture(l.icon or 'Interface\\Icons\\INV_Misc_QuestionMark') r.icon:Show()
+        r.title:ClearAllPoints() r.title:SetPoint('TOPLEFT', 36, -4) r.title:SetText(l.title) r.title:SetTextColor(1, 1, 1)
+        r.sub:SetText(l.sub or '')
+        r.right:SetText(l.right or '') r.right2:SetText(l.right2 or '')
+        local rw = math.max(r.right:GetStringWidth(), r.right2:GetStringWidth())
+        r.title:SetWidth(CW - 48 - rw - 10) r.sub:SetWidth(CW - 48 - rw - 10)
+        if l.bar then r.bar:SetWidth(math.max(2, (CW - 40) * math.min(1, l.bar))) r.bar:Show() else r.bar:Hide() end
+        r.p, r.link, r.tipText = l.p, l.link, l.tip
+        r:Show()
+      end
     end
     p.layout()
     p.upd()
@@ -588,23 +642,14 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     local R = ns.Route
     if R and R.DB() then return true end
     if not (R and R.available()) then
-      status.fs:SetText('|cffff8855Potrebuje addon ForeverDB - nainstaluj ho vedle ClaudeMasteru.|r') status.fit() p.layout()
-      return false
+      setStatus('|cffff8855Tahle funkce potrebuje addon ForeverDB - nainstaluj ho vedle ClaudeMasteru.|r') return false
     end
     ns.say('Nacitam ForeverDB (chvili to muze seknout)...')
     local ok, why = R.load()
-    if not ok then status.fs:SetText('|cffff8855ForeverDB se nepodarilo nacist: ' .. tostring(why) .. '|r') status.fit() p.layout() return false end
-    status.fs:SetText('') status.fit()
+    if not ok then setStatus('|cffff8855ForeverDB se nepodarilo nacist: ' .. tostring(why) .. '|r') return false end
+    setStatus('')
     return true
   end
-  -- hledani
-  local eb = CreateFrame('EditBox', nil, p.c, 'BackdropTemplate')
-  eb:SetSize(CW, 24) eb:SetAutoFocus(false)
-  eb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-  eb:SetBackdropColor(0, 0, 0, 0.55) eb:SetBackdropBorderColor(0.3, 0.34, 0.42, 1)
-  eb:SetFont(FONT, 12, '') eb:SetTextInsets(8, 8, 0, 0) eb:SetTextColor(1, 1, 1)
-  eb.hint = label(eb, 'Hledat quest, NPC nebo item...   (z:tanaris = questy v oblasti)', 11, 0.5, 0.52, 0.58)
-  eb.hint:SetPoint('LEFT', 8, 0)
   local pend
   eb:SetScript('OnTextChanged', function(self)
     eb.hint:SetShown(self:GetText() == '')
@@ -613,42 +658,68 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     C_Timer.After(0.4, function()
       pend = false
       local t = eb:GetText()
-      if #t >= 3 and ready() then show(ns.Explore.search(t)) end
+      if #t >= 3 and ready() then activate(nil) show(ns.Explore.search(t), 'Hledani: ' .. t) end
     end)
   end)
   eb:SetScript('OnEscapePressed', eb.ClearFocus)
   eb:SetScript('OnEnterPressed', eb.ClearFocus)
-  p.add(eb, 8)
-  p.row(button(p.c, 'Kde levelit', 110, function() if ready() then show(ns.Explore.leveling()) end end,
+  local function filter(text, w, what, fn, desc)
+    local b
+    b = button(p.c, text, w, function()
+      if not ready() then return end
+      activate(b)
+      show(fn(function(list) if active == b then show(list, what) end end), what)
+    end, desc)
+    b:HookScript('OnLeave', function() paint(b) end)
+    filters[#filters + 1] = b
+    return b
+  end
+  p.row(filter('Kde levelit', 110, 'Kde levelit', function() return ns.Explore.leveling() end,
       'Oblasti s nejvic questy pro tvuj level a kolik XP daji.'),
-    button(p.c, 'Dropy pro tebe', 120, function()
-      if ready() then show(ns.Explore.drops(function(list) show(list) end)) end
-    end, 'Zelene a lepsi itemy z mobu tveho levelu, ktere jsou pro tebe vylepsenim (podle vah gearu). Pocita se chvili.'),
-    button(p.c, 'Blizko', 80, function() if ready() then show(ns.Explore.nearby()) end end,
-      'Questy k vzeti a rare moby pobliz.'),
-    button(p.c, 'Trasa questu', 110, function() if ns.Route then ns.Route.toggle() end end, '/cm trasa'))
+    filter('Dropy pro tebe', 120, 'Dropy pro tebe', function(cb) return ns.Explore.drops(cb) end,
+      'Zelene a lepsi itemy z mobu tveho levelu, ktere jsou pro tebe vylepsenim (podle vah gearu). Pocita se par vterin.'),
+    filter('Blizko', 80, 'Blizko', function() return ns.Explore.nearby() end, 'Questy k vzeti a rare moby pobliz.'),
+    button(p.c, 'Trasa questu', 110, function() if ns.Route then ns.Route.toggle() end end, 'Okno s trasou questu (/cm trasa).'))
+  p.add(head, 6)
   for i = 1, 30 do
     local r = CreateFrame('Button', nil, p.c)
-    r:SetSize(CW, 17)
-    r.text = label(r, '', 11) r.text:SetPoint('LEFT', 2, 0) r.text:SetWidth(CW - 4) r.text:SetWordWrap(false)
-    r.hl = r:CreateTexture(nil, 'HIGHLIGHT') r.hl:SetAllPoints() r.hl:SetColorTexture(1, 1, 1, 0.06)
+    r:SetSize(CW, RH)
+    r.bg = r:CreateTexture(nil, 'BACKGROUND') r.bg:SetAllPoints()
+    r.stripe = r:CreateTexture(nil, 'ARTWORK') r.stripe:SetTexture(WHITE) r.stripe:SetWidth(2)
+    r.stripe:SetPoint('TOPLEFT') r.stripe:SetPoint('BOTTOMLEFT') r.stripe:SetVertexColor(accent(1))
+    r.icon = r:CreateTexture(nil, 'ARTWORK') r.icon:SetSize(26, 26) r.icon:SetPoint('LEFT', 5, 0) r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    r.title = label(r, '', 12) r.title:SetWordWrap(false)
+    r.sub = label(r, '', 10, 0.55, 0.59, 0.67) r.sub:SetPoint('BOTTOMLEFT', 36, 4) r.sub:SetWordWrap(false)
+    r.right = label(r, '', 11) r.right:SetPoint('TOPRIGHT', -8, -4) r.right:SetJustifyH('RIGHT')
+    r.right2 = label(r, '', 10, 0.55, 0.59, 0.67) r.right2:SetPoint('BOTTOMRIGHT', -8, 4) r.right2:SetJustifyH('RIGHT')
+    r.bar = r:CreateTexture(nil, 'BORDER') r.bar:SetTexture(WHITE) r.bar:SetHeight(2)
+    r.bar:SetPoint('BOTTOMLEFT', 36, 0) r.bar:SetVertexColor(1, 0.82, 0, 0.45)
+    r.hl = r:CreateTexture(nil, 'HIGHLIGHT') r.hl:SetAllPoints() r.hl:SetColorTexture(1, 1, 1, 0.07)
     r:SetScript('OnClick', function(self)
-      if self.p and ns.Route then ns.Route.waypoint(self.p, (self.text:GetText() or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', '')) end
+      if self.p and ns.Route then
+        local t = (self.title:GetText() or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', '')
+        ns.Route.waypoint(self.p, t)
+      end
     end)
     r:SetScript('OnEnter', function(self)
+      if self.kind ~= 'item' then return end
+      self.stripe:Show()
       GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
-      if self.link then pcall(GameTooltip.SetHyperlink, GameTooltip, self.link) else GameTooltip:AddLine(self.text:GetText() or '', 1, 1, 1, true) end
+      if self.link then pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
+      else GameTooltip:AddLine(self.title:GetText() or '', 1, 1, 1, true) GameTooltip:AddLine(self.sub:GetText() or '', 0.7, 0.7, 0.7, true) end
       if self.tipText then GameTooltip:AddLine(self.tipText, 0.8, 0.8, 0.8, true) end
       if self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
       GameTooltip:Show()
     end)
-    r:SetScript('OnLeave', function() GameTooltip:Hide() end)
+    r:SetScript('OnLeave', function(self) self.stripe:Hide() GameTooltip:Hide() end)
     r:Hide()
     rows[i] = r
-    p.add(r, i == 1 and 8 or 0)
+    p.add(r, 0)
   end
   if not (ns.Route and ns.Route.available()) then
-    status.fs:SetText('|cffff8855Pruzkumnik potrebuje addon ForeverDB (data o questech, NPC a dropech).|r') status.fit()
+    setStatus('|cffff8855Pruzkumnik potrebuje addon ForeverDB (data o questech, NPC a dropech). Zbytek addonu funguje i bez nej.|r')
+  else
+    head.t:SetText('|cff8a93a6Zvol filtr nebo zacni psat.|r')
   end
 end }
 

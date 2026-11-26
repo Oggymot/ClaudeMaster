@@ -26,6 +26,21 @@ local function firstSpot(key, me)
   return best, bd
 end
 local function where(p) return p and p.map and R().mapName(p.map) or '?' end
+local QCOL = { [0] = 'ff9d9d9d', 'ffffffff', 'ff1eff00', 'ff0070dd', 'ffa335ee', 'ffff8000' }
+local function itemName(id)
+  local it = DB().item[id]
+  return ('|c%s%s|r'):format(QCOL[it and it[2] or 1] or 'ffffffff', it and it[1] or '?')
+end
+local function itemIcon(id)
+  local f = (C_Item and C_Item.GetItemIconByID) or GetItemIcon
+  return f and pc(f, id) or 'Interface\\Icons\\INV_Misc_QuestionMark'
+end
+local ICON = {
+  quest = 'Interface\\GossipFrame\\AvailableQuestIcon',
+  zone = 'Interface\\Icons\\INV_Misc_Map_01',
+  npc = 'Interface\\Icons\\INV_Misc_GroupNeedMore',
+  rare = 'Interface\\Icons\\Ability_Hunter_MarkedForDeath',
+}
 
 -- quest pro me: level, frakce giveru, predpoklady, ne hotovy / v logu
 local function questOk(qid, inLog, L, spread)
@@ -67,11 +82,13 @@ function X.leveling()
   for _, z in pairs(zones) do list[#list + 1] = z end
   table.sort(list, function(a, b) return a.xp > b.xp end)
   local maxXP = safeNum(pc(UnitXPMax, 'player')) or 0
+  local top = list[1] and math.max(1, list[1].xp) or 1
   for i, z in ipairs(list) do
     if i > 12 then break end
     local d = me and R().dist(me, z.p.w)
-    out[#out + 1] = { text = ('|cffffd200%s|r - %d questu, ~%d XP%s %s'):format(R().mapName(z.map), z.n, z.xp,
-      maxXP > 0 and (' (%.1f levelu)'):format(z.xp / maxXP) or '', d and d < 99999 and ('|cff9aa6b8' .. yd(d) .. '|r') or ''),
+    out[#out + 1] = { icon = ICON.zone, title = '|cffffd200' .. R().mapName(z.map) .. '|r',
+      sub = ('%d questu pro tvuj level%s'):format(z.n, maxXP > 0 and (', cca %.1f levelu'):format(z.xp / maxXP) or ''),
+      right = ('|cffffd200~%d XP|r'):format(z.xp), right2 = yd(d), bar = z.xp / top,
       p = z.p, tip = 'Questy pro tvuj level v teto oblasti. Klik = sipka do oblasti.' }
   end
   if #out == 0 then out[1] = { text = '|cff9aa6b8Zadne questy pro tvuj level nenalezeny.|r' } end
@@ -129,10 +146,12 @@ function X.drops(done)
       if k > 20 then break end
       local key = r.npc and ('c' .. r.npc)
       local p = key and firstSpot(key, me)
-      local nm = D.item[r.id][1]
       local npc = key and R().npcName(key) or '?'
-      out[#out + 1] = { text = ('|cff40ff60+%d %%|r %s |cff9aa6b8- %s (%.1f %%), %s|r'):format(math.floor(r.pct * 100 + 0.5), nm, npc,
-        (r.ch or 0) / 100, where(p)), p = p, link = 'item:' .. r.id, tip = ('Pada z: %s (%s). Klik = sipka.'):format(npc, where(p)) }
+      local _, d = key and firstSpot(key, me)
+      out[#out + 1] = { icon = itemIcon(r.id), title = itemName(r.id),
+        sub = ('pada z %s (%.1f %%), %s'):format(npc, (r.ch or 0) / 100, where(p)),
+        right = ('|cff40ff60+%d %%|r'):format(math.floor(r.pct * 100 + 0.5)), right2 = yd(d),
+        p = p, link = 'item:' .. r.id, tip = ('Pada z: %s (%s). Klik = sipka.'):format(npc, where(p)) }
     end
     if #out == 0 then out[1] = { text = '|cff9aa6b8Zadny drop pro tvuj level by pro tebe nebyl vylepsenim.|r' } end
     done(out)
@@ -161,11 +180,13 @@ function X.nearby()
     end
   end
   table.sort(qs, function(a, b) return a.d < b.d end)
+  if qs[1] then out[#out + 1] = { head = 'Questy k vzeti' } end
   for i, q in ipairs(qs) do
     if i > 15 then break end
     local info = D.quest[q.qid]
     local v = R().value and R().value(q.qid, false)
-    out[#out + 1] = { text = ('[%d] %s %s |cff9aa6b8- %s, %s|r'):format(info[2] or 0, info[1], v and R().valueText(v) or '', q.npc, yd(q.d)),
+    out[#out + 1] = { icon = ICON.quest, title = ('|cff9aa6b8[%d]|r %s'):format(info[2] or 0, info[1]),
+      sub = ('%s, %s'):format(q.npc, where(q.p)), right = v and R().valueText(v) or '', right2 = yd(q.d),
       p = q.p, tip = ('Quest dava %s (%s)'):format(q.npc, where(q.p)) }
   end
   -- rare moby (rare: { at = { {map, x, y}, ... } })
@@ -182,10 +203,11 @@ function X.nearby()
       end
     end
     table.sort(rs, function(a, b) return a.d < b.d end)
-    if #rs > 0 then out[#out + 1] = { text = '|cff66ccffRare moby pobliz:|r' } end
+    if #rs > 0 then out[#out + 1] = { head = 'Rare moby pobliz' } end
     for i, r in ipairs(rs) do
       if i > 5 then break end
-      out[#out + 1] = { text = ('   |cffff9933%s|r [%d] |cff9aa6b8- %s, %s|r'):format(r.name, r.lvl or 0, where(r.p), yd(r.d)), p = r.p }
+      out[#out + 1] = { icon = ICON.rare, title = ('|cffff9933%s|r |cff9aa6b8[%d]|r'):format(r.name, r.lvl or 0),
+        sub = 'rare - ' .. where(r.p), right2 = yd(r.d), p = r.p }
     end
   end
   if #out == 0 then out[1] = { text = '|cff9aa6b8Nic pobliz.|r' } end
@@ -210,8 +232,10 @@ function X.search(text)
           local p = R().factionOk(k) and R().spots(k)[1]
           if p and p.map and R().mapName(p.map):lower():find(zone, 1, true) then
             local info = D.quest[qid]
-            out[#out + 1] = { text = ('[%d] %s |cff9aa6b8- %s, %s|r'):format(info[2] or 0, info[1], R().npcName(k), where(p)), p = p,
-              lv = info[2] or 0 }
+            local v = R().value and R().value(qid, false)
+            out[#out + 1] = { icon = ICON.quest, title = ('|cff9aa6b8[%d]|r %s'):format(info[2] or 0, info[1]),
+              sub = ('%s, %s'):format(R().npcName(k), where(p)), right = v and R().valueText(v) or '',
+              right2 = me and yd(R().dist(me, p.w)) or '', p = p, lv = info[2] or 0 }
             break
           end
         end
@@ -229,9 +253,11 @@ function X.search(text)
     local g = D.qg[qid] and D.qg[qid][1]
     if info[1] and info[1]:lower():find(text, 1, true) and not seen[info[1] .. tostring(g)] then
       seen[info[1] .. tostring(g)] = true
-      local p = g and firstSpot(g, me)
-      add({ text = ('|cffffd200Quest|r [%d] %s |cff9aa6b8- %s%s|r'):format(info[2] or 0, info[1], g and R().npcName(g) or '?',
-        p and (', ' .. where(p)) or ''), p = p })
+      local p, d = nil, nil
+      if g then p, d = firstSpot(g, me) end
+      add({ icon = ICON.quest, title = ('|cff9aa6b8[%d]|r %s'):format(info[2] or 0, info[1]),
+        sub = ('quest - %s%s'):format(g and R().npcName(g) or 'neznamy zadavatel', p and (', ' .. where(p)) or ''),
+        right2 = yd(d), p = p })
     end
   end
   local nn = 0
@@ -241,7 +267,8 @@ function X.search(text)
       local p, d = firstSpot('c' .. id, me)
       if p then
         nn = nn + 1
-        add({ text = ('|cff66ccffNPC|r %s%s [%s] |cff9aa6b8- %s %s|r'):format(n[1], n[2] and (' <' .. n[2] .. '>') or '', n[3] or '?', where(p), yd(d)), p = p })
+        add({ icon = ICON.npc, title = ('|cff66ccff%s|r |cff9aa6b8[%s]|r'):format(n[1], n[3] or '?'),
+          sub = ('NPC%s - %s'):format(n[2] and (' <' .. n[2] .. '>') or '', where(p)), right2 = yd(d), p = p })
       end
     end
   end
@@ -251,13 +278,13 @@ function X.search(text)
     if it[1] and it[1]:lower():find(text, 1, true) then
       ni = ni + 1
       local dl = D.drop[id]
-      local src, p = '', nil
+      local src, p, d = 'item', nil, nil
       if dl then
         local key = 'c' .. dl[1]
-        p = firstSpot(key, me)
+        p, d = firstSpot(key, me)
         src = ('pada z %s (%.1f %%)'):format(R().npcName(key), (dl[2] or 0) / 100)
       elseif D.vp and D.vp[id] then src = 'koupis u vendora' end
-      add({ text = ('|cffa335eeItem|r %s |cff9aa6b8- %s%s|r'):format(it[1], src, p and (', ' .. where(p)) or ''), p = p, link = 'item:' .. id })
+      add({ icon = itemIcon(id), title = itemName(id), sub = src .. (p and (', ' .. where(p)) or ''), right2 = yd(d), p = p, link = 'item:' .. id })
     end
   end
   if #out == 0 then out[1] = { text = '|cff9aa6b8Nic nenalezeno.|r' } end
