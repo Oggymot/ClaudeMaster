@@ -559,6 +559,11 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
     function() return db.questZone == true end, function(v) db.questZone = v questsUpd() end))
   p.add(checkbox(p.c, 'Radit podle vzdalenosti', 'Nejblizsi quest nahore.',
     function() return db.questSort == true end, function(v) db.questSort = v questsUpd() end))
+  p.add(checkbox(p.c, 'Varovat pred odletem', 'Pri otevreni mapy letu napise, ktere questy v teto oblasti jeste zbyva odevzdat '
+    .. 'nebo dokoncit (potrebuje addon ForeverDB).',
+    function() return db.routeWarn ~= false end, function(v) db.routeWarn = (not v) and false or nil end))
+  p.row(button(p.c, 'Trasa questu', 130, function() if ns.Route then ns.Route.toggle() end end,
+    'Poradi zastavek s nejkratsi cestou, navazujici questy a questy po ceste (/cm trasa). Potrebuje addon ForeverDB.'))
   p.row(button(p.c, 'Zobrazit / skryt questy', 170, function() if ns.Quests then ns.Quests.toggle('') end end, '/cm questy'),
     button(p.c, 'Sdilet questy s partou', 170, function() if ns.Quests and ns.Quests.shareAll then ns.Quests.shareAll() end end, '/cm sdilej'))
 end }

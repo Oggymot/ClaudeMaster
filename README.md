@@ -32,6 +32,13 @@ git push origin v1.0.1
 
 GitHub Action postavi zip a vytvori Release; WowUp pak nabidne aktualizaci.
 
+## Trasa questu (volitelne ForeverDB)
+
+`/cm trasa` naplanuje poradi zastavek (odevzdat / splnit) s nejkratsi cestou, upozorni na navazujici questy
+a nabidne questy po ceste. Potrebuje samostatny addon [ForeverDB](https://github.com/foreverfraddons/forever-db)
+(GPL-3, data z QuestieDB, VMaNGOS, cMaNGOS, pfQuest a dalsich - viz jeho LICENSE-DATA). ClaudeMaster jeho data
+nekopiruje, jen si ho na vyzadani nacte.
+
 ## Data o mobech
 
 `MobData.lua` je vygenerovany z [vmangos](https://github.com/vmangos/core) world databaze (GPL-2.0)

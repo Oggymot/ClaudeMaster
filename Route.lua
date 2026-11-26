@@ -1,0 +1,429 @@
+-- ClaudeMaster: plan trasy questu (s databazi ForeverDB, volitelny addon - GPL-3, viz jeho LICENSE-DATA).
+-- Kdyz je ForeverDB nainstalovana, addon si ji na vyzadani nacte a:
+--  * z questu v logu sestavi poradi zastavek s co nejkratsi cestou (odevzdat / splnit)
+--  * u odevzdani rekne, jaky quest navazuje a kam vede (aby se nelitalo zpatky)
+--  * nabidne questy "po ceste" pro tvuj level (quest-giveri u trasy)
+--  * pri otevreni mapy letu varuje, co jeste v teto oblasti zbyva
+-- /cm trasa = okno s trasou (prvni otevreni databazi nacte - chvili to sekne)
+local ADDON, ns = ...
+if not ns.enabled then return end
+local pc, safe, safeNum, safeBool = ns.pc, ns.safe, ns.safeNum, ns.safeBool
+
+local R = {}
+ns.Route = R
+local QL = C_QuestLog
+local DB
+
+------------------------------------------------------------------------------------------
+-- Databaze
+------------------------------------------------------------------------------------------
+function R.available()
+  if ForeverDB and ForeverDB.quest then return true end
+  local get = C_AddOns and C_AddOns.GetAddOnInfo or GetAddOnInfo
+  if not get then return false end
+  local name, _, _, loadable, reason = pc(get, 'ForeverDB')
+  return name ~= nil and reason ~= 'MISSING'
+end
+function R.load()
+  if DB then return true end
+  if not (ForeverDB and ForeverDB.quest) then
+    if InCombatLockdown() then return false, 'v boji ne' end
+    local load = C_AddOns and C_AddOns.LoadAddOn or LoadAddOn
+    if not load then return false, 'nejde nacist' end
+    local ok, loaded, why = pcall(load, 'ForeverDB')
+    if not ok or not loaded then return false, tostring(why or 'ForeverDB neni nainstalovana') end
+  end
+  if not (ForeverDB and ForeverDB.quest and ForeverDB.spm) then return false, 'ForeverDB bez dat' end
+  DB = ForeverDB
+  return true
+end
+
+------------------------------------------------------------------------------------------
+-- Pozice: mapa (uiMap) + procenta*10 z databaze -> svetove souradnice (yardy)
+------------------------------------------------------------------------------------------
+local wcache = {}
+local function world(map, x, y)
+  local key = map .. ':' .. x .. ':' .. y
+  local w = wcache[key]
+  if w == nil then
+    w = false
+    if C_Map and C_Map.GetWorldPosFromMapPos and CreateVector2D then
+      local cont, v = pc(C_Map.GetWorldPosFromMapPos, map, CreateVector2D(x / 1000, y / 1000))
+      if cont and v then
+        local wx, wy = v.x or (v.GetXY and v:GetXY()), v.y
+        if type(wx) == 'number' and type(wy) == 'number' then w = { c = cont, x = wx, y = wy } end
+      end
+    end
+    wcache[key] = w
+  end
+  return w or nil
+end
+local function playerPos()
+  local map = C_Map and safeNum(pc(C_Map.GetBestMapForUnit, 'player'))
+  if not map then return nil end
+  local p = pc(C_Map.GetPlayerMapPosition, map, 'player')
+  if not p then return nil end
+  local x, y = p.x, p.y
+  if p.GetXY then x, y = p:GetXY() end
+  x, y = safeNum(x), safeNum(y)
+  if not (x and y) or (x == 0 and y == 0) then return nil end
+  local cont, v = pc(C_Map.GetWorldPosFromMapPos, map, p)
+  if not cont or not v then return nil end
+  return { c = cont, x = v.x, y = v.y, map = map }
+end
+local function dist(a, b)
+  if not (a and b) then return 99999 end
+  if a.c ~= b.c then return 99999 end
+  local dx, dy = a.x - b.x, a.y - b.y
+  return math.sqrt(dx * dx + dy * dy)
+end
+local function mapName(map)
+  local i = C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, map)
+  return type(i) == 'table' and safe(i.name) or ('mapa ' .. tostring(map))
+end
+-- body jednoho zdroje ("c123" / "o456"): { {map, x, y, w}, ... }
+local scache = {}
+local function spots(key)
+  if scache[key] then return scache[key] end
+  local out = {}
+  local m = DB.spm[key]
+  if type(m) == 'table' then
+    for map, xy in pairs(m) do
+      for i = 1, #xy - 1, 2 do
+        local w = world(map, xy[i], xy[i + 1])
+        if w then out[#out + 1] = { map = map, x = xy[i], y = xy[i + 1], w = w } end
+      end
+    end
+  end
+  -- jen svetove souradnice (spw: { {kontinent, x, y, x, y, ...} }) -> mapa pro sipku pres hru
+  if #out == 0 and type(DB.spw) == 'table' and type(DB.spw[key]) == 'table' then
+    for _, e in ipairs(DB.spw[key]) do
+      local cont = e[1]
+      for i = 2, math.min(#e - 1, 12), 2 do
+        local w = { c = cont, x = e[i], y = e[i + 1] }
+        local map, mx, my
+        if C_Map and C_Map.GetMapPosFromWorldPos and CreateVector2D then
+          local um, v = pc(C_Map.GetMapPosFromWorldPos, cont, CreateVector2D(e[i], e[i + 1]))
+          if um and v then map, mx, my = um, math.floor((v.x or 0) * 1000), math.floor((v.y or 0) * 1000) end
+        end
+        out[#out + 1] = { map = map, x = mx, y = my, w = w }
+      end
+    end
+  end
+  scache[key] = out
+  return out
+end
+local function npcName(key)
+  local id = tonumber(key:sub(2))
+  local t = key:sub(1, 1) == 'c' and DB.npc[id] or DB.obj and DB.obj[id]
+  return t and t[1] or key
+end
+-- nejblizsi bod ze seznamu zdroju
+local function nearest(keys, from)
+  local best, bd, bk
+  for _, k in ipairs(keys or {}) do
+    for _, s in ipairs(spots(k)) do
+      local d = dist(from, s.w)
+      if not bd or d < bd then best, bd, bk = s, d, k end
+    end
+  end
+  return best, bd, bk
+end
+-- misto plneni questu (qsp: { [map] = {x,y,...} }), nejblizsi bod
+local function gameWaypoint(qid)
+  -- navigace hry (sipka questu): mapa + pozice dalsiho kroku / odevzdani
+  if not (QL.GetNextWaypoint) then return nil end
+  local map, x, y = pc(QL.GetNextWaypoint, qid)
+  map, x, y = safeNum(map), safeNum(x), safeNum(y)
+  if not (map and x and y) then return nil end
+  local px, py = math.floor(x * 1000), math.floor(y * 1000)
+  local w = world(map, px, py)
+  return w and { map = map, x = px, y = py, w = w } or nil
+end
+local function objective(qid, from)
+  local m = DB.qsp and DB.qsp[qid]
+  local x = DB.qx and DB.qx[qid]
+  if type(m) ~= 'table' and type(x) == 'table' and type(x[16]) == 'table' then m = x[16] end
+  if type(m) ~= 'table' then
+    local g = gameWaypoint(qid)
+    if g then return g, dist(from, g.w) end
+    return nil
+  end
+  local best, bd
+  for map, xy in pairs(m) do
+    for i = 1, #xy - 1, 2 do
+      local w = world(map, xy[i], xy[i + 1])
+      local d = w and dist(from, w)
+      if w and (not bd or d < bd) then best, bd = { map = map, x = xy[i], y = xy[i + 1], w = w }, d end
+    end
+  end
+  return best, bd
+end
+local function done(qid) return QL.IsQuestFlaggedCompleted and safeBool(pc(QL.IsQuestFlaggedCompleted, qid)) == true end
+
+------------------------------------------------------------------------------------------
+-- Questy v logu -> zastavky
+------------------------------------------------------------------------------------------
+local function logQuests()
+  local out = {}
+  for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
+    local info = pc(QL.GetInfo, i)
+    local id = type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID)
+    if id then
+      local comp = QL.IsComplete and safeBool(pc(QL.IsComplete, id))
+      out[#out + 1] = { id = id, title = safe(info.title) or (DB.quest[id] and DB.quest[id][1]) or ('#' .. id), complete = comp == true }
+    end
+  end
+  return out
+end
+
+-- trasa: nejblizsi soused od hrace (max 10 zastavek)
+function R.plan()
+  if not DB then return nil, 'databaze neni nactena' end
+  local me = playerPos()
+  if not me then return nil, 'pozice neni k dispozici (instance?)' end
+  local stops = {}
+  for _, q in ipairs(logQuests()) do
+    if q.complete then
+      local enders = DB.qe[q.id]
+      stops[#stops + 1] = { q = q, kind = 'turnin', keys = enders or {} }
+    else
+      stops[#stops + 1] = { q = q, kind = 'obj' }
+    end
+  end
+  local route, pos, left = {}, me, stops
+  while #left > 0 and #route < 10 do
+    local bi, bp, bd, bk
+    for i, s in ipairs(left) do
+      local p, d, k
+      if s.kind == 'turnin' then
+        p, d, k = nearest(s.keys, pos)
+        if not p then p = gameWaypoint(s.q.id) d = p and dist(pos, p.w) end
+      else p, d = objective(s.q.id, pos) end
+      if p and (not bd or d < bd) then bi, bp, bd, bk = i, p, d, k end
+    end
+    if not bi then break end
+    local s = table.remove(left, bi)
+    s.p, s.d, s.npc = bp, bd, bk
+    -- navazujici quest (qx[7]) po odevzdani
+    if s.kind == 'turnin' then
+      local x = DB.qx[s.q.id]
+      local nxt = type(x) == 'table' and x[7]
+      if nxt and DB.quest[nxt] and not done(nxt) then
+        local op = objective(nxt, bp.w)
+        s.next = { id = nxt, title = DB.quest[nxt][1], where = op and mapName(op.map) or nil,
+          far = op and dist(bp.w, op.w) or nil }
+      end
+    end
+    route[#route + 1] = s
+    pos = bp.w
+  end
+  R.lastRoute, R.lastMe = route, me
+  return route
+end
+
+-- questy k vzeti blizko trasy (giver do 250 yd od tebe nebo 150 yd od zastavky)
+local myFac
+local function factionOk(key)
+  if not myFac then
+    local f = safe(pc(UnitFactionGroup, 'player'))
+    myFac = f == 'Horde' and 'H' or 'A'
+  end
+  local id = tonumber(key:sub(2))
+  local nf = DB.nfac and key:sub(1, 1) == 'c' and DB.nfac[id]
+  return not nf or nf:find(myFac, 1, true) ~= nil
+end
+local pickAt, pickCache = -99, nil
+function R.pickups(route)
+  if not DB then return {} end
+  if pickCache and GetTime() - pickAt < 10 then return pickCache end
+  local me = R.lastMe or playerPos()
+  if not me then return {} end
+  local inLog = {}
+  for _, q in ipairs(logQuests()) do inLog[q.id] = true end
+  local lvl = safeNum(pc(UnitLevel, 'player')) or 1
+  local pts = { me }
+  for _, s in ipairs(route or {}) do if s.p then pts[#pts + 1] = s.p.w end end
+  local out = {}
+  for qid, givers in pairs(DB.qg) do
+    local info = DB.quest[qid]
+    if info and not inLog[qid] and (info[3] or 1) <= lvl and (info[2] or lvl) >= lvl - 4 and (info[2] or 0) <= lvl + 3 then
+      local x = DB.qx[qid]
+      local pre = type(x) == 'table' and x[3]
+      local ok = true
+      if type(pre) == 'table' then for _, p in ipairs(pre) do if not done(p) then ok = false break end end end
+      if ok and not done(qid) then
+        for _, k in ipairs(givers) do
+          if factionOk(k) then
+            for _, s in ipairs(spots(k)) do
+              local d0 = dist(me, s.w)
+              local near = d0 < 250
+              if not near then for i = 2, #pts do if dist(pts[i], s.w) < 150 then near = true break end end end
+              if near then
+                out[#out + 1] = { id = qid, title = info[1], lvl = info[2], npc = npcName(k), p = s, d = d0 }
+                break
+              end
+            end
+          end
+          if out[#out] and out[#out].id == qid then break end
+        end
+      end
+    end
+  end
+  table.sort(out, function(a, b) return a.d < b.d end)
+  while #out > 6 do table.remove(out) end
+  pickCache, pickAt = out, GetTime()
+  return out
+end
+
+------------------------------------------------------------------------------------------
+-- Sipka na mape
+------------------------------------------------------------------------------------------
+function R.waypoint(p, title)
+  if not (p and p.map and p.x and C_Map and C_Map.SetUserWaypoint and UiMapPoint) then return end
+  local pt = UiMapPoint.CreateFromCoordinates(p.map, p.x / 1000, p.y / 1000)
+  pc(C_Map.SetUserWaypoint, pt)
+  if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then pc(C_SuperTrack.SetSuperTrackedUserWaypoint, true) end
+  ns.say('Sipka: ' .. (title or '?'))
+end
+
+------------------------------------------------------------------------------------------
+-- Okno
+------------------------------------------------------------------------------------------
+local frame
+local function yd(d) return d and d < 99999 and (math.floor(d + 0.5) .. ' yd') or 'jiny kontinent' end
+local function build()
+  local f = CreateFrame('Frame', 'ClaudeMasterRoute', UIParent, 'BackdropTemplate')
+  f:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 1 })
+  local T = ns.THEME
+  f:SetBackdropColor(T.bg[1], T.bg[2], T.bg[3], 0.94) f:SetBackdropBorderColor(unpack(T.border))
+  f:SetFrameStrata('MEDIUM') f:SetSize(380, 200)
+  f:SetMovable(true) f:EnableMouse(true) f:RegisterForDrag('LeftButton') f:SetClampedToScreen(true)
+  f:SetScript('OnDragStart', f.StartMoving)
+  f:SetScript('OnDragStop', function(self)
+    self:StopMovingOrSizing()
+    local p, _, rp, x, y = self:GetPoint()
+    ns.db.routePoint = { p, rp, x, y }
+  end)
+  local pt = ns.db.routePoint
+  if pt then f:SetPoint(pt[1], UIParent, pt[2], pt[3], pt[4]) else f:SetPoint('RIGHT', -260, 80) end
+  f.title = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal') f.title:SetPoint('TOPLEFT', 10, -8)
+  f.title:SetText('Trasa questu') f.title:SetTextColor(unpack(T.title))
+  local x = CreateFrame('Button', nil, f, 'UIPanelCloseButton') x:SetSize(20, 20) x:SetPoint('TOPRIGHT', 2, 2)
+  x:SetScript('OnClick', function() f:Hide() end)
+  f.rows = {}
+  for i = 1, 18 do
+    local b = CreateFrame('Button', nil, f)
+    b:SetSize(360, 16)
+    b:SetPoint('TOPLEFT', 10, -26 - (i - 1) * 16)
+    b.text = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall')
+    b.text:SetPoint('LEFT') b.text:SetJustifyH('LEFT') b.text:SetWidth(360) b.text:SetWordWrap(false)
+    b:SetHighlightTexture('Interface\\QuestFrame\\UI-QuestTitleHighlight', 'ADD')
+    b:SetScript('OnClick', function(self) if self.p then R.waypoint(self.p, self.label) end end)
+    b:SetScript('OnEnter', function(self)
+      if not self.tip then return end
+      GameTooltip:SetOwner(self, 'ANCHOR_LEFT')
+      GameTooltip:AddLine(self.tip, 1, 1, 1, true)
+      GameTooltip:AddLine('Klik = sipka na mape', 0.6, 0.6, 0.6)
+      GameTooltip:Show()
+    end)
+    b:SetScript('OnLeave', function() GameTooltip:Hide() end)
+    f.rows[i] = b
+  end
+  f:Hide()
+  return f
+end
+
+function R.refresh()
+  if not frame or not frame:IsShown() then return end
+  local lines = {}
+  local function add(text, p, label, tip) lines[#lines + 1] = { text = text, p = p, label = label, tip = tip } end
+  if not DB then
+    add('|cffff8855ForeverDB neni nactena.|r')
+  else
+    local route, why = R.plan()
+    if not route then add('|cff9aa6b8' .. tostring(why) .. '|r')
+    else
+      if #route == 0 then add('|cff9aa6b8Zadne questy v logu s poznamou polohou.|r') end
+      for i, s in ipairs(route) do
+        local where = s.p and mapName(s.p.map) or '?'
+        if s.kind == 'turnin' then
+          add(('%d. |cff40ff60Odevzdat|r %s |cff9aa6b8- %s, %s|r'):format(i, s.q.title, s.npc and npcName(s.npc) or where, yd(s.d)),
+            s.p, s.q.title, ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where))
+          if s.next then
+            local far = s.next.far and s.next.far > 400
+            add(('     |cffffd200-> navazuje:|r %s%s'):format(s.next.title,
+              s.next.where and (' |cff9aa6b8(' .. s.next.where .. (far and ', daleko' or ', blizko') .. ')|r') or ''))
+          end
+        else
+          add(('%d. |cffffd200Splnit|r %s |cff9aa6b8- %s, %s|r'):format(i, s.q.title, where, yd(s.d)), s.p, s.q.title, 'Misto plneni: ' .. where)
+        end
+      end
+      local pick = R.pickups(route)
+      if #pick > 0 then
+        add('|cff66ccffPo ceste muzes vzit:|r')
+        for _, q in ipairs(pick) do
+          add(('   [%d] %s |cff9aa6b8- %s, %s|r'):format(q.lvl or 0, q.title, q.npc, yd(q.d)), q.p, q.title,
+            ('Quest dava %s (%s)'):format(q.npc, mapName(q.p.map)))
+        end
+      end
+    end
+  end
+  for i, r in ipairs(frame.rows) do
+    local l = lines[i]
+    if l then r.text:SetText(l.text) r.p, r.label, r.tip = l.p, l.label, l.tip r:Show() else r:Hide() end
+  end
+  frame:SetHeight(36 + math.min(#lines, #frame.rows) * 16)
+end
+
+function R.toggle()
+  if not frame then frame = build() end
+  if frame:IsShown() then frame:Hide() return end
+  if not DB then
+    if not R.available() then
+      ns.say('Trasa potrebuje addon ForeverDB (nainstaluj ho vedle ClaudeMasteru, napr. pres WowUp).')
+      return
+    end
+    ns.say('Nacitam ForeverDB (chvili to muze seknout)...')
+    local ok, why = R.load()
+    if not ok then ns.say('ForeverDB se nepodarilo nacist: ' .. tostring(why)) return end
+  end
+  frame:Show()
+  R.refresh()
+end
+
+-- prubezne obnovovani okna (mimo boj, kazde 3 s)
+local acc = 0
+local tick = CreateFrame('Frame')
+tick:SetScript('OnUpdate', function(_, el)
+  acc = acc + el
+  if acc < 3 then return end
+  acc = 0
+  if frame and frame:IsShown() and not InCombatLockdown() then pcall(R.refresh) end
+end)
+
+------------------------------------------------------------------------------------------
+-- Pred odletem: co v teto oblasti jeste zbyva
+------------------------------------------------------------------------------------------
+local ev = CreateFrame('Frame')
+pcall(ev.RegisterEvent, ev, 'TAXIMAP_OPENED')
+ev:SetScript('OnEvent', function()
+  if not ns.db or ns.db.routeWarn == false then return end
+  if not DB and R.available() then pcall(R.load) end   -- databaze se nacte jednou (u letce, mimo boj)
+  if not DB then return end
+  local me = playerPos()
+  if not me then return end
+  local turn, obj = {}, {}
+  for _, q in ipairs(logQuests()) do
+    if q.complete then
+      local p, d = nearest(DB.qe[q.id], me)
+      if p and d < 600 then turn[#turn + 1] = q.title end
+    else
+      local p, d = objective(q.id, me)
+      if p and d < 600 then obj[#obj + 1] = q.title end
+    end
+  end
+  if #turn + #obj == 0 then return end
+  ns.say('|cffffd200Nez odletis:|r' .. (#turn > 0 and (' odevzdat tady ' .. table.concat(turn, ', ') .. '.') or '')
+    .. (#obj > 0 and (' Dokoncit tady: ' .. table.concat(obj, ', ') .. '.') or ''))
+end)
