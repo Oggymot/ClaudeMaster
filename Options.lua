@@ -699,6 +699,8 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     filter('Dropy pro tebe', 120, 'Dropy pro tebe', function(cb) return ns.Explore.drops(cb) end,
       'Zelene a lepsi itemy z mobu tveho levelu, ktere jsou pro tebe vylepsenim (podle vah gearu). Pocita se par vterin.'),
     filter('Blizko', 80, 'Blizko', function() return ns.Explore.nearby() end, 'Questy k vzeti a rare moby pobliz.'),
+    filter('Moje questy', 100, 'Moje questy', function() return ns.Explore.active() end,
+      'Questy v logu: hotove k odevzdani nahore, pak rozpracovane podle vzdalenosti. Klik = detail (cile, retez, co odemkne).'),
     button(p.c, 'Trasa questu', 110, function() if ns.Route then ns.Route.toggle() end end, 'Okno s trasou questu (/cm trasa).'))
   p.add(checkbox(p.c, 'Nacitat ForeverDB po prihlaseni', 'Databaze se nacte sama chvili po prihlaseni (mimo boj). Tooltipy pak berou dropy mobu a questove itemy z ForeverDB (presnejsi pro Forever). Stoji trochu pameti.',
     function() return db.fdbAuto ~= false end, function(v) db.fdbAuto = v end), 8)

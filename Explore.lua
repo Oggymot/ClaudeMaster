@@ -424,11 +424,125 @@ function X.quest(qid)
     local fname = type(fi) == 'table' and safe(fi.name) or (type(fi) == 'string' and fi) or ('frakce ' .. fac[1])
     out[#out + 1] = { icon = 'Interface\\Icons\\INV_Misc_Note_02', title = fname, sub = 'reputace', right = ('|cff66ccff+%d|r'):format(fac[2] or 0) }
   end
-  local pre, nxt = type(x[3]) == 'table' and x[3] or {}, x[7]
-  if #pre > 0 or nxt then out[#out + 1] = { head = 'Retez questu' } end
-  for _, q in ipairs(pre) do local r = qrow(q, me, 'predtim') if r then out[#out + 1] = r end end
-  if nxt then local r = qrow(nxt, me, 'navazuje') if r then out[#out + 1] = r end end
+  -- cile (x[8] = moby k zabiti, x[10] = itemy)
+  local mobs, items = type(x[8]) == 'table' and x[8] or {}, type(x[10]) == 'table' and x[10] or {}
+  if #mobs + #items > 0 then out[#out + 1] = { head = 'Cile' } end
+  for _, nid in ipairs(mobs) do
+    if D.npc[nid] then local r = spotRow(ICON.rare, 'c' .. nid, me, 'zabit') out[#out + 1] = r end
+  end
+  for _, iid in ipairs(items) do
+    if D.item[iid] then
+      local src = 'ziskat'
+      local dl = D.drop[iid]
+      if dl then src = ('ziskat - pada z %s (%.0f %%)'):format(R().npcName('c' .. dl[1]), (dl[2] or 0) / 100) end
+      out[#out + 1] = itemRow(iid, src, me)
+    end
+  end
+  -- retez: predtim / odemkne / dalsi kroky
+  local pre = {}
+  for _, q in ipairs(type(x[3]) == 'table' and x[3] or {}) do pre[#pre + 1] = q end
+  for _, q in ipairs(X.prevOf(qid)) do
+    local dup for _, p in ipairs(pre) do if p == q then dup = true end end
+    if not dup then pre[#pre + 1] = q end
+  end
+  local opens = X.unlocks(qid)
+  if #pre > 0 then
+    out[#out + 1] = { head = 'Predtim' .. (#pre > 1 and ' (staci jeden z nich)' or '') }
+    for _, q in ipairs(pre) do local r = qrow(q, me) if r then out[#out + 1] = r end end
+  end
+  local nx = x[7]
+  local nx2 = nx and type(D.qx[nx]) == 'table' and D.qx[nx][7]
+  if nx2 then   -- retez se vypise cely nize
+    for i = #opens, 1, -1 do if opens[i] == nx then table.remove(opens, i) end end
+  end
+  if #opens > 0 then
+    out[#out + 1] = { head = 'Odemkne' }
+    for i, q in ipairs(opens) do if i > 8 then break end local r = qrow(q, me) if r then out[#out + 1] = r end end
+  end
+  -- cely retez dal (jen kdyz je delsi nez jeden krok)
+  local chain, seen, cur = {}, { [qid] = true }, x[7]
+  while cur and D.quest[cur] and not seen[cur] and #chain < 10 do
+    chain[#chain + 1] = cur seen[cur] = true
+    local cx = D.qx[cur]
+    cur = type(cx) == 'table' and cx[7] or nil
+  end
+  if #chain > 1 then
+    local sum = 0
+    for _, q in ipairs(chain) do local r = D.qrw[q] sum = sum + ((type(r) == 'table' and r[2]) or 0) end
+    out[#out + 1] = { head = ('Cely retez dal: %d kroku, ~%d XP'):format(#chain, sum) }
+    for i, q in ipairs(chain) do local r = qrow(q, me, i .. '. krok') if r then out[#out + 1] = r end end
+  end
   return out, info[1]
+end
+
+-- inverzni indexy retezu: [q] = questy, ktere q odemkne (x[3] predpoklad, x[7] dalsi krok); [q] = predchozi krok
+local unl, prev
+local function chainIdx()
+  if unl then return end
+  unl, prev = {}, {}
+  local D = DB()
+  local function add(t, k, v)
+    local l = t[k] if not l then l = {} t[k] = l end
+    for _, e in ipairs(l) do if e == v then return end end
+    l[#l + 1] = v
+  end
+  for q, x in pairs(D.qx) do
+    if type(x) == 'table' then
+      for _, p in ipairs(type(x[3]) == 'table' and x[3] or {}) do add(unl, p, q) end
+      if x[7] and D.quest[x[7]] then add(unl, q, x[7]) add(prev, x[7], q) end
+    end
+  end
+end
+local function forMe(q)
+  for _, k in ipairs(DB().qg[q] or {}) do if R().factionOk(k) then return true end end
+  return not DB().qg[q]
+end
+function X.unlocks(q)
+  chainIdx()
+  local out = {}
+  for _, v in ipairs(unl[q] or {}) do if forMe(v) then out[#out + 1] = v end end
+  table.sort(out, function(a, b) return ((DB().quest[a] or {})[2] or 0) < ((DB().quest[b] or {})[2] or 0) end)
+  return out
+end
+function X.prevOf(q)
+  chainIdx()
+  local out = {}
+  for _, v in ipairs(prev[q] or {}) do if forMe(v) then out[#out + 1] = v end end
+  return out
+end
+
+-- Moje questy: log (hotove nahore), kam jit, XP
+function X.active()
+  local D, out = DB(), {}
+  local QL = C_QuestLog
+  if not (QL and QL.GetNumQuestLogEntries) then return { { text = '|cff9aa6b8Quest log neni k dispozici.|r' } } end
+  local me = R().playerPos()
+  local list = {}
+  for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
+    local info = pc(QL.GetInfo, i)
+    local id = type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID)
+    if id then
+      local comp = QL.IsComplete and safeBool(pc(QL.IsComplete, id)) == true
+      local p, d, k
+      if comp then p, d, k = R().nearest(D.qe[id] or {}, me) else p, d = R().objective(id, me) end
+      local v = R().value(id, true)
+      local where2 = p and where(p) or '?'
+      list[#list + 1] = { icon = comp and 'Interface\\GossipFrame\\ActiveQuestIcon' or ICON.quest,
+        title = ('|cff9aa6b8[%d]|r %s'):format(safeNum(info.level) or (D.quest[id] and D.quest[id][2]) or 0, safe(info.title) or (D.quest[id] and D.quest[id][1]) or ('#' .. id)),
+        sub = comp and ('|cff40ff60hotovo|r - odevzdat u %s, %s'):format(k and R().npcName(k) or '?', where2) or ('plnit - ' .. where2),
+        right = v and R().valueText(v) or '', right2 = yd(d), p = p, comp = comp, d = d or 99999,
+        open = function() return X.quest(id) end }
+    end
+  end
+  table.sort(list, function(a, b) if a.comp ~= b.comp then return a.comp end return a.d < b.d end)
+  local nc = 0 for _, r in ipairs(list) do if r.comp then nc = nc + 1 end end
+  if nc > 0 then out[#out + 1] = { head = ('Hotove - odevzdat (%d)'):format(nc) } end
+  for i, r in ipairs(list) do
+    if i == nc + 1 then out[#out + 1] = { head = ('Rozpracovane (%d)'):format(#list - nc) } end
+    out[#out + 1] = r
+  end
+  if #list == 0 then out[1] = { text = '|cff9aa6b8Quest log je prazdny.|r' } end
+  return out
 end
 
 function X.item(id)
