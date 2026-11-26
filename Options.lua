@@ -593,20 +593,35 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
   end
   local function activate(b) active = b for _, f in ipairs(filters) do paint(f) end end
   -- hlavicka vysledku
-  local head = CreateFrame('Frame', nil, p.c) head:SetSize(CW, 20)
-  head.t = label(head, '', 11, 0.75, 0.78, 0.85) head.t:SetPoint('BOTTOMLEFT', 2, 4)
+  local head = CreateFrame('Frame', nil, p.c) head:SetSize(CW, 22)
+  head.t = label(head, '', 11, 0.75, 0.78, 0.85) head.t:SetPoint('BOTTOMLEFT', 2, 5)
+  local back = button(head, '< Zpet', 64, function() end, 'Zpet na predchozi seznam.')
+  back:SetHeight(18) back:SetPoint('BOTTOMRIGHT', 0, 3) back:Hide()
   local line = head:CreateTexture(nil, 'ARTWORK') line:SetTexture(WHITE) line:SetHeight(1)
   line:SetPoint('BOTTOMLEFT') line:SetPoint('BOTTOMRIGHT') line:SetVertexColor(accent(0.35))
   -- radky vysledku (karty)
   local rows, RH = {}, 34
-  local function show(list, what)
+  local stack, cur = {}, nil
+  local show
+  local function view(list, what, push)
+    if push and cur then stack[#stack + 1] = cur else if not push then stack = {} end end
+    cur = { list = list, what = what }
+    show(list, what)
+  end
+  back:SetScript('OnClick', function()
+    local prev = table.remove(stack)
+    if prev then cur = prev show(prev.list, prev.what) end
+  end)
+  function show(list, what)
+    back:SetShown(#stack > 0)
     local n = 0
     for _, l in ipairs(list or {}) do if l.title then n = n + 1 end end
     head.t:SetText(what and ('|cffffffff%s|r   |cff8a93a6%d vysledku|r'):format(what, n) or '')
     local odd = false
     for i, r in ipairs(rows) do
       local l = list and list[i]
-      r.p, r.link, r.tipText = nil, nil, nil
+      r.p, r.link, r.tipText, r.open = nil, nil, nil, nil
+      r.arrow:Hide()
       if not l then r:Hide()
       elseif l.head then
         r:SetHeight(24) r.kind = 'head'
@@ -629,13 +644,18 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
         r.sub:SetText(l.sub or '')
         r.right:SetText(l.right or '') r.right2:SetText(l.right2 or '')
         local rw = math.max(r.right:GetStringWidth(), r.right2:GetStringWidth())
-        r.title:SetWidth(CW - 48 - rw - 10) r.sub:SetWidth(CW - 48 - rw - 10)
-        if l.bar then r.bar:SetWidth(math.max(2, (CW - 40) * math.min(1, l.bar))) r.bar:Show() else r.bar:Hide() end
-        r.p, r.link, r.tipText = l.p, l.link, l.tip
+        local tw = CW - 48 - rw - 10 - (l.open and 12 or 0)
+        r.title:SetWidth(tw) r.sub:SetWidth(tw)
+        if l.bar then r.bar:SetWidth(math.max(2, CW * math.min(1, l.bar))) r.bar:Show() else r.bar:Hide() end
+        r.p, r.link, r.tipText, r.open = l.p, l.link, l.tip, l.open
+        r.arrow:SetShown(l.open ~= nil)
+        if l.open then r.right:SetPoint('TOPRIGHT', -20, -4) r.right2:SetPoint('BOTTOMRIGHT', -20, 4)
+        else r.right:SetPoint('TOPRIGHT', -8, -4) r.right2:SetPoint('BOTTOMRIGHT', -8, 4) end
         r:Show()
       end
     end
     p.layout()
+    p.sf:SetVerticalScroll(0)
     p.upd()
   end
   local function ready()
@@ -658,7 +678,7 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     C_Timer.After(0.4, function()
       pend = false
       local t = eb:GetText()
-      if #t >= 3 and ready() then activate(nil) show(ns.Explore.search(t), 'Hledani: ' .. t) end
+      if #t >= 3 and ready() then activate(nil) view(ns.Explore.search(t), 'Hledani: ' .. t) end
     end)
   end)
   eb:SetScript('OnEscapePressed', eb.ClearFocus)
@@ -668,7 +688,7 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     b = button(p.c, text, w, function()
       if not ready() then return end
       activate(b)
-      show(fn(function(list) if active == b then show(list, what) end end), what)
+      view(fn(function(list) if active == b and cur and cur.what == what then cur.list = list show(list, what) end end), what)
     end, desc)
     b:HookScript('OnLeave', function() paint(b) end)
     filters[#filters + 1] = b
@@ -692,10 +712,17 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     r.sub = label(r, '', 10, 0.55, 0.59, 0.67) r.sub:SetPoint('BOTTOMLEFT', 36, 4) r.sub:SetWordWrap(false)
     r.right = label(r, '', 11) r.right:SetPoint('TOPRIGHT', -8, -4) r.right:SetJustifyH('RIGHT')
     r.right2 = label(r, '', 10, 0.55, 0.59, 0.67) r.right2:SetPoint('BOTTOMRIGHT', -8, 4) r.right2:SetJustifyH('RIGHT')
-    r.bar = r:CreateTexture(nil, 'BORDER') r.bar:SetTexture(WHITE) r.bar:SetHeight(2)
-    r.bar:SetPoint('BOTTOMLEFT', 36, 0) r.bar:SetVertexColor(1, 0.82, 0, 0.45)
+    r.bar = r:CreateTexture(nil, 'BACKGROUND', nil, 1) r.bar:SetTexture(WHITE)
+    r.bar:SetPoint('TOPLEFT', 0, 0) r.bar:SetPoint('BOTTOMLEFT', 0, 0) r.bar:SetVertexColor(1, 0.82, 0, 0.07)
     r.hl = r:CreateTexture(nil, 'HIGHLIGHT') r.hl:SetAllPoints() r.hl:SetColorTexture(1, 1, 1, 0.07)
-    r:SetScript('OnClick', function(self)
+    r.arrow = label(r, '>', 14, 0.55, 0.6, 0.7) r.arrow:SetPoint('RIGHT', -6, 0) r.arrow:Hide()
+    r:RegisterForClicks('LeftButtonUp', 'RightButtonUp')
+    r:SetScript('OnClick', function(self, btn)
+      if btn ~= 'RightButton' and self.open then
+        local list, what = self.open()
+        view(list, what or '', true)
+        return
+      end
       if self.p and ns.Route then
         local t = (self.title:GetText() or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', '')
         ns.Route.waypoint(self.p, t)
@@ -708,7 +735,8 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
       if self.link then pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
       else GameTooltip:AddLine(self.title:GetText() or '', 1, 1, 1, true) GameTooltip:AddLine(self.sub:GetText() or '', 0.7, 0.7, 0.7, true) end
       if self.tipText then GameTooltip:AddLine(self.tipText, 0.8, 0.8, 0.8, true) end
-      if self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
+      if self.open then GameTooltip:AddLine('Klik = detail' .. (self.p and ', pravy klik = sipka na mape' or ''), 0.55, 0.85, 1)
+      elseif self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
       GameTooltip:Show()
     end)
     r:SetScript('OnLeave', function(self) self.stripe:Hide() GameTooltip:Hide() end)

@@ -81,6 +81,25 @@ local function mapName(map)
   local i = C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, map)
   return type(i) == 'table' and safe(i.name) or ('mapa ' .. tostring(map))
 end
+-- kontinent / svet -> konkretni zona (aby "Kde levelit" neukazovalo Eastern Kingdoms)
+local ctype = {}
+local function isContinent(map)
+  if ctype[map] == nil then
+    local i = C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, map)
+    local t = type(i) == 'table' and safeNum(i.mapType)
+    ctype[map] = (t ~= nil and t <= 2) or false
+  end
+  return ctype[map]
+end
+local function toZone(map, x, y, w)
+  if not (map and x and w and isContinent(map) and C_Map.GetMapInfoAtPosition and CreateVector2D) then return map, x, y end
+  local z = pc(C_Map.GetMapInfoAtPosition, map, x / 1000, y / 1000)
+  local zid = type(z) == 'table' and safeNum(z.mapID)
+  if not zid or zid == map or isContinent(zid) then return map, x, y end
+  local um, v = pc(C_Map.GetMapPosFromWorldPos, w.c, CreateVector2D(w.x, w.y), zid)
+  if not (um and v and v.x) then return map, x, y end
+  return zid, math.floor(v.x * 1000), math.floor(v.y * 1000)
+end
 -- body jednoho zdroje ("c123" / "o456"): { {map, x, y, w}, ... }
 local scache = {}
 local function spots(key)
@@ -91,7 +110,10 @@ local function spots(key)
     for map, xy in pairs(m) do
       for i = 1, #xy - 1, 2 do
         local w = world(map, xy[i], xy[i + 1])
-        if w then out[#out + 1] = { map = map, x = xy[i], y = xy[i + 1], w = w } end
+        if w then
+          local zm, zx, zy = toZone(map, xy[i], xy[i + 1], w)
+          out[#out + 1] = { map = zm, x = zx, y = zy, w = w }
+        end
       end
     end
   end
@@ -105,6 +127,7 @@ local function spots(key)
         if C_Map and C_Map.GetMapPosFromWorldPos and CreateVector2D then
           local um, v = pc(C_Map.GetMapPosFromWorldPos, cont, CreateVector2D(e[i], e[i + 1]))
           if um and v then map, mx, my = um, math.floor((v.x or 0) * 1000), math.floor((v.y or 0) * 1000) end
+          if map then map, mx, my = toZone(map, mx, my, w) end
         end
         out[#out + 1] = { map = map, x = mx, y = my, w = w }
       end
@@ -157,6 +180,7 @@ local function objective(qid, from)
       if w and (not bd or d < bd) then best, bd = { map = map, x = xy[i], y = xy[i + 1], w = w }, d end
     end
   end
+  if best then best.map, best.x, best.y = toZone(best.map, best.x, best.y, best.w) end
   return best, bd
 end
 local function done(qid) return QL.IsQuestFlaggedCompleted and safeBool(pc(QL.IsQuestFlaggedCompleted, qid)) == true end
@@ -254,38 +278,136 @@ local function logQuests()
 end
 
 -- trasa: nejblizsi soused od hrace (max 10 zastavek)
+------------------------------------------------------------------------------------------
+-- Parta: questy partaku (RL^id:stav,...; stav 1 = splneno) -> spolecna trasa
+------------------------------------------------------------------------------------------
+R.peerLogs = {}   -- [jmeno] = { q = { [id] = complete }, at }
+local function short(name) return (name or '?'):gsub('%-.*$', '') end
+local function inParty(name)
+  for i = 1, 4 do
+    local u = 'party' .. i
+    if UnitExists(u) and short(safe(pc(UnitName, u))) == short(name) then return u end
+  end
+end
+function R.recvLog(name, msg)
+  local q = {}
+  for id, c in msg:gmatch('(%d+):(%d)') do q[tonumber(id)] = c == '1' end
+  R.peerLogs[name] = { q = q, at = GetTime() }
+end
+local lastLog, lastLogAt = nil, -99
+local function sendLog()
+  local D = ns.Duo
+  if not (D and D.rawSend and D.ok and IsInGroup and IsInGroup()) or not QL.GetNumQuestLogEntries then return end
+  if InCombatLockdown and InCombatLockdown() then return end
+  local parts, len = {}, 3
+  for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
+    local info = pc(QL.GetInfo, i)
+    local id = type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID)
+    if id then
+      local p = id .. ':' .. ((QL.IsComplete and safeBool(pc(QL.IsComplete, id))) and '1' or '0')
+      if len + #p + 1 > 250 then break end
+      parts[#parts + 1] = p len = len + #p + 1
+    end
+  end
+  local msg = 'RL^' .. table.concat(parts, ',')
+  local now = GetTime()
+  if msg == lastLog and now - lastLogAt < 45 then return end
+  lastLog, lastLogAt = msg, now
+  D.rawSend(msg)
+end
+R.sendLog = sendLog
+-- aktivni partaci s addonem (posledni log mladsi nez 2 min a jsou v parte)
+local function peers()
+  local out = {}
+  for name, l in pairs(R.peerLogs) do
+    if GetTime() - l.at < 120 and inParty(name) then out[#out + 1] = { name = name, unit = inParty(name), q = l.q } end
+  end
+  table.sort(out, function(a, b) return a.name < b.name end)
+  return out
+end
+R.peers = peers
+-- pozice clena party (stejny start trasy pro vsechny = stejna trasa)
+local function unitPos(unit)
+  if unit == 'player' then return playerPos() end
+  local map = C_Map and safeNum(pc(C_Map.GetBestMapForUnit, unit))
+  local p = map and pc(C_Map.GetPlayerMapPosition, map, unit)
+  if not p then return nil end
+  local x, y = p.x, p.y
+  if p.GetXY then x, y = p:GetXY() end
+  if not (safeNum(x) and safeNum(y)) or (x == 0 and y == 0) then return nil end
+  local cont, v = pc(C_Map.GetWorldPosFromMapPos, map, p)
+  if not cont or not v then return nil end
+  return { c = cont, x = v.x, y = v.y, map = map }
+end
+
 function R.plan()
   if not DB then return nil, 'databaze neni nactena' end
   local me = playerPos()
   if not me then return nil, 'pozice neni k dispozici (instance?)' end
-  local stops = {}
-  for _, q in ipairs(logQuests()) do
-    if q.complete then
-      local enders = DB.qe[q.id]
-      stops[#stops + 1] = { q = q, kind = 'turnin', keys = enders or {} }
-    else
-      stops[#stops + 1] = { q = q, kind = 'obj' }
-    end
+  local myName = short(safe(pc(UnitName, 'player')))
+  -- kdo ma jaky quest: [id] = { title, obj = {jmena}, turn = {jmena}, mine = 'obj'/'turnin' }
+  local Qs = {}
+  local function note(id, who, complete, title)
+    local e = Qs[id] or { id = id, title = title or (DB.quest[id] and DB.quest[id][1]) or ('#' .. id), obj = {}, turn = {} }
+    if title then e.title = title end
+    table.insert(complete and e.turn or e.obj, who)
+    Qs[id] = e
   end
-  local route, pos, left = {}, me, stops
+  for _, q in ipairs(logQuests()) do note(q.id, myName, q.complete, q.title) end
+  local ps = peers()
+  for _, pr in ipairs(ps) do for id, c in pairs(pr.q) do if DB.quest[id] then note(id, short(pr.name), c) end end end
+  -- start: hrac s abecedne prvnim jmenem (u vsech stejny) - kdyz jeho pozici zname
+  local start = me
+  if #ps > 0 then
+    local names = { { n = myName, u = 'player' } }
+    for _, pr in ipairs(ps) do names[#names + 1] = { n = short(pr.name), u = pr.unit } end
+    table.sort(names, function(a, b) return a.n < b.n end)
+    start = unitPos(names[1].u) or me
+  end
+  local stops, ids = {}, {}
+  for id in pairs(Qs) do ids[#ids + 1] = id end
+  table.sort(ids)
+  for _, id in ipairs(ids) do
+    local e = Qs[id]
+    local q = { id = id, title = e.title }
+    if #e.turn > 0 then stops[#stops + 1] = { q = q, kind = 'turnin', keys = DB.qe[id] or {}, who = e.turn } end
+    if #e.obj > 0 then stops[#stops + 1] = { q = q, kind = 'obj', who = e.obj } end
+  end
+  local function mineIn(s) for _, w in ipairs(s.who) do if w == myName then return true end end end
+  local function locate(s, pos)
+    if s.kind == 'turnin' then
+      local p, d, k = nearest(s.keys, pos)
+      if not p and mineIn(s) then p = gameWaypoint(s.q.id) d = p and dist(pos, p.w) end
+      return p, d, k
+    end
+    return objective(s.q.id, pos)
+  end
+  local route, pos, left = {}, start, stops
   while #left > 0 and #route < 10 do
     local bi, bp, bd, bk
     for i, s in ipairs(left) do
-      local p, d, k
-      if s.kind == 'turnin' then
-        p, d, k = nearest(s.keys, pos)
-        if not p then p = gameWaypoint(s.q.id) d = p and dist(pos, p.w) end
-      else p, d = objective(s.q.id, pos) end
-      if p and (not bd or d < bd) then bi, bp, bd, bk = i, p, d, k end
+      local p, d, k = locate(s, pos)
+      if p and (not bd or d < bd - 0.01) then bi, bp, bd, bk = i, p, d, k end
     end
     if not bi then break end
     local s = table.remove(left, bi)
-    s.p, s.d, s.npc = bp, bd, bk
+    s.p, s.d, s.npc, s.mine = bp, dist(me, bp.w), bk, mineIn(s)
+    -- na stejnem miste (u stejneho NPC / do 40 yd) se vyridi i dalsi questy
+    s.also = {}
+    for i = #left, 1, -1 do
+      local o = left[i]
+      local p, d, k = locate(o, bp.w)
+      if p and (d < 40 or (k and k == bk)) then
+        table.remove(left, i)
+        o.p, o.npc, o.mine = p, k, mineIn(o)
+        table.insert(s.also, 1, o)
+      end
+    end
     -- navazujici quest (qx[7]) po odevzdani
     if s.kind == 'turnin' then
       local x = DB.qx[s.q.id]
       local nxt = type(x) == 'table' and x[7]
-      if nxt and DB.quest[nxt] and not done(nxt) then
+      if nxt and DB.quest[nxt] and not done(nxt) and not R.inLogSet()[nxt] then
         local op = objective(nxt, bp.w)
         s.next = { id = nxt, title = DB.quest[nxt][1], where = op and mapName(op.map) or nil, v = R.value(nxt, false),
           far = op and dist(bp.w, op.w) or nil }
@@ -294,7 +416,7 @@ function R.plan()
     route[#route + 1] = s
     pos = bp.w
   end
-  R.lastRoute, R.lastMe = route, me
+  R.lastRoute, R.lastMe, R.lastMyName = route, me, myName
   return route
 end
 
@@ -370,12 +492,13 @@ end
 ------------------------------------------------------------------------------------------
 local frame
 local function yd(d) return d and d < 99999 and (math.floor(d + 0.5) .. ' yd') or 'jiny kontinent' end
+local W, RH = 440, 30
 local function build()
   local f = CreateFrame('Frame', 'ClaudeMasterRoute', UIParent, 'BackdropTemplate')
   f:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 1 })
   local T = ns.THEME
   f:SetBackdropColor(T.bg[1], T.bg[2], T.bg[3], 0.94) f:SetBackdropBorderColor(unpack(T.border))
-  f:SetFrameStrata('MEDIUM') f:SetSize(380, 200)
+  f:SetFrameStrata('MEDIUM') f:SetSize(W, 200)
   f:SetMovable(true) f:EnableMouse(true) f:RegisterForDrag('LeftButton') f:SetClampedToScreen(true)
   f:SetScript('OnDragStart', f.StartMoving)
   f:SetScript('OnDragStop', function(self)
@@ -387,22 +510,31 @@ local function build()
   if pt then f:SetPoint(pt[1], UIParent, pt[2], pt[3], pt[4]) else f:SetPoint('RIGHT', -260, 80) end
   f.title = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal') f.title:SetPoint('TOPLEFT', 10, -8)
   f.title:SetText('Trasa questu') f.title:SetTextColor(unpack(T.title))
+  f.sum = f:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') f.sum:SetPoint('TOPLEFT', 10, -24)
+  f.sum:SetTextColor(0.6, 0.65, 0.73)
   local x = CreateFrame('Button', nil, f, 'UIPanelCloseButton') x:SetSize(20, 20) x:SetPoint('TOPRIGHT', 2, 2)
   x:SetScript('OnClick', function() f:Hide() end)
   f.rows = {}
-  for i = 1, 18 do
+  for i = 1, 22 do
     local b = CreateFrame('Button', nil, f)
-    b:SetSize(360, 16)
-    b:SetPoint('TOPLEFT', 10, -26 - (i - 1) * 16)
-    b.text = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall')
-    b.text:SetPoint('LEFT') b.text:SetJustifyH('LEFT') b.text:SetWidth(360) b.text:SetWordWrap(false)
-    b:SetHighlightTexture('Interface\\QuestFrame\\UI-QuestTitleHighlight', 'ADD')
+    b:SetSize(W - 12, RH)
+    b.bg = b:CreateTexture(nil, 'BACKGROUND') b.bg:SetAllPoints()
+    b.stripe = b:CreateTexture(nil, 'ARTWORK') b.stripe:SetTexture('Interface\\Buttons\\WHITE8X8') b.stripe:SetWidth(2)
+    b.stripe:SetPoint('TOPLEFT') b.stripe:SetPoint('BOTTOMLEFT')
+    b.num = b:CreateFontString(nil, 'OVERLAY', 'GameFontNormal') b.num:SetPoint('LEFT', 6, 0) b.num:SetWidth(18) b.num:SetJustifyH('RIGHT')
+    b.text = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight') b.text:SetJustifyH('LEFT') b.text:SetWordWrap(false)
+    b.sub = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') b.sub:SetJustifyH('LEFT') b.sub:SetWordWrap(false)
+    b.sub:SetTextColor(0.6, 0.64, 0.72)
+    b.right = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') b.right:SetPoint('TOPRIGHT', -6, -3) b.right:SetJustifyH('RIGHT')
+    b.right2 = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') b.right2:SetPoint('BOTTOMRIGHT', -6, 3) b.right2:SetJustifyH('RIGHT')
+    b.right2:SetTextColor(0.6, 0.64, 0.72)
+    b:SetHighlightTexture('Interface\\Buttons\\WHITE8X8', 'ADD') b:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.06)
     b:SetScript('OnClick', function(self) if self.p then R.waypoint(self.p, self.label) end end)
     b:SetScript('OnEnter', function(self)
       if not self.tip then return end
       GameTooltip:SetOwner(self, 'ANCHOR_LEFT')
       GameTooltip:AddLine(self.tip, 1, 1, 1, true)
-      GameTooltip:AddLine('Klik = sipka na mape', 0.6, 0.6, 0.6)
+      if self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
       GameTooltip:Show()
     end)
     b:SetScript('OnLeave', function() GameTooltip:Hide() end)
@@ -412,49 +544,101 @@ local function build()
   return f
 end
 
+local KIND = { turnin = { '|cff40ff60Odevzdat|r', 0.25, 1, 0.38 }, obj = { '|cffffd200Splnit|r', 1, 0.82, 0 } }
 function R.refresh()
   if not frame or not frame:IsShown() then return end
   local lines = {}
-  local function add(text, p, label, tip) lines[#lines + 1] = { text = text, p = p, label = label, tip = tip } end
+  local function add(l) lines[#lines + 1] = l end
+  local sumXP, steps = 0, 0
   if not DB then
-    add('|cffff8855ForeverDB neni nactena.|r')
+    add({ msg = '|cffff8855ForeverDB neni nactena.|r' })
   else
     local route, why = R.plan()
-    if not route then add('|cff9aa6b8' .. tostring(why) .. '|r')
+    if not route then add({ msg = '|cff9aa6b8' .. tostring(why) .. '|r' })
     else
-      if #route == 0 then add('|cff9aa6b8Zadne questy v logu s poznamou polohou.|r') end
+      if #route == 0 then add({ msg = '|cff9aa6b8Zadne questy v logu se znamou polohou.|r' }) end
+      local me = R.lastMyName
+      local function whoTag(s)
+        local others = {}
+        for _, w in ipairs(s.who or {}) do if w ~= me then others[#others + 1] = w end end
+        if #others == 0 then return '' end
+        return s.mine and (' |cff66ccff(i ' .. table.concat(others, ', ') .. ')|r') or (' |cff66ccff[' .. table.concat(others, ', ') .. ']|r')
+      end
       for i, s in ipairs(route) do
         local where = s.p and mapName(s.p.map) or '?'
-        if s.kind == 'turnin' then
-          local v = R.value(s.q.id, true)
-          add(('%d. |cff40ff60Odevzdat|r %s %s |cff9aa6b8- %s, %s|r'):format(i, s.q.title, R.valueText(v), s.npc and npcName(s.npc) or where, yd(s.d)),
-            s.p, s.q.title, ('Odevzdat u %s (%s)\n%s'):format(s.npc and npcName(s.npc) or '?', where, R.valueTip(v)))
-          if s.next then
-            local far = s.next.far and s.next.far > 400
-            add(('     |cffffd200-> navazuje:|r %s %s%s'):format(s.next.title, R.valueText(s.next.v),
-              s.next.where and (' |cff9aa6b8(' .. s.next.where .. (far and ', daleko' or ', blizko') .. ')|r') or ''))
-          end
-        else
-          local v = R.value(s.q.id, true)
-          add(('%d. |cffffd200Splnit|r %s %s |cff9aa6b8- %s, %s|r'):format(i, s.q.title, R.valueText(v), where, yd(s.d)), s.p, s.q.title,
-            'Misto plneni: ' .. where .. '\n' .. R.valueTip(v))
+        local v = s.mine and R.value(s.q.id, true) or R.value(s.q.id, false)
+        steps = steps + 1
+        if s.mine and s.kind == 'turnin' and v.xp then sumXP = sumXP + v.xp end
+        local k = KIND[s.kind]
+        add({ num = i, color = k, first = i == 1, text = k[1] .. '  ' .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v) or '',
+          sub = s.kind == 'turnin' and ((s.npc and npcName(s.npc) or '?') .. ', ' .. where) or ('misto plneni, ' .. where),
+          right2 = yd(s.d), p = s.p, label = s.q.title,
+          tip = (s.kind == 'turnin' and ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where) or ('Misto plneni: ' .. where))
+            .. '\n' .. R.valueTip(v) })
+        for _, o in ipairs(s.also or {}) do
+          local ov = o.mine and R.value(o.q.id, true)
+          if o.mine and o.kind == 'turnin' and ov and ov.xp then sumXP = sumXP + ov.xp end
+          local who = {}
+          for _, w in ipairs(o.who or {}) do who[#who + 1] = (w == me) and 'ty' or w end
+          local verb = #who > 1 and { 'odevzdate', 'splnite' } or (who[1] == 'ty' and { 'odevzdas', 'splnis' } or { 'odevzda', 'splni' })
+          add({ small = true, text = ('      |cff66ccff+|r %s tu %s |cff9aa6b8i:|r %s %s'):format(table.concat(who, ' + '),
+            o.kind == 'turnin' and ('|cff40ff60' .. verb[1] .. '|r') or ('|cffffd200' .. verb[2] .. '|r'), o.q.title, ov and R.valueText(ov) or ''),
+            p = o.p, label = o.q.title, tip = 'Na stejnem miste: ' .. o.q.title })
+        end
+        if s.next then
+          local far = s.next.far and s.next.far > 400
+          add({ small = true, text = ('      |cffffd200->|r |cff9aa6b8navazuje:|r %s %s%s'):format(s.next.title, R.valueText(s.next.v),
+            s.next.where and (' |cff9aa6b8(' .. s.next.where .. (far and ', daleko' or ', blizko') .. ')|r') or '') })
         end
       end
       local pick = R.pickups(route)
       if #pick > 0 then
-        add('|cff66ccffPo ceste muzes vzit:|r')
+        add({ head = 'Po ceste muzes vzit' })
         for _, q in ipairs(pick) do
-          add(('   [%d] %s %s |cff9aa6b8- %s, %s|r'):format(q.lvl or 0, q.title, R.valueText(q.v), q.npc, yd(q.d)), q.p, q.title,
-            ('Quest dava %s (%s)\n%s'):format(q.npc, mapName(q.p.map), R.valueTip(q.v)))
+          add({ text = ('|cff9aa6b8[%d]|r %s'):format(q.lvl or 0, q.title), right = R.valueText(q.v), sub = q.npc .. ', ' .. mapName(q.p.map),
+            right2 = yd(q.d), p = q.p, label = q.title, color = { '', 0.4, 0.8, 1 },
+            tip = ('Quest dava %s (%s)\n%s'):format(q.npc, mapName(q.p.map), R.valueTip(q.v)) })
         end
       end
     end
   end
+  local maxXP = safeNum(pc(UnitXPMax, 'player'))
+  local np = #R.peers()
+  frame.title:SetText(np > 0 and ('Trasa questu |cff66ccff- parta (%d)|r'):format(np + 1) or 'Trasa questu')
+  frame.sum:SetText(steps > 0 and ('%d krok%s  -  odevzdanim ziskas |cffffd200+%d XP|r%s'):format(steps, steps == 1 and '' or (steps < 5 and 'y' or 'u'),
+    sumXP, (maxXP and maxXP > 0) and (' (%d %% levelu)'):format(math.floor(sumXP / maxXP * 100 + 0.5)) or '') or '')
+  local y, odd = -42, false
   for i, r in ipairs(frame.rows) do
     local l = lines[i]
-    if l then r.text:SetText(l.text) r.p, r.label, r.tip = l.p, l.label, l.tip r:Show() else r:Hide() end
+    if not l then r:Hide()
+    else
+      local h = (l.small or l.msg) and 16 or (l.head and 22 or RH)
+      r:SetHeight(h) r:ClearAllPoints() r:SetPoint('TOPLEFT', 6, y) y = y - h
+      r.p, r.label, r.tip = l.p, l.label, l.tip
+      r.num:SetText(l.num and (l.num .. '.') or '')
+      r.right:SetText(l.right or '') r.right2:SetText(l.right2 or '')
+      r.text:ClearAllPoints() r.sub:SetText(l.sub or '')
+      r.stripe:SetShown(l.color ~= nil and not l.head)
+      if l.color then r.stripe:SetVertexColor(l.color[2], l.color[3], l.color[4], l.first and 1 or 0.45) end
+      if l.head then
+        r.bg:SetColorTexture(0, 0, 0, 0)
+        r.text:SetPoint('BOTTOMLEFT', 4, 3) r.text:SetText('|cff66ccff' .. l.head .. '|r')
+        odd = false
+      elseif l.small or l.msg then
+        r.bg:SetColorTexture(0, 0, 0, 0)
+        r.text:SetPoint('LEFT', 4, 0) r.text:SetText(l.text or l.msg) r.text:SetWidth(W - 24)
+      else
+        odd = not odd
+        r.bg:SetColorTexture(1, 1, 1, l.first and 0.08 or (odd and 0.035 or 0.012))
+        local rw = math.max(r.right:GetStringWidth() or 0, r.right2:GetStringWidth() or 0)
+        local left = l.num and 28 or 10
+        r.text:SetPoint('TOPLEFT', left, -3) r.text:SetText(l.text) r.text:SetWidth(W - 24 - left - rw - 8)
+        r.sub:ClearAllPoints() r.sub:SetPoint('BOTTOMLEFT', left, 3) r.sub:SetWidth(W - 24 - left - rw - 8)
+      end
+      r:Show()
+    end
   end
-  frame:SetHeight(36 + math.min(#lines, #frame.rows) * 16)
+  frame:SetHeight(-y + 8)
 end
 
 function R.toggle()
@@ -474,12 +658,14 @@ function R.toggle()
 end
 
 -- prubezne obnovovani okna (mimo boj, kazde 3 s)
-local acc = 0
+local acc, sendAcc = 0, 0
 local tick = CreateFrame('Frame')
 tick:SetScript('OnUpdate', function(_, el)
   acc = acc + el
   if acc < 3 then return end
   acc = 0
+  sendAcc = (sendAcc or 0) + 1
+  if sendAcc >= 4 then sendAcc = 0 pcall(sendLog) end
   if frame and frame:IsShown() and not InCombatLockdown() then pcall(R.refresh) end
 end)
 
@@ -510,8 +696,8 @@ ev:SetScript('OnEvent', function()
 end)
 
 -- pro Pruzkumnika (Explore.lua)
-R.spots, R.world, R.dist, R.playerPos, R.mapName, R.npcName, R.done, R.factionOk, R.objective =
-  spots, world, dist, playerPos, mapName, npcName, done, factionOk, objective
+R.spots, R.world, R.dist, R.playerPos, R.mapName, R.npcName, R.done, R.factionOk, R.objective, R.nearest =
+  spots, world, dist, playerPos, mapName, npcName, done, factionOk, objective, nearest
 function R.DB() return DB end
 function R.inLogSet()
   local t = {}

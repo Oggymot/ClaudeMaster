@@ -42,6 +42,12 @@ nekopiruje, jen si ho na vyzadani nacte.
 V nastaveni je i zalozka **Pruzkumnik**: hledani questu, NPC a itemu (`z:oblast` = questy v oblasti),
 filtry *Kde levelit* (oblasti podle questu a XP pro tvuj level), *Dropy pro tebe* (zelene+ itemy z mobu
 tveho levelu, ktere jsou vylepsenim) a *Blizko* (questy a rare moby pobliz). Klik na radek = sipka na mape.
+Klik na oblast = seznam questu v ni, klik na quest = detail (zadavatel, misto plneni, odevzdani, odmeny,
+reputace, retez questu), klik na item = odkud pada, z jakeho questu je a kdo ho prodava. Pravy klik = sipka.
+
+V parte si addony posilaji quest log, takze trasa je spolecna: zahrne i questy, ktere ma jen partak,
+a u zastavky napise, kdo tam co odevzda nebo splni navic.
+
 Bez ForeverDB funguje zbytek addonu normalne, tyto funkce jen napisou, ze ForeverDB chybi.
 
 ## Data o mobech
