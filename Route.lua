@@ -606,6 +606,37 @@ local function factionOk(key)
   return not nf or nf:find(myFac, 1, true) ~= nil
 end
 local pickAt, pickCache = -99, nil
+-- class questy (qx[2] = maska class): ikona classy, a questy jinych class nenabizet
+local CLASSBIT = { WARRIOR = 1, PALADIN = 2, HUNTER = 4, ROGUE = 8, PRIEST = 16, SHAMAN = 64, MAGE = 128, WARLOCK = 256, DRUID = 1024 }
+local CLASSORDER = { 'WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID' }
+local function hasBit(m, b) return math.floor(m / b) % 2 == 1 end
+local function myClass() local _, c = pc(UnitClass, 'player') return safe(c) end
+-- trida questu: nil = pro vsechny; jinak token classy (moje, kdyz je mezi nimi)
+function R.questClass(qid)
+  local x = DB and DB.qx and DB.qx[qid]
+  local m = type(x) == 'table' and safeNum(x[2])
+  if not m or m <= 0 then return nil end
+  local list = {}
+  for _, c in ipairs(CLASSORDER) do if hasBit(m, CLASSBIT[c]) then list[#list + 1] = c end end
+  if #list == 0 or #list >= 9 then return nil end
+  local me = myClass()
+  for _, c in ipairs(list) do if c == me then return c, true end end
+  return list[1], false
+end
+function R.classOk(qid)
+  local c, mine = R.questClass(qid)
+  return c == nil or mine
+end
+function R.classIcon(qid, size)
+  local c = R.questClass(qid)
+  local t = c and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[c]
+  if not t then return '' end
+  size = size or 14
+  return ('|TInterface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES:%d:%d:0:0:256:256:%d:%d:%d:%d|t'):format(size, size,
+    math.floor(t[1] * 256 + 0.5), math.floor(t[2] * 256 + 0.5), math.floor(t[3] * 256 + 0.5), math.floor(t[4] * 256 + 0.5))
+end
+local function cname(c) return c and (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[c] or (c:sub(1, 1) .. c:sub(2):lower())) end
+
 function R.pickups(route)
   if not DB then return {} end
   if pickCache and GetTime() - pickAt < 10 then return pickCache end
@@ -624,7 +655,7 @@ function R.pickups(route)
       local pre = type(x) == 'table' and x[3]
       local ok = true
       if type(pre) == 'table' then for _, p in ipairs(pre) do if not done(p) then ok = false break end end end
-      if ok and not done(qid) then
+      if ok and not done(qid) and R.classOk(qid) then
         for _, k in ipairs(givers) do
           if factionOk(k) then
             for _, s in ipairs(spots(k)) do
@@ -726,6 +757,10 @@ local function richTip(tt)
   local G = GameTooltip
   G:AddLine(tt.title, 1, 0.82, 0)
   if tt.pvp then G:AddLine(pvpIcon() .. ' PvP quest', 1, 0.35, 0.35) end
+  if tt.qid then
+    local c, mine = R.questClass(tt.qid)
+    if c then G:AddLine(R.classIcon(tt.qid) .. ' Class quest: ' .. cname(c) .. (mine and '' or ' |cffff5555(ne pro tebe)|r'), 0.85, 0.75, 1) end
+  end
   G:AddDoubleLine(tt.action, tt.dist or '', 1, 1, 1, 0.7, 0.7, 0.7)
   if tt.zone then G:AddDoubleLine('Zona', tt.zone, 0.55, 0.6, 0.7, 1, 1, 1) end
   if tt.who then G:AddDoubleLine('Parta', tt.who, 0.55, 0.6, 0.7, 0.4, 0.8, 1) end
@@ -978,7 +1013,9 @@ local function collect()
           who = others[1] and (s.mine and ('ty + ' .. table.concat(others, ', ')) or (table.concat(others, ', ') .. ' (ty ho nemas)')) or nil,
           action = s.kind == 'turnin' and ('|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff60Odevzdat|r u ' .. (s.npc and npcName(s.npc) or '?'))
             or '|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t |cffffd200Splnit|r - misto plneni' }
-        local pv = pvp and (pvpIcon() .. ' ') or ''
+        local ci = R.classIcon(s.q.id)
+        tt.qid = s.q.id
+        local pv = (pvp and (pvpIcon() .. ' ') or '') .. (ci ~= '' and (ci .. ' ') or '')
         add({ num = i, color = k, first = i == 1, tt = tt, here = isHere or false, text = k[1] .. ' ' .. pv .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v, true) or '',
           ctext = k[1] .. ' ' .. pv .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s), objTip = objTip,
           sub = sub, right2 = isHere and yd(s.d) or '', p = s.p, label = s.q.title, qid = s.q.id, short = s.q.title,
@@ -1019,7 +1056,9 @@ local function collect()
             who = oth[1] and (o.mine and ('ty + ' .. table.concat(oth, ', ')) or (table.concat(oth, ', ') .. ' (ty ho nemas)')) or nil,
             action = (o.kind == 'turnin' and ('|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff60Odevzdat|r u ' .. (o.npc and npcName(o.npc) or (s.npc and npcName(s.npc)) or '?'))
               or '|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t |cffffd200Splnit|r') .. ' |cff9aa6b8(na stejnem miste)|r' }
-          add({ small = true, tt = ott, text = ('        %s %s%s'):format(ico, o.q.title, tag), right = ov and R.valueText(ov, true) or '',
+          ott.qid = o.q.id
+          local oci = R.classIcon(o.q.id, 12)
+          add({ small = true, tt = ott, text = ('        %s %s%s%s'):format(ico, oci ~= '' and (oci .. ' ') or '', o.q.title, tag), right = ov and R.valueText(ov, true) or '',
             p = o.p, label = o.q.title, qid = o.q.id,
             tip = ('Na stejnem miste %s i: %s'):format(o.kind == 'turnin' and 'odevzdat' or 'splnit', o.q.title) .. ' (' .. table.concat(who, ' + ') .. ')' })
         end
@@ -1028,7 +1067,7 @@ local function collect()
           local nq = DB.quest[s.next.id]
           local gv = DB.qg[s.next.id] and DB.qg[s.next.id][1]
           add({ small = true, qid = s.next.id, detailFirst = true, right = R.valueText(s.next.v, true),
-            tt = { title = (nq and nq[2] and ('[%d] '):format(nq[2]) or '') .. s.next.title, zone = s.next.where, v = s.next.v, pvp = R.isPvP(s.next.id),
+            tt = { qid = s.next.id, title = (nq and nq[2] and ('[%d] '):format(nq[2]) or '') .. s.next.title, zone = s.next.where, v = s.next.v, pvp = R.isPvP(s.next.id),
               dist = s.next.far and (math.floor(s.next.far + 0.5) .. ' yd od kroku') or nil,
               action = '|TInterface\\ChatFrame\\ChatFrameExpandArrow:14:14|t |cffd8d8d8Navazuje|r - vezmes u ' .. (gv and npcName(gv) or '?') },
             tip = 'Navazujici quest: ' .. s.next.title .. (s.next.where and ('\n' .. s.next.where .. (far and ' (daleko)' or ' (blizko)')) or ''),
@@ -1044,17 +1083,19 @@ local function collect()
         local ICO = '|TInterface\\GossipFrame\\AvailableQuestIcon:15:15|t '
         for _, q in ipairs(near) do
           local pvp = R.isPvP(q.id)
-          add({ here = true, tt = { title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v, pvp = pvp,
+          local ci = R.classIcon(q.id)
+          add({ here = true, tt = { qid = q.id, title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v, pvp = pvp,
               action = '|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd200Vzit|r u ' .. q.npc },
-            text = ICO .. (pvp and (pvpIcon() .. ' ') or '') .. ('|cff9aa6b8[%d]|r |cffffffff%s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = q.npc,
+            text = ICO .. (pvp and (pvpIcon() .. ' ') or '') .. (ci ~= '' and (ci .. ' ') or '') .. ('|cff9aa6b8[%d]|r |cffffffff%s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = q.npc,
             right2 = yd(q.d), p = q.p, label = q.title, qid = q.id, color = { '', 0.3, 1, 0.45 }, first = q.d and q.d < 400, bright = true,
             tip = ('Quest dava %s (%s), %s\n%s'):format(q.npc, mapName(q.p.map), yd(q.d), R.valueTip(q.v)) })
         end
         for _, q in ipairs(far) do
           local pvp = R.isPvP(q.id)
-          add({ tt = { title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v, pvp = pvp,
+          local ci = R.classIcon(q.id)
+          add({ tt = { qid = q.id, title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v, pvp = pvp,
               action = '|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd200Vzit|r u ' .. q.npc },
-            text = (pvp and (pvpIcon() .. ' ') or '') .. ('|cff777777[%d] %s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = mapName(q.p.map),
+            text = (pvp and (pvpIcon() .. ' ') or '') .. (ci ~= '' and (ci .. ' ') or '') .. ('|cff777777[%d] %s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = mapName(q.p.map),
             right2 = '', p = q.p, label = q.title, qid = q.id, color = { '', 0.4, 0.5, 0.6 },
             tip = ('Quest dava %s (%s), %s\n%s'):format(q.npc, mapName(q.p.map), yd(q.d), R.valueTip(q.v)) })
         end

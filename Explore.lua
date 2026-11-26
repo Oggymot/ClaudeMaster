@@ -67,6 +67,7 @@ local function questOk(qid, inLog, L, spread)
   local ql, minl = info[2] or 0, info[3] or 1
   if minl > L or ql < L - (spread or 3) or ql > L + 3 then return false end
   if R().done(qid) then return false end
+  if R().classOk and not R().classOk(qid) then return false end
   local x = D.qx[qid]
   local pre = type(x) == 'table' and x[3]
   if type(pre) == 'table' then for _, p in ipairs(pre) do if D.quest[p] and not R().done(p) then return false end end end
@@ -323,6 +324,7 @@ local function qrow(qid, me, extra)
   local v = R().value and R().value(qid, false)
   local st = R().done(qid) and ' |cff40ff60(hotovo)|r' or (R().inLogSet()[qid] and ' |cff66ccff(v logu)|r' or '')
   if R().isPvP and R().isPvP(qid) then st = st .. ' |cffff5555PvP|r' end
+  if R().classIcon then local ci = R().classIcon(qid, 12) if ci ~= '' then st = ' ' .. ci .. st end end
   return { icon = ICON.quest, title = ('|cff9aa6b8[%d]|r %s%s'):format(info[2] or 0, info[1], st),
     sub = (extra and (extra .. ' - ') or '') .. (g and (R().npcName(g) .. (p and (', ' .. where(p)) or '')) or 'neznamy zadavatel'),
     right = v and R().valueText(v) or '', right2 = yd(d), p = p, link = 'quest:' .. qid, open = function() return X.quest(qid) end }
