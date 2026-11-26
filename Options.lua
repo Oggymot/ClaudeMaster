@@ -670,6 +670,12 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     setStatus('')
     return true
   end
+  -- z jinych oken (trasa questu): ukaz seznam / detail
+  O.exploreShow = function(list, what)
+    if not list or not ready() then return end
+    activate(nil)
+    view(list, what or '')
+  end
   local pend
   eb:SetScript('OnTextChanged', function(self)
     eb.hint:SetShown(self:GetText() == '')

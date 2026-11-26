@@ -551,14 +551,34 @@ end
 ------------------------------------------------------------------------------------------
 local frame
 local function yd(d) return d and d < 99999 and (math.floor(d + 0.5) .. ' yd') or 'jiny kontinent' end
-local W, RH = 440, 30
+local RH = 30
+local function cfg() return ns.db end
+local function W() return math.max(300, math.min(900, (cfg() and cfg().routeW) or 440)) end
+local function openQuest(qid)
+  if not (qid and ns.Options and ns.Options.toggle and ns.Explore) then return end
+  ns.Options.toggle('explore')
+  if ns.Options.exploreShow then ns.Options.exploreShow(ns.Explore.quest(qid)) end
+end
+local icon
+local function applyLook(f)
+  local T = ns.THEME
+  local tr = cfg().routeAlpha
+  f:SetBackdropColor(T.bg[1], T.bg[2], T.bg[3], tr and 0.3 or 0.94)
+  local b = T.border
+  f:SetBackdropBorderColor(b[1], b[2], b[3], tr and 0.15 or (b[4] or 1))
+  if f.btns then
+    f.btns.c.t:SetTextColor(cfg().routeCompact and 1 or 0.55, cfg().routeCompact and 0.82 or 0.6, cfg().routeCompact and 0 or 0.7)
+    f.btns.a.t:SetTextColor(tr and 1 or 0.55, tr and 0.82 or 0.6, tr and 0 or 0.7)
+  end
+end
 local function build()
   local f = CreateFrame('Frame', 'ClaudeMasterRoute', UIParent, 'BackdropTemplate')
   f:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 1 })
   local T = ns.THEME
-  f:SetBackdropColor(T.bg[1], T.bg[2], T.bg[3], 0.94) f:SetBackdropBorderColor(unpack(T.border))
-  f:SetFrameStrata('MEDIUM') f:SetSize(W, 200)
+  f:SetFrameStrata('MEDIUM') f:SetSize(W(), 200)
   f:SetMovable(true) f:EnableMouse(true) f:RegisterForDrag('LeftButton') f:SetClampedToScreen(true)
+  if f.SetResizeBounds then f:SetResizeBounds(300, 80, 900, 1000) elseif f.SetMinResize then f:SetMinResize(300, 80) f:SetMaxResize(900, 1000) end
+  f:SetResizable(true)
   f:SetScript('OnDragStart', f.StartMoving)
   f:SetScript('OnDragStop', function(self)
     self:StopMovingOrSizing()
@@ -571,12 +591,56 @@ local function build()
   f.title:SetText('Trasa questu') f.title:SetTextColor(unpack(T.title))
   f.sum = f:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') f.sum:SetPoint('TOPLEFT', 10, -24)
   f.sum:SetTextColor(0.6, 0.65, 0.73)
+  -- tlacitka v hlavicce: kompaktni / pruhledny / minimalizovat / zavrit
+  local function hb(txt, tipT, tipD, onClick)
+    local b = CreateFrame('Button', nil, f)
+    b:SetSize(18, 18)
+    b.t = b:CreateFontString(nil, 'OVERLAY', 'GameFontNormal') b.t:SetPoint('CENTER') b.t:SetText(txt)
+    b:SetHighlightTexture('Interface\\Buttons\\WHITE8X8', 'ADD') b:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.12)
+    b:SetScript('OnClick', onClick)
+    b:SetScript('OnEnter', function(self)
+      GameTooltip:SetOwner(self, 'ANCHOR_TOP') GameTooltip:AddLine(tipT, 1, 1, 1) GameTooltip:AddLine(tipD, 0.8, 0.8, 0.8, true) GameTooltip:Show()
+    end)
+    b:SetScript('OnLeave', function() GameTooltip:Hide() end)
+    return b
+  end
   local x = CreateFrame('Button', nil, f, 'UIPanelCloseButton') x:SetSize(20, 20) x:SetPoint('TOPRIGHT', 2, 2)
   x:SetScript('OnClick', function() f:Hide() end)
+  f.btns = {}
+  f.btns.m = hb('_', 'Minimalizovat', 'Schova okno do ikony. Najeti na ikonu ukaze trasu, klik ji zase otevre.', function() R.minimize(true) end)
+  f.btns.m:SetPoint('RIGHT', x, 'LEFT', -2, 0)
+  f.btns.a = hb('T', 'Pruhledny rezim', 'Skoro pruhledne pozadi, okno tolik neprekazi.', function()
+    cfg().routeAlpha = not cfg().routeAlpha or nil applyLook(f) R.refresh() end)
+  f.btns.a:SetPoint('RIGHT', f.btns.m, 'LEFT', -2, 0)
+  f.btns.c = hb('K', 'Kompaktni rezim', 'Jeden radek na krok, bez podrobnosti (ty jsou v tooltipu).', function()
+    cfg().routeCompact = not cfg().routeCompact or nil applyLook(f) R.refresh() end)
+  f.btns.c:SetPoint('RIGHT', f.btns.a, 'LEFT', -2, 0)
+  -- zmena velikosti (sirka + max. vyska), kolecko = posun
+  local grip = CreateFrame('Button', nil, f)
+  grip:SetSize(14, 14) grip:SetPoint('BOTTOMRIGHT', -1, 1) grip:SetFrameLevel(f:GetFrameLevel() + 10)
+  grip:SetNormalTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up')
+  grip:SetHighlightTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight')
+  grip:SetPushedTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down')
+  grip:SetScript('OnMouseDown', function() f.sizing = true f:StartSizing('BOTTOMRIGHT') end)
+  grip:SetScript('OnMouseUp', function()
+    f:StopMovingOrSizing() f.sizing = false
+    cfg().routeW = math.floor(f:GetWidth() + 0.5) cfg().routeH = math.floor(f:GetHeight() + 0.5)
+    local p, _, rp, xx, yy = f:GetPoint() cfg().routePoint = { p, rp, xx, yy }
+    R.refresh()
+  end)
+  grip:SetScript('OnDoubleClick', function() cfg().routeW, cfg().routeH = nil, nil f:SetWidth(W()) R.refresh() end)
+  grip:SetScript('OnEnter', function(self)
+    GameTooltip:SetOwner(self, 'ANCHOR_TOP') GameTooltip:AddLine('Velikost okna', 1, 1, 1)
+    GameTooltip:AddLine('Tahni za roh (sirka a max. vyska). Dvojklik = puvodni. Kolecko mysi = posun seznamu.', 0.8, 0.8, 0.8, true) GameTooltip:Show()
+  end)
+  grip:SetScript('OnLeave', function() GameTooltip:Hide() end)
+  f.scroll, f.sizing = 0, false
+  f:EnableMouseWheel(true)
+  f:SetScript('OnMouseWheel', function(_, d) f.scroll = math.max(0, (f.scroll or 0) - d * 2) R.refresh() end)
   f.rows = {}
-  for i = 1, 22 do
+  for i = 1, 40 do
     local b = CreateFrame('Button', nil, f)
-    b:SetSize(W - 12, RH)
+    b:SetSize(W() - 12, RH)
     b.bg = b:CreateTexture(nil, 'BACKGROUND') b.bg:SetAllPoints()
     b.stripe = b:CreateTexture(nil, 'ARTWORK') b.stripe:SetTexture('Interface\\Buttons\\WHITE8X8') b.stripe:SetWidth(2)
     b.stripe:SetPoint('TOPLEFT') b.stripe:SetPoint('BOTTOMLEFT')
@@ -584,28 +648,38 @@ local function build()
     b.text = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight') b.text:SetJustifyH('LEFT') b.text:SetWordWrap(false)
     b.sub = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') b.sub:SetJustifyH('LEFT') b.sub:SetWordWrap(false)
     b.sub:SetTextColor(0.6, 0.64, 0.72)
-    b.right = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') b.right:SetPoint('TOPRIGHT', -6, -3) b.right:SetJustifyH('RIGHT')
+    b.right = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') b.right:SetJustifyH('RIGHT')
     b.right2 = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') b.right2:SetPoint('BOTTOMRIGHT', -6, 3) b.right2:SetJustifyH('RIGHT')
     b.right2:SetTextColor(0.6, 0.64, 0.72)
     b:SetHighlightTexture('Interface\\Buttons\\WHITE8X8', 'ADD') b:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.06)
-    b:SetScript('OnClick', function(self) if self.p then R.waypoint(self.p, self.label) end end)
+    b:RegisterForClicks('LeftButtonUp', 'RightButtonUp')
+    b:SetScript('OnClick', function(self, btn)
+      -- navazujici quest: klik = detail; krok: klik = sipka, pravy klik = detail
+      if self.qid and (btn == 'RightButton' or self.detailFirst) then openQuest(self.qid) return end
+      if self.p then R.waypoint(self.p, self.label) elseif self.qid then openQuest(self.qid) end
+    end)
     b:SetScript('OnEnter', function(self)
-      if not self.tip then return end
+      if not (self.tip or self.qid) then return end
       GameTooltip:SetOwner(self, 'ANCHOR_LEFT')
-      GameTooltip:AddLine(self.tip, 1, 1, 1, true)
-      if self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
+      if self.tip then GameTooltip:AddLine(self.tip, 1, 1, 1, true) end
+      if self.detailFirst then GameTooltip:AddLine('Klik = detail questu', 0.55, 0.85, 1)
+      else
+        if self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
+        if self.qid then GameTooltip:AddLine('Pravy klik = detail questu', 0.55, 0.85, 1) end
+      end
       GameTooltip:Show()
     end)
     b:SetScript('OnLeave', function() GameTooltip:Hide() end)
     f.rows[i] = b
   end
+  applyLook(f)
   f:Hide()
   return f
 end
 
 local KIND = { turnin = { '|cff40ff60Odevzdat|r', 0.25, 1, 0.38 }, obj = { '|cffffd200Splnit|r', 1, 0.82, 0 } }
-function R.refresh()
-  if not frame or not frame:IsShown() then return end
+-- obsah trasy (bez vykresleni): radky + souhrn
+local function collect()
   local lines = {}
   local function add(l) lines[#lines + 1] = l end
   local sumXP, steps = 0, 0
@@ -631,7 +705,7 @@ function R.refresh()
         local k = KIND[s.kind]
         add({ num = i, color = k, first = i == 1, text = k[1] .. '  ' .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v) or '',
           sub = s.kind == 'turnin' and ((s.npc and npcName(s.npc) or '?') .. ', ' .. where) or ('misto plneni, ' .. where),
-          right2 = yd(s.d), p = s.p, label = s.q.title,
+          right2 = yd(s.d), p = s.p, label = s.q.title, qid = s.q.id, short = s.q.title,
           tip = (s.kind == 'turnin' and ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where) or ('Misto plneni: ' .. where))
             .. '\n' .. R.valueTip(v) })
         for _, o in ipairs(s.also or {}) do
@@ -642,11 +716,12 @@ function R.refresh()
           local verb = #who > 1 and { 'odevzdate', 'splnite' } or (who[1] == 'ty' and { 'odevzdas', 'splnis' } or { 'odevzda', 'splni' })
           add({ small = true, text = ('      |cff66ccff+|r %s tu %s |cff9aa6b8i:|r %s %s'):format(table.concat(who, ' + '),
             o.kind == 'turnin' and ('|cff40ff60' .. verb[1] .. '|r') or ('|cffffd200' .. verb[2] .. '|r'), o.q.title, ov and R.valueText(ov) or ''),
-            p = o.p, label = o.q.title, tip = 'Na stejnem miste: ' .. o.q.title })
+            p = o.p, label = o.q.title, qid = o.q.id, tip = 'Na stejnem miste: ' .. o.q.title })
         end
         if s.next then
           local far = s.next.far and s.next.far > 400
-          add({ small = true, text = ('      |cffffd200->|r |cff9aa6b8navazuje:|r %s %s%s'):format(s.next.title, R.valueText(s.next.v),
+          add({ small = true, qid = s.next.id, detailFirst = true, tip = 'Navazujici quest: ' .. s.next.title,
+            text = ('      |cffffd200->|r |cff9aa6b8navazuje:|r %s %s%s'):format(s.next.title, R.valueText(s.next.v),
             s.next.where and (' |cff9aa6b8(' .. s.next.where .. (far and ', daleko' or ', blizko') .. ')|r') or '') })
         end
       end
@@ -655,54 +730,147 @@ function R.refresh()
         add({ head = 'Po ceste muzes vzit' })
         for _, q in ipairs(pick) do
           add({ text = ('|cff9aa6b8[%d]|r %s'):format(q.lvl or 0, q.title), right = R.valueText(q.v), sub = q.npc .. ', ' .. mapName(q.p.map),
-            right2 = yd(q.d), p = q.p, label = q.title, color = { '', 0.4, 0.8, 1 },
+            right2 = yd(q.d), p = q.p, label = q.title, qid = q.id, color = { '', 0.4, 0.8, 1 },
             tip = ('Quest dava %s (%s)\n%s'):format(q.npc, mapName(q.p.map), R.valueTip(q.v)) })
         end
       end
     end
   end
   local maxXP = safeNum(pc(UnitXPMax, 'player'))
+  local sum = steps > 0 and ('%d krok%s  -  odevzdanim ziskas |cffffd200+%d XP|r%s'):format(steps, steps == 1 and '' or (steps < 5 and 'y' or 'u'),
+    sumXP, (maxXP and maxXP > 0) and (' (%d %% levelu)'):format(math.floor(sumXP / maxXP * 100 + 0.5)) or '') or ''
+  return lines, sum, steps
+end
+
+function R.refresh()
+  if not frame or not frame:IsShown() or frame.sizing then return end
+  local lines, sum = collect()
+  local compact, tr = cfg().routeCompact, cfg().routeAlpha
+  local w = W()
   local np = #R.peers()
+  frame:SetWidth(w)
   frame.title:SetText(np > 0 and ('Trasa questu |cff66ccff- parta (%d)|r'):format(np + 1) or 'Trasa questu')
-  frame.sum:SetText(steps > 0 and ('%d krok%s  -  odevzdanim ziskas |cffffd200+%d XP|r%s'):format(steps, steps == 1 and '' or (steps < 5 and 'y' or 'u'),
-    sumXP, (maxXP and maxXP > 0) and (' (%d %% levelu)'):format(math.floor(sumXP / maxXP * 100 + 0.5)) or '') or '')
-  local y, odd = -42, false
+  frame.sum:SetText(sum) frame.sum:SetShown(not compact)
+  local maxH = cfg().routeH
+  local rh = compact and 17 or RH
+  local y, odd = compact and -26 or -42, false
+  local start = math.min(frame.scroll or 0, math.max(0, #lines - 1))
+  frame.scroll = start
+  local shown = 0
   for i, r in ipairs(frame.rows) do
-    local l = lines[i]
-    if not l then r:Hide()
+    local l = lines[i + start]
+    local h = l and ((l.small or l.msg) and (compact and 15 or 16) or (l.head and (compact and 18 or 22) or rh))
+    if not l or (maxH and -y + h + 8 > maxH) then r:Hide()
     else
-      local h = (l.small or l.msg) and 16 or (l.head and 22 or RH)
+      shown = shown + 1
+      r:SetWidth(w - 12)
       r:SetHeight(h) r:ClearAllPoints() r:SetPoint('TOPLEFT', 6, y) y = y - h
-      r.p, r.label, r.tip = l.p, l.label, l.tip
+      r.p, r.label, r.tip, r.qid, r.detailFirst = l.p, l.label, l.tip, l.qid, l.detailFirst
+      if compact and l.sub then r.tip = (l.sub .. (l.right2 and l.right2 ~= '' and (', ' .. l.right2) or '')) .. (l.tip and ('\n' .. l.tip) or '') end
       r.num:SetText(l.num and (l.num .. '.') or '')
-      r.right:SetText(l.right or '') r.right2:SetText(l.right2 or '')
-      r.text:ClearAllPoints() r.sub:SetText(l.sub or '')
+      r.right:SetText(l.right or '') r.right2:SetText((not compact) and l.right2 or '')
+      r.right:ClearAllPoints()
+      if compact then r.right:SetPoint('RIGHT', -6, 0) else r.right:SetPoint('TOPRIGHT', -6, -3) end
+      r.text:ClearAllPoints() r.sub:SetText((not compact) and l.sub or '')
       r.stripe:SetShown(l.color ~= nil and not l.head)
       if l.color then r.stripe:SetVertexColor(l.color[2], l.color[3], l.color[4], l.first and 1 or 0.45) end
+      local a = tr and 0.5 or 1
       if l.head then
         r.bg:SetColorTexture(0, 0, 0, 0)
         r.text:SetPoint('BOTTOMLEFT', 4, 3) r.text:SetText('|cff66ccff' .. l.head .. '|r')
         odd = false
       elseif l.small or l.msg then
         r.bg:SetColorTexture(0, 0, 0, 0)
-        r.text:SetPoint('LEFT', 4, 0) r.text:SetText(l.text or l.msg) r.text:SetWidth(W - 24)
+        r.text:SetPoint('LEFT', 4, 0) r.text:SetText(l.text or l.msg) r.text:SetWidth(w - 24)
       else
         odd = not odd
-        r.bg:SetColorTexture(1, 1, 1, l.first and 0.08 or (odd and 0.035 or 0.012))
-        local rw = math.max(r.right:GetStringWidth() or 0, r.right2:GetStringWidth() or 0)
+        r.bg:SetColorTexture(1, 1, 1, (l.first and 0.08 or (odd and 0.035 or 0.012)) * a)
+        local rw = math.max(r.right:GetStringWidth() or 0, compact and 0 or (r.right2:GetStringWidth() or 0))
         local left = l.num and 28 or 10
-        r.text:SetPoint('TOPLEFT', left, -3) r.text:SetText(l.text) r.text:SetWidth(W - 24 - left - rw - 8)
-        r.sub:ClearAllPoints() r.sub:SetPoint('BOTTOMLEFT', left, 3) r.sub:SetWidth(W - 24 - left - rw - 8)
+        if compact then r.text:SetPoint('LEFT', left, 0) else r.text:SetPoint('TOPLEFT', left, -3) end
+        r.text:SetText(l.text) r.text:SetWidth(w - 24 - left - rw - 8)
+        r.sub:ClearAllPoints() r.sub:SetPoint('BOTTOMLEFT', left, 3) r.sub:SetWidth(w - 24 - left - rw - 8)
       end
       r:Show()
     end
   end
-  frame:SetHeight(-y + 8)
+  local more = #lines - start - shown
+  frame.sum:SetText(sum .. ((start > 0 or more > 0) and ('  |cff888888(%s%s)|r'):format(start > 0 and ('^' .. start .. ' ') or '', more > 0 and ('v' .. more) or '') or ''))
+  frame:SetHeight(maxH or (-y + 8))
+end
+
+-- minimalizace do ikony (najeti = prehled trasy, klik = otevrit, pravy klik = zavrit)
+local function buildIcon()
+  local b = CreateFrame('Button', 'ClaudeMasterRouteIcon', UIParent, 'BackdropTemplate')
+  b:SetSize(34, 34) b:SetFrameStrata('MEDIUM') b:SetClampedToScreen(true)
+  b:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 1 })
+  b:SetBackdropColor(0, 0, 0, 0.6) b:SetBackdropBorderColor(unpack(ns.THEME.border))
+  b.tex = b:CreateTexture(nil, 'ARTWORK') b.tex:SetPoint('TOPLEFT', 3, -3) b.tex:SetPoint('BOTTOMRIGHT', -3, 3)
+  b.tex:SetTexture('Interface\\Icons\\INV_Misc_Map_01') b.tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  b.n = b:CreateFontString(nil, 'OVERLAY', 'NumberFontNormal') b.n:SetPoint('BOTTOMRIGHT', -2, 2)
+  b.at = 0
+  b:SetMovable(true) b:RegisterForDrag('LeftButton')
+  b:SetScript('OnDragStart', b.StartMoving)
+  b:SetScript('OnDragStop', function(self)
+    self:StopMovingOrSizing()
+    local p, _, rp, x, y = self:GetPoint()
+    cfg().routeIconPoint = { p, rp, x, y }
+  end)
+  local pt = cfg().routeIconPoint
+  if pt then b:SetPoint(pt[1], UIParent, pt[2], pt[3], pt[4])
+  elseif frame then b:SetPoint('TOPRIGHT', frame, 'TOPRIGHT', 0, 0) else b:SetPoint('RIGHT', -260, 80) end
+  b:RegisterForClicks('LeftButtonUp', 'RightButtonUp')
+  b:SetScript('OnClick', function(_, btn)
+    if btn == 'RightButton' then cfg().routeMin = nil b:Hide() return end
+    R.minimize(false)
+  end)
+  b:SetScript('OnEnter', function(self)
+    GameTooltip:SetOwner(self, 'ANCHOR_LEFT')
+    GameTooltip:AddLine('Trasa questu', 1, 0.82, 0)
+    local ok, lines, sum = pcall(collect)
+    if ok then
+      if sum ~= '' then GameTooltip:AddLine(sum, 0.8, 0.8, 0.8) end
+      local n = 0
+      for _, l in ipairs(lines) do
+        if l.num or l.head then
+          n = n + 1
+          if n > 14 then break end
+          if l.head then GameTooltip:AddLine(l.head, 0.4, 0.8, 1)
+          else GameTooltip:AddDoubleLine(l.num .. '. ' .. l.text, l.right2 or '', 1, 1, 1, 0.6, 0.6, 0.6) end
+        elseif not l.small and l.text then
+          n = n + 1
+          if n > 14 then break end
+          GameTooltip:AddDoubleLine('  ' .. l.text, l.right2 or '', 0.85, 0.85, 0.85, 0.6, 0.6, 0.6)
+        elseif l.msg then GameTooltip:AddLine(l.msg, 1, 1, 1, true) end
+      end
+    end
+    GameTooltip:AddLine('Klik = otevrit, pravy klik = zavrit, tahem presunout', 0.55, 0.85, 1)
+    GameTooltip:Show()
+  end)
+  b:SetScript('OnLeave', function() GameTooltip:Hide() end)
+  return b
+end
+function R.minimize(on)
+  if not frame then frame = build() end
+  if on then
+    cfg().routeMin = true
+    frame:Hide()
+    icon = icon or buildIcon()
+    local ok, _, _, steps = pcall(collect)
+    icon.n:SetText(ok and steps and steps > 0 and steps or '')
+    icon:Show()
+  else
+    cfg().routeMin = nil
+    if icon then icon:Hide() end
+    frame:Show()
+    R.refresh()
+  end
 end
 
 function R.toggle()
   if not frame then frame = build() end
   if frame:IsShown() then frame:Hide() return end
+  if icon and icon:IsShown() then R.minimize(false) return end
   if not DB then
     if not R.available() then
       ns.say('Trasa potrebuje addon ForeverDB (nainstaluj ho vedle ClaudeMasteru, napr. pres WowUp).')
@@ -727,6 +895,11 @@ tick:SetScript('OnUpdate', function(_, el)
   acc = acc + el
   if acc < 3 then return end
   acc = 0
+  if icon and icon:IsShown() and (logDirty or GetTime() - (icon.at or 0) > 20) and not InCombatLockdown() then
+    icon.at, logDirty = GetTime(), false
+    local ok, _, _, steps = pcall(collect)
+    icon.n:SetText(ok and steps and steps > 0 and steps or '')
+  end
   sendAcc = (sendAcc or 0) + 1
   if sendAcc >= 4 then sendAcc = 0 pcall(sendLog) end
   if frame and frame:IsShown() and not InCombatLockdown() then
