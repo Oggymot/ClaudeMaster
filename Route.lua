@@ -375,11 +375,27 @@ local function objectives(qid)
   return out
 end
 R.objectives = objectives
--- prvni nesplneny cil s pocty ("5/15") - pro partu a kompaktni rezim
+-- prvni nesplneny cil s pocty ("5/15") - kompaktni rezim
 local function progShort(qid)
   for _, o in ipairs(objectives(qid)) do
-    if not o.done and o.need and o.need > 1 then return (o.have or 0) .. '/' .. o.need end
+    if not o.done and o.need and o.need >= 1 then return (o.have or 0) .. '/' .. o.need end
   end
+end
+-- vsechny cile pro partu: "5/15+0/1" (cil bez poctu = 1/1 nebo 0/1)
+local function progAll(qid)
+  local p = {}
+  for _, o in ipairs(objectives(qid)) do
+    local need = o.need or 1
+    local have = o.need and (o.have or 0) or (o.done and 1 or 0)
+    if o.done then have = need end
+    p[#p + 1] = have .. '/' .. need
+  end
+  return p[1] and table.concat(p, '+') or nil
+end
+local function parseProg(s)
+  local out = {}
+  for a, b in (s or ''):gmatch('(%d+)/(%d+)') do out[#out + 1] = { have = tonumber(a), need = tonumber(b) } end
+  return out
 end
 local lastLog, lastLogAt = nil, -99
 local function sendLog()
@@ -392,7 +408,7 @@ local function sendLog()
     local id = type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID)
     if id then
       local comp = QL.IsComplete and safeBool(pc(QL.IsComplete, id))
-      local pr = not comp and progShort(id)
+      local pr = not comp and progAll(id)
       local p = id .. ':' .. (comp and '1' or '0') .. (pr and (':' .. pr) or '')
       if len + #p + 1 > 250 then break end
       parts[#parts + 1] = p len = len + #p + 1
@@ -798,18 +814,27 @@ local function collect()
         local k = KIND[s.kind]
         -- cile (jen rozpracovane): moje pocty + postup partaku
         local obj = (s.kind == 'obj' and s.mine) and objectives(s.q.id) or {}
-        local peerProg = {}
+        -- postup partaku po cilech: [i] = { "Cherri 0/12", ... }
+        local peerAt, peerAny = {}, false
         if s.kind == 'obj' then
           for _, pr in ipairs(R.peers()) do
             local pg = pr.prog and pr.prog[s.q.id]
-            if pg then peerProg[#peerProg + 1] = short(pr.name) .. ' ' .. pg end
+            for i, c in ipairs(parseProg(pg)) do
+              local col = c.have >= c.need and '|cff40ff60' or '|cff66ccff'
+              peerAt[i] = peerAt[i] or {}
+              table.insert(peerAt[i], ('%s%s %d/%d|r'):format(col, short(pr.name), c.have, c.need))
+              peerAny = true
+            end
           end
         end
+        local function peerTxt(i) return peerAt[i] and ('  ' .. table.concat(peerAt[i], ', ')) or '' end
         local objTip = {}
-        for _, o in ipairs(obj) do
-          objTip[#objTip + 1] = (o.done and '|cff40ff60' or '|cffffffff') .. (o.need and ((o.have or 0) .. '/' .. o.need .. ' ') or '- ') .. o.text .. '|r'
+        for i, o in ipairs(obj) do
+          objTip[#objTip + 1] = (o.done and '|cff40ff60' or '|cffffffff') .. (o.need and ((o.have or 0) .. '/' .. o.need .. ' ') or '- ') .. o.text .. '|r' .. peerTxt(i)
         end
-        if peerProg[1] then objTip[#objTip + 1] = '|cff66ccff' .. table.concat(peerProg, ', ') .. '|r' end
+        if not obj[1] and peerAny then
+          for i in ipairs(peerAt) do objTip[#objTip + 1] = (i .. '. cil:') .. peerTxt(i) end
+        end
         local ps = s.mine and s.kind == 'obj' and progShort(s.q.id)
         -- v teto zone: kdo / kde + vzdalenost; jinde jen zona
         local sub
@@ -822,14 +847,18 @@ local function collect()
             .. (isHere and '' or (', ' .. yd(s.d))) .. '\n' .. R.valueTip(v) })
         -- radky cilu pod krokem (jako seznam questu ve hre); v kompaktnim rezimu jen v tooltipu
         local nobj = 0
-        for _, o in ipairs(obj) do
+        for i, o in ipairs(obj) do
           nobj = nobj + 1
           if nobj > 4 then break end
           add({ small = true, obj = true, qid = s.q.id, p = s.p, label = s.q.title,
-            text = ('        %s%s%s|r'):format(o.done and '|cff40ff60' or '|cffdddddd', o.need and ((o.have or 0) .. '/' .. o.need .. ' ') or '- ', o.text) })
+            text = ('        %s%s%s|r%s'):format(o.done and '|cff40ff60' or '|cffdddddd', o.need and ((o.have or 0) .. '/' .. o.need .. ' ') or '- ', o.text, peerTxt(i)) })
         end
-        if peerProg[1] then
-          add({ small = true, obj = true, qid = s.q.id, text = '        |cff66ccff' .. table.concat(peerProg, ', ') .. '|r' })
+        -- quest ma jen partak (moje cile nezname): aspon jeho pocty
+        if not obj[1] and peerAny then
+          for i in ipairs(peerAt) do
+            if i > 4 then break end
+            add({ small = true, obj = true, qid = s.q.id, p = s.p, label = s.q.title, text = '        ' .. peerTxt(i):sub(3) })
+          end
         end
         for _, o in ipairs(s.also or {}) do
           local ov = o.mine and R.value(o.q.id, true)
