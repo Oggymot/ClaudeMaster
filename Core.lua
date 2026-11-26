@@ -27,6 +27,17 @@ local function safeBool(v)
 end
 local function isSet(v) return issecret(v) or v ~= nil end   -- "existuje", i kdyz je skryta
 ns.pc, ns.safe, ns.safeNum, ns.safeBool, ns.isSet = pc, safe, safeNum, safeBool, isSet
+-- penize s ikonami minci (Forever nema GetCoinTextureString): 18450 -> 1[g] 84[s] 50[c]
+function ns.coin(c)
+  c = math.floor((tonumber(c) or 0) + 0.5)
+  local g, s, cu = math.floor(c / 10000), math.floor(c / 100) % 100, c % 100
+  local function ic(n) return '|TInterface\\MoneyFrame\\UI-' .. n .. 'Icon:0:0:2:0|t' end
+  local out = {}
+  if g > 0 then out[#out + 1] = '|cffffffff' .. g .. '|r' .. ic('Gold') end
+  if s > 0 then out[#out + 1] = '|cffffffff' .. s .. '|r' .. ic('Silver') end
+  if cu > 0 or #out == 0 then out[#out + 1] = '|cffffffff' .. cu .. '|r' .. ic('Copper') end
+  return table.concat(out, ' ')
+end
 
 function ns.say(msg) print('|cff66ccffClaudeMaster|r: ' .. tostring(msg)) end
 function ns.inCombat()

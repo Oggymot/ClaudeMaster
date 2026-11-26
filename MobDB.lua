@@ -216,6 +216,7 @@ function MD.startsQuest(item)
   return { qid = tonumber(q), min = tonumber(mn), lvl = tonumber(lv), title = t }
 end
 function MD.coin(c)
+  if ns.coin then return ns.coin(c) end
   c = math.floor(c + 0.5)
   if c >= 10000 then return ('%dg %ds'):format(math.floor(c / 10000), math.floor(c / 100) % 100) end
   if c >= 100 then return ('%ds %dc'):format(math.floor(c / 100), c % 100) end

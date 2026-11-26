@@ -311,7 +311,7 @@ end
 function R.valueTip(v)
   local t = {}
   if v.xp then t[#t + 1] = ('XP: %d%s'):format(v.xp, v.pctLvl and (' (%d %% levelu)'):format(math.floor(v.pctLvl + 0.5)) or '') end
-  if v.money and v.money > 0 then t[#t + 1] = 'Penize: ' .. (GetCoinTextureString and GetCoinTextureString(v.money) or v.money) end
+  if v.money and v.money > 0 then t[#t + 1] = 'Penize: ' .. ns.coin(v.money) end
   for _, it in ipairs(v.items) do
     t[#t + 1] = ('%s %s%s'):format(it.kind == 'choice' and 'na vyber:' or 'odmena:', it.link,
       it.pct and (it.pct > 0.03 and (' |cff40ff60+%d %%|r'):format(math.floor(it.pct * 100 + 0.5))
@@ -668,7 +668,7 @@ local function richTip(tt)
         v.pctLvl and ('  |cff888888(%d %% levelu)|r'):format(math.floor(v.pctLvl + 0.5)) or ''), 0.55, 0.6, 0.7, 1, 1, 1)
     end
     if v.money and v.money > 0 then
-      G:AddDoubleLine('Penize', GetCoinTextureString and GetCoinTextureString(v.money) or tostring(v.money), 0.55, 0.6, 0.7, 1, 1, 1)
+      G:AddDoubleLine('Penize', ns.coin(v.money), 0.55, 0.6, 0.7, 1, 1, 1)
     end
     for _, it in ipairs(v.items or {}) do
       local pct = it.pct and (it.pct > 0.03 and (' |cff40ff60+%d %%|r'):format(math.floor(it.pct * 100 + 0.5))

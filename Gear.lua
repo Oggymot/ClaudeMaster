@@ -1492,7 +1492,7 @@ local function onRoll(rollID, attempt)
         end
       end)()
       local what = box and 'bedynka - k nicemu se nehodi' or 'nikomu z party se nehodi'
-      lines[#lines + 1] = ('|cff9aa6b8%s - Greed%s|r'):format(what, (price and price > 0) and (' (prodej ' .. (GetCoinTextureString and GetCoinTextureString(price) or (math.floor(price / 100) .. 's')) .. ')') or '')
+      lines[#lines + 1] = ('|cff9aa6b8%s - Greed%s|r'):format(what, (price and price > 0) and (' (prodej ' .. ns.coin(price) .. ')') or '')
     end
     txt = table.concat(lines, '\n')
   end
