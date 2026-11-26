@@ -936,16 +936,20 @@ local function collect()
           if o.mine and o.kind == 'turnin' and ov and ov.xp then sumXP = sumXP + ov.xp end
           local who = {}
           for _, w in ipairs(o.who or {}) do who[#who + 1] = (w == me) and 'ty' or w end
-          local verb = #who > 1 and { 'odevzdate', 'splnite' } or (who[1] == 'ty' and { 'odevzdas', 'splnis' } or { 'odevzda', 'splni' })
-          add({ small = true, text = ('      |cff66ccff+|r %s tu %s |cff9aa6b8i:|r %s %s'):format(table.concat(who, ' + '),
-            o.kind == 'turnin' and ('|cff40ff60' .. verb[1] .. '|r') or ('|cffffd200' .. verb[2] .. '|r'), o.q.title, ov and R.valueText(ov, true) or ''),
-            p = o.p, label = o.q.title, qid = o.q.id, tip = 'Na stejnem miste: ' .. o.q.title })
+          -- stejne misto: ikona + quest + kdo, XP vpravo (jako krok, jen mensi)
+          local oth = {}
+          for _, w in ipairs(o.who or {}) do if w ~= me then oth[#oth + 1] = w end end
+          local tag = oth[1] and (o.mine and (' |cff66ccff(i ' .. table.concat(oth, ', ') .. ')|r') or (' |cff66ccff[' .. table.concat(oth, ', ') .. ']|r')) or ''
+          local ico = o.kind == 'turnin' and '|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t' or '|TInterface\\GossipFrame\\IncompleteQuestIcon:12:12|t'
+          add({ small = true, text = ('        %s %s%s'):format(ico, o.q.title, tag), right = ov and R.valueText(ov, true) or '',
+            p = o.p, label = o.q.title, qid = o.q.id,
+            tip = ('Na stejnem miste %s i: %s'):format(o.kind == 'turnin' and 'odevzdat' or 'splnit', o.q.title) .. ' (' .. table.concat(who, ' + ') .. ')' })
         end
         if s.next then
           local far = s.next.far and s.next.far > 400
-          add({ small = true, qid = s.next.id, detailFirst = true, tip = 'Navazujici quest: ' .. s.next.title,
-            text = ('      |cffffd200->|r |cff9aa6b8navazuje:|r %s %s%s'):format(s.next.title, R.valueText(s.next.v, true),
-            s.next.where and (' |cff9aa6b8(' .. s.next.where .. (far and ', daleko' or ', blizko') .. ')|r') or '') })
+          add({ small = true, qid = s.next.id, detailFirst = true, right = R.valueText(s.next.v, true),
+            tip = 'Navazujici quest: ' .. s.next.title .. (s.next.where and ('\n' .. s.next.where .. (far and ' (daleko)' or ' (blizko)')) or ''),
+            text = ('        |TInterface\\ChatFrame\\ChatFrameExpandArrow:12:12|t |cff9aa6b8dal:|r |cffd8d8d8%s|r'):format(s.next.title) })
         end
       end
       local pick = R.pickups(route)
@@ -1031,7 +1035,9 @@ function R.refresh()
         odd = false
       elseif l.small or l.msg then
         r.bg:SetColorTexture(0, 0, 0, 0)
-        r.text:SetPoint('LEFT', 4, 0) r.text:SetText(l.text or l.msg) r.text:SetWidth(w - 24)
+        r.right:ClearAllPoints() r.right:SetPoint('RIGHT', -6, 0)
+        local rw = (l.right and l.right ~= '') and (r.right:GetStringWidth() or 0) + 8 or 0
+        r.text:SetPoint('LEFT', 4, 0) r.text:SetText(l.text or l.msg) r.text:SetWidth(w - 24 - rw)
       else
         odd = not odd
         if focus then r.bg:SetColorTexture(fc[2], fc[3], fc[4], 0.16 * a)
