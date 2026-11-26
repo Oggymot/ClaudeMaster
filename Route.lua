@@ -627,6 +627,36 @@ function R.focus(qid, p, title)
   end
 end
 
+-- hezci tooltip kroku: nazev, co a kde, odmeny, cile (vc. partaka)
+local function richTip(tt)
+  local G = GameTooltip
+  G:AddLine(tt.title, 1, 0.82, 0)
+  G:AddDoubleLine(tt.action, tt.dist or '', 1, 1, 1, 0.7, 0.7, 0.7)
+  if tt.zone then G:AddDoubleLine('Zona', tt.zone, 0.55, 0.6, 0.7, 1, 1, 1) end
+  if tt.who then G:AddDoubleLine('Parta', tt.who, 0.55, 0.6, 0.7, 0.4, 0.8, 1) end
+  local v = tt.v
+  if v and (v.xp or (v.money and v.money > 0) or (v.items and v.items[1])) then
+    G:AddLine(' ')
+    if v.xp and v.xp > 0 then
+      G:AddDoubleLine('XP', ('%s%d|r%s'):format(v.est and '|cffffd200~' or '|cffffd200', v.xp,
+        v.pctLvl and ('  |cff888888(%d %% levelu)|r'):format(math.floor(v.pctLvl + 0.5)) or ''), 0.55, 0.6, 0.7, 1, 1, 1)
+    end
+    if v.money and v.money > 0 then
+      G:AddDoubleLine('Penize', GetCoinTextureString and GetCoinTextureString(v.money) or tostring(v.money), 0.55, 0.6, 0.7, 1, 1, 1)
+    end
+    for _, it in ipairs(v.items or {}) do
+      local pct = it.pct and (it.pct > 0.03 and (' |cff40ff60+%d %%|r'):format(math.floor(it.pct * 100 + 0.5))
+        or (' |cff888888%d %%|r'):format(math.floor(it.pct * 100 - 0.5))) or ''
+      G:AddDoubleLine(it.kind == 'choice' and 'Na vyber' or 'Odmena', it.link .. pct, 0.55, 0.6, 0.7, 1, 1, 1)
+    end
+  end
+  if tt.objs and tt.objs[1] then
+    G:AddLine(' ')
+    G:AddLine('Cile', 0.4, 0.8, 1)
+    for _, o in ipairs(tt.objs) do G:AddDoubleLine(o[1], o[2] or '', 1, 1, 1, 1, 1, 1) end
+  end
+end
+
 ------------------------------------------------------------------------------------------
 -- Okno
 ------------------------------------------------------------------------------------------
@@ -748,14 +778,16 @@ local function build()
       if self.qid or self.p then R.focus(self.qid, self.p, self.label) end
     end)
     b:SetScript('OnEnter', function(self)
-      if not (self.tip or self.qid) then return end
+      if not (self.tip or self.qid or self.tt) then return end
       GameTooltip:SetOwner(self, 'ANCHOR_LEFT')
-      if self.tip then GameTooltip:AddLine(self.tip, 1, 1, 1, true) end
-      if self.detailFirst then GameTooltip:AddLine('Klik = detail questu', 0.55, 0.85, 1)
+      if self.tt then richTip(self.tt)
+      elseif self.tip then GameTooltip:AddLine(self.tip, 1, 1, 1, true) end
+      GameTooltip:AddLine(' ')
+      local H = { 0.45, 0.5, 0.58 }
+      if self.detailFirst then GameTooltip:AddLine('Klik: detail questu', H[1], H[2], H[3])
       else
-        if self.qid then GameTooltip:AddLine('Klik = aktivovat quest (oblast na mape, sipka), Shift = i otevrit mapu', 0.55, 0.85, 1)
-        elseif self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
-        if self.qid then GameTooltip:AddLine('Pravy klik = detail questu', 0.55, 0.85, 1) end
+        if self.qid then GameTooltip:AddLine('Klik: aktivovat  -  Shift: i mapa  -  Pravy: detail', H[1], H[2], H[3])
+        elseif self.p then GameTooltip:AddLine('Klik: sipka na mape', H[1], H[2], H[3]) end
       end
       GameTooltip:Show()
     end)
@@ -840,7 +872,18 @@ local function collect()
         local sub
         if isHere then sub = s.kind == 'turnin' and (s.npc and npcName(s.npc) or '?') or 'misto plneni'
         else sub = where end
-        add({ num = i, color = k, first = i == 1, text = k[1] .. ' ' .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v, true) or '',
+        local objs = {}
+        for oi, o in ipairs(obj) do
+          objs[#objs + 1] = { (o.done and '|cff40ff60' or '|cffffffff') .. (o.need and ((o.have or 0) .. '/' .. o.need .. ' ') or '') .. o.text .. '|r', peerTxt(oi) }
+        end
+        if not obj[1] and peerAny then for oi in ipairs(peerAt) do objs[#objs + 1] = { (oi .. '. cil'), peerTxt(oi) } end end
+        local others = {}
+        for _, w in ipairs(s.who or {}) do if w ~= me then others[#others + 1] = w end end
+        local tt = { title = s.q.title, zone = where, dist = yd(s.d), v = s.mine and v or nil, objs = objs,
+          who = others[1] and (s.mine and ('ty + ' .. table.concat(others, ', ')) or (table.concat(others, ', ') .. ' (ty ho nemas)')) or nil,
+          action = s.kind == 'turnin' and ('|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff60Odevzdat|r u ' .. (s.npc and npcName(s.npc) or '?'))
+            or '|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t |cffffd200Splnit|r - misto plneni' }
+        add({ num = i, color = k, first = i == 1, tt = tt, text = k[1] .. ' ' .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v, true) or '',
           ctext = k[1] .. ' ' .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s), objTip = objTip,
           sub = sub, right2 = isHere and yd(s.d) or '', p = s.p, label = s.q.title, qid = s.q.id, short = s.q.title,
           tip = k[5] .. ': ' .. s.q.title .. '\n' .. (s.kind == 'turnin' and ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where) or ('Misto plneni: ' .. where))
@@ -885,12 +928,16 @@ local function collect()
         for _, q in ipairs(pick) do table.insert(here(q.p) and near or far, q) end
         local ICO = '|TInterface\\GossipFrame\\AvailableQuestIcon:15:15|t '
         for _, q in ipairs(near) do
-          add({ text = ICO .. ('|cff9aa6b8[%d]|r |cffffffff%s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = q.npc,
+          add({ tt = { title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v,
+              action = '|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd200Vzit|r u ' .. q.npc },
+            text = ICO .. ('|cff9aa6b8[%d]|r |cffffffff%s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = q.npc,
             right2 = yd(q.d), p = q.p, label = q.title, qid = q.id, color = { '', 0.3, 1, 0.45 }, first = q.d and q.d < 400, bright = true,
             tip = ('Quest dava %s (%s), %s\n%s'):format(q.npc, mapName(q.p.map), yd(q.d), R.valueTip(q.v)) })
         end
         for _, q in ipairs(far) do
-          add({ text = ('|cff777777[%d] %s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = mapName(q.p.map),
+          add({ tt = { title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v,
+              action = '|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd200Vzit|r u ' .. q.npc },
+            text = ('|cff777777[%d] %s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = mapName(q.p.map),
             right2 = '', p = q.p, label = q.title, qid = q.id, color = { '', 0.4, 0.5, 0.6 },
             tip = ('Quest dava %s (%s), %s\n%s'):format(q.npc, mapName(q.p.map), yd(q.d), R.valueTip(q.v)) })
         end
@@ -932,7 +979,7 @@ function R.refresh()
       shown = shown + 1
       r:SetWidth(w - 12)
       r:SetHeight(h) r:ClearAllPoints() r:SetPoint('TOPLEFT', 6, y) y = y - h
-      r.p, r.label, r.tip, r.qid, r.detailFirst = l.p, l.label, l.tip, l.qid, l.detailFirst
+      r.p, r.label, r.tip, r.qid, r.detailFirst, r.tt = l.p, l.label, l.tip, l.qid, l.detailFirst, l.tt
       if compact and l.sub then r.tip = (l.sub .. (l.right2 and l.right2 ~= '' and (', ' .. l.right2) or '')) .. (l.tip and ('\n' .. l.tip) or '') end
       if l.objTip and l.objTip[1] then r.tip = (r.tip and (r.tip .. '\n') or '') .. '|cffffd200Cile:|r\n' .. table.concat(l.objTip, '\n') end
       r.num:SetText(l.num and (l.num .. '.') or '')
@@ -1092,8 +1139,29 @@ local lastPos, lastRefresh, logDirty = nil, 0, true
 local qev = CreateFrame('Frame')
 pcall(qev.RegisterEvent, qev, 'QUEST_LOG_UPDATE')
 pcall(qev.RegisterEvent, qev, 'SUPER_TRACKING_CHANGED')
+-- sdileny focus v parte: kdo zmeni aktivni quest, tomu druhemu se aktivuje taky (kdyz ho ma)
+local lastFocus, applying = nil, false
+local function curSuper() return ns.Quests and ns.Quests.superId and ns.Quests.superId() end
+function R.recvFocus(name, msg)
+  if not ns.db or ns.db.partyFocus == false then return end
+  local id = tonumber(msg:match('^RF%^(%d+)'))
+  if not id or id == curSuper() then lastFocus = id return end
+  if not (QL.GetLogIndexForQuestID and (safeNum(pc(QL.GetLogIndexForQuestID, id)) or 0) > 0) then return end
+  if not (C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID) then return end
+  applying, lastFocus = true, id
+  pc(C_SuperTrack.SetSuperTrackedQuestID, id)
+  if C_Timer then C_Timer.After(0.5, function() applying = false end) else applying = false end
+end
 qev:SetScript('OnEvent', function(_, e)
   logDirty = true
+  if e == 'SUPER_TRACKING_CHANGED' and not applying and ns.db and ns.db.partyFocus ~= false then
+    local id = curSuper()
+    local D = ns.Duo
+    if id and id ~= lastFocus and D and D.rawSend and D.ok and IsInGroup and IsInGroup() then
+      lastFocus = id
+      D.rawSend('RF^' .. id)
+    end
+  end
   -- zmena aktivniho questu: hned prekreslit zvyrazneni
   if e == 'SUPER_TRACKING_CHANGED' and frame and frame:IsShown() and not InCombatLockdown() then
     if C_Timer then C_Timer.After(0.1, function() pcall(R.refresh) end) else pcall(R.refresh) end

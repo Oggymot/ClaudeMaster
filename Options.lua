@@ -383,6 +383,8 @@ PAGES[#PAGES + 1] = { key = 'party', name = 'Parta', icon = 'Interface\\Icons\\A
     function() return db.plates ~= false end, function(v) db.plates = v end))
   p.add(checkbox(p.c, 'Lista se znackami ve skupine', 'Mala lista: lebka = zabit prvni, mesic = CC, smazat znacky.',
     function() return db.markBarOn == true end, function(v) db.markBarOn = v if ns.Assist then pcall(ns.Assist.applyVisibility) end end))
+  p.add(checkbox(p.c, 'Sdilet aktivni quest s partou', 'Kdyz nekdo v parte (s ClaudeMasterem) aktivuje quest, aktivuje se i ostatnim, kteri ho maji v logu.',
+    function() return db.partyFocus ~= false end, function(v) db.partyFocus = v end))
   p.add(checkbox(p.c, 'Pamet moba v tooltipu', 'V tooltipu nepritele: co si addon pamatuje (imunity, kouzla, utek).',
     function() return db.tipMob ~= false end, function(v) db.tipMob = v end))
 end }
