@@ -35,7 +35,24 @@ function R.load()
   end
   if not (ForeverDB and ForeverDB.quest and ForeverDB.spm) then return false, 'ForeverDB bez dat' end
   DB = ForeverDB
+  if ns.MobDB and ns.MobDB.reset then pcall(ns.MobDB.reset) end
   return true
+end
+-- po prihlaseni nacist databazi sama (mimo boj), at maji tooltipy (dropy, questy) lepsi data
+do
+  local f = CreateFrame('Frame')
+  pcall(f.RegisterEvent, f, 'PLAYER_ENTERING_WORLD')
+  local tries = 0
+  local function try()
+    if DB or not ns.db or ns.db.fdbAuto == false or not R.available() then return end
+    tries = tries + 1
+    if InCombatLockdown() then if tries < 30 and C_Timer then C_Timer.After(10, try) end return end
+    pcall(R.load)
+  end
+  f:SetScript('OnEvent', function()
+    f:UnregisterEvent('PLAYER_ENTERING_WORLD')
+    if C_Timer then C_Timer.After(12, try) end
+  end)
 end
 
 ------------------------------------------------------------------------------------------

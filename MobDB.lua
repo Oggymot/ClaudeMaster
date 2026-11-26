@@ -29,6 +29,49 @@ local function index()
   end
 end
 
+------------------------------------------------------------------------------------------
+-- ForeverDB (volitelna): presnejsi dropy pro Forever (vc. novych itemu a dropu ze skutecnych killu)
+------------------------------------------------------------------------------------------
+local fdrops      -- [npcId] = { {id, chance, kind, name}, ... }
+local fname       -- [jmeno] = { npcId, ... } (moby, ktere vmangos databaze nezna)
+local function FDB() return ns.Route and ns.Route.DB and ns.Route.DB() end
+local function fdbDrops(npc)
+  local D = FDB()
+  if not D or not D.drop then return nil end
+  if not fdrops then
+    fdrops = {}
+    for item, dl in pairs(D.drop) do
+      local it = D.item[item]
+      local q, cls = it and it[2] or 1, it and it[5]
+      for j = 1, #dl - 1, 2 do
+        local ch = (dl[j + 1] or 0) / 100
+        local kind
+        if cls == 12 then kind = 'q'
+        elseif q >= 2 then kind = tostring(math.min(q, 5))
+        elseif q == 1 and ch >= 5 then kind = 'c' end
+        if kind and it and it[1] and ch >= 0.5 then
+          local l = fdrops[dl[j]]
+          if not l then l = {} fdrops[dl[j]] = l end
+          l[#l + 1] = { id = item, chance = ch, kind = kind, name = it[1] }
+        end
+      end
+    end
+    local W = { ['5'] = 8, ['4'] = 5, ['3'] = 3, ['2'] = 1.5, c = 1 }
+    for _, l in pairs(fdrops) do
+      table.sort(l, function(a, b)
+        if (a.kind == 'q') ~= (b.kind == 'q') then return a.kind == 'q' end
+        local sa, sb = a.chance * (W[a.kind] or 1), b.chance * (W[b.kind] or 1)
+        if sa ~= sb then return sa > sb end
+        return a.id < b.id
+      end)
+      for i = #l, 7, -1 do l[i] = nil end   -- max 6 radku
+    end
+  end
+  return fdrops[npc]
+end
+-- databaze se nacetla: zahodit cache, at se dropy prepocitaji
+function MD.reset() MD.cache = {} fdrops = nil fname = nil end
+
 local function parse(id)
   local c = MD.cache[id]
   if c then return c end
@@ -57,6 +100,13 @@ local function parse(id)
     local id, ch, kind, name = d:match('^(%d+)~([%d%.]+)~(%w)~(.+)$')
     if id then r.drops[#r.drops + 1] = { id = tonumber(id), chance = tonumber(ch), kind = kind, name = name } end
   end
+  -- ForeverDB ma prednost (Forever != classic); levely moba podle Foreveru
+  local fd = fdbDrops(id)
+  if fd then
+    r.drops, r.fdb = fd, true
+    local n = FDB().npc and FDB().npc[id]
+    if n and n[3] then r.dlmin, r.dlmax = n[3], n[4] or n[3] end
+  end
   r.immPoly = has(r.mech, MECH.polymorph)
   r.immFear = has(r.mech, MECH.fear)
   r.immRoot = has(r.mech, MECH.root)
@@ -70,11 +120,43 @@ local function parse(id)
 end
 
 -- zaznam podle jmena; pri vic zaznamech se stejnym jmenem ten, jehoz level sedi
+local function fdbOnly(name, level)
+  local D = FDB()
+  if not (D and D.npc) then return nil end
+  if not fname then
+    fname = {}
+    for id, n in pairs(D.npc) do
+      if n[1] and not (ns.MOBDATA and ns.MOBDATA[id]) then
+        local l = fname[n[1]]
+        if not l then l = {} fname[n[1]] = l end
+        l[#l + 1] = id
+      end
+    end
+  end
+  local l = fname[name]
+  if not l then return nil end
+  local best, bd
+  for _, id in ipairs(l) do
+    local n = D.npc[id]
+    local lo, hi = n[3] or 1, n[4] or n[3] or 1
+    local d = level and ((level < lo and lo - level) or (level > hi and level - hi) or 0) or 0
+    if not bd or d < bd then best, bd = id, d end
+  end
+  local key = 'f' .. best
+  if MD.cache[key] then return MD.cache[key] end
+  local n = D.npc[best]
+  local r = { id = best, name = n[1], lmin = n[3], lmax = n[4] or n[3], rank = n[5] or 0, mech = 0, school = 0,
+    res = {}, spells = {}, heal = {}, cc = {}, summon = {}, dmgSchool = {}, immSchool = {}, drops = fdbDrops(best) or {}, fdb = true, fdbOnly = true }
+  r.dlmin, r.dlmax = r.lmin, r.lmax
+  MD.cache[key] = r
+  return r
+end
+
 function MD.byNameLevel(name, level)
   if type(name) ~= 'string' then return nil end
   index()
   local l = MD.byName[name]
-  if not l then return nil end
+  if not l then return fdbOnly(name, level) end
   if #l == 1 or not level then return parse(l[1]) end
   local best, bd
   for _, id in ipairs(l) do
@@ -115,7 +197,8 @@ local QCOL = { ['2'] = 'ff1eff00', ['3'] = 'ff0070dd', ['4'] = 'ffa335ee', ['5']
 function MD.dropText(r, level)
   if not r or #r.drops == 0 then return nil end
   -- Forever moba preskaloval na jiny level: bezne dropy nesedi, questove itemy asi ano
-  local off = level and r.lmin and (level < r.lmin - 3 or level > r.lmax + 3)
+  local lo, hi = r.dlmin or r.lmin, r.dlmax or r.lmax
+  local off = level and lo and (level < lo - 3 or level > hi + 3)
   local p = {}
   for _, d in ipairs(r.drops) do
     if not off or d.kind == 'q' then
@@ -128,14 +211,15 @@ function MD.dropText(r, level)
   end
   if #p == 0 then return nil end
   local txt = table.concat(p, ', ')
-  if off then txt = txt .. ('  |cff888888(classic lvl %d-%d, jinak se lisi)|r'):format(r.lmin, r.lmax) end
+  if off then txt = txt .. ('  |cff888888(%s lvl %d-%d, jinak se lisi)|r'):format(r.fdb and 'databaze' or 'classic', lo, hi) end
   return txt
 end
 
 -- dropy jako radky { jmeno (barevne), sance } + zda level nesedi
 function MD.dropRows(r, level)
   if not r or #r.drops == 0 then return nil end
-  local off = level and r.lmin and (level < r.lmin - 3 or level > r.lmax + 3)
+  local lo, hi = r.dlmin or r.lmin, r.dlmax or r.lmax
+  local off = level and lo and (level < lo - 3 or level > hi + 3)
   local rows = {}
   for _, d in ipairs(r.drops) do
     if not off or d.kind == 'q' then

@@ -48,6 +48,10 @@ reputace, retez questu), klik na item = odkud pada, z jakeho questu je a kdo ho 
 V parte si addony posilaji quest log, takze trasa je spolecna: zahrne i questy, ktere ma jen partak,
 a u zastavky napise, kdo tam co odevzda nebo splni navic.
 
+Kdyz je ForeverDB nainstalovana, addon ji po prihlaseni nacte (vypnout v Pruzkumniku) a tooltip moba
+ukazuje dropy podle Foreveru (vc. dat ze skutecnych killu) misto classic databaze; itemy, ktere zacinaji quest,
+to napisou v tooltipu.
+
 Bez ForeverDB funguje zbytek addonu normalne, tyto funkce jen napisou, ze ForeverDB chybi.
 
 ## Data o mobech

@@ -467,3 +467,29 @@ function X.item(id)
   if #out == 1 then out[2] = { text = '|cff9aa6b8Zdroj neni v databazi znamy.|r' } end
   return out, it[1]
 end
+
+------------------------------------------------------------------------------------------
+-- Tooltip itemu: zacina quest (ForeverDB)
+------------------------------------------------------------------------------------------
+local function onItem(tt, data)
+  if tt ~= GameTooltip and tt ~= ItemRefTooltip then return end
+  local D = DB()
+  if not (D and D.start) then return end
+  local id = type(data) == 'table' and safeNum(data.id)
+  if not id then
+    local ok, _, link = pcall(tt.GetItem, tt)
+    link = ok and safe(link)
+    id = type(link) == 'string' and tonumber(link:match('item:(%d+)'))
+  end
+  local qid = id and D.start[id]
+  local info = qid and D.quest[qid]
+  if not info then return end
+  local st
+  if R().done(qid) then st = '|cff888888uz mas hotovo - prodat|r'
+  elseif R().inLogSet()[qid] then st = '|cff66ccffuz mas v logu|r'
+  else st = (info[3] or 1) > lvl() and ('|cffffcc00od levelu %d|r'):format(info[3]) or '|cff40ff60pravym klikem prijmes|r' end
+  tt:AddLine(('|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd100Zacina quest:|r %s |cff9aa6b8[%d]|r - %s'):format(info[1], info[2] or 0, st))
+end
+if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
+  pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Item, function(tt, data) pcall(onItem, tt, data) end)
+end

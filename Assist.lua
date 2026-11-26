@@ -177,7 +177,8 @@ local function addMobLines(tt, unit)
     tt:AddDoubleLine(label, v, LBL[1], LBL[2], LBL[3], 1, 1, 1)
   end
   if drops then
-    tt:AddLine(off and ('Drop |cff777777(classic lvl %d-%d)|r'):format(rec.lmin, rec.lmax) or 'Drop', LBL[1], LBL[2], LBL[3])
+    tt:AddLine(off and ('Drop |cff777777(%s lvl %d-%d)|r'):format(rec.fdb and 'databaze' or 'classic', rec.dlmin or rec.lmin, rec.dlmax or rec.lmax)
+      or (rec.fdb and 'Drop |cff777777(ForeverDB)|r' or 'Drop'), LBL[1], LBL[2], LBL[3])
     for _, d in ipairs(drops) do tt:AddDoubleLine('  ' .. d[1], d[2], 1, 1, 1, 0.65, 0.65, 0.65) end
   end
   tt:Show()
