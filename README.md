@@ -1,6 +1,6 @@
 # ClaudeMaster
 
-Poradce pro **Frost Mage** a **Destruction Warlock** ve WoW Forever (Interface 16001).
+Poradce pro **Mage**, **Warlock**, **Paladin**, **Druid** a **Shaman** ve WoW Forever (Interface 16001).
 Doporucuje, co castit, hlida manu, CC, preruseni, a pri hre ve dvou (mag + warlock) si addony
 vymenuji data (cile, aggro, ovce, ready check).
 

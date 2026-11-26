@@ -461,7 +461,8 @@ PAGES[#PAGES + 1] = { key = 'build', name = 'Build', icon = 'Interface\\Icons\\I
 
   p.section('Vahy statu pro gear', 'Podle ceho se hodnoti itemy (sipky v batohu a tooltipu). Automaticky = podle buildu.')
   local CLASS_SPECS = { MAGE = { 'frost', 'fire', 'arcane' }, WARLOCK = { 'destro', 'affli', 'demo' },
-    PALADIN = { 'ret', 'prot', 'holy' }, DRUID = { 'balance', 'feral', 'resto' } }
+    PALADIN = { 'ret', 'prot', 'holy' }, DRUID = { 'balance', 'feral', 'resto' },
+    SHAMAN = { 'shhybrid', 'shresto', 'shele', 'shenh' } }
   p.add(choice(p.c, 'Vahy', 'Vlastni vahy nastavis prikazem /cm vahy str=1 sta=0.5 ...', function()
     local o = { { 'auto', 'automaticky' } }
     for _, k in ipairs(CLASS_SPECS[ns.class] or {}) do
@@ -616,7 +617,7 @@ local function build()
   local title = label(head, 'ClaudeMaster', 15, unpack(T.title)) title:SetPoint('LEFT', ic, 'RIGHT', 10, 6)
   local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and ns.pc(C_AddOns.GetAddOnMetadata, ADDON, 'Version'))
     or (GetAddOnMetadata and ns.pc(GetAddOnMetadata, ADDON, 'Version')) or ''
-  local CLASS_CZ = { MAGE = 'Mag', WARLOCK = 'Warlock', PALADIN = 'Paladin', DRUID = 'Druid' }
+  local CLASS_CZ = { MAGE = 'Mag', WARLOCK = 'Warlock', PALADIN = 'Paladin', DRUID = 'Druid', SHAMAN = 'Shaman' }
   local sub = label(head, ('Nastaveni  -  %s  -  v%s'):format(CLASS_CZ[ns.class] or ns.class, ns.safe(ver) or '?'), 10, 0.6, 0.62, 0.68)
   sub:SetPoint('LEFT', ic, 'RIGHT', 10, -8)
   local line = f:CreateTexture(nil, 'ARTWORK') line:SetTexture(WHITE) line:SetHeight(1)

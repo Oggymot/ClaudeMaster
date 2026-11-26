@@ -45,6 +45,9 @@ local T = (ns.class == 'PALADIN') and {
 } or (ns.class == 'DRUID') and {
   a1 = { 1, 0.49, 0.04, 0.95 }, a2 = { 1, 0.75, 0.45, 0.15 }, bg = { 0.07, 0.05, 0.03 }, border = { 0.45, 0.3, 0.12, 0.9 },
   title = { 1, 0.7, 0.35 }, icon = 'Interface\\Icons\\Spell_Nature_Regeneration', ui = { 1, 0.6, 0.2 },
+} or (ns.class == 'SHAMAN') and {
+  a1 = { 0.15, 0.55, 1, 0.95 }, a2 = { 0.5, 0.8, 1, 0.15 }, bg = { 0.03, 0.05, 0.09 }, border = { 0.16, 0.3, 0.5, 0.9 },
+  title = { 0.45, 0.75, 1 }, icon = 'Interface\\Icons\\Spell_Nature_BloodLust', ui = { 0.3, 0.65, 1 },
 } or (ns.class == 'WARLOCK') and {
   a1 = { 0.62, 0.32, 1, 0.95 }, a2 = { 0.88, 0.6, 1, 0.15 }, bg = { 0.06, 0.035, 0.09 }, border = { 0.34, 0.22, 0.48, 0.9 },
   title = { 0.8, 0.6, 1 }, icon = 'Interface\\Icons\\Spell_Shadow_ShadowBolt', ui = { 0.68, 0.45, 1 },
@@ -920,8 +923,9 @@ function UI.makeMacros()
   local attacks = ns.class == 'WARLOCK' and { 'Shadow Bolt', 'Searing Pain' }
     or ns.class == 'PALADIN' and { 'Judgement', 'Crusader Strike', 'Holy Strike', 'Exorcism' }
     or ns.class == 'DRUID' and { 'Wrath', 'Moonfire', 'Starfire', 'Maul', 'Claw' }
+    or ns.class == 'SHAMAN' and { 'Lightning Bolt', 'Earth Shock', 'Flame Shock', 'Stormstrike' }
     or { 'Frostbolt', 'Ice Lance', 'Fire Blast' }
-  local start = ns.class == 'PALADIN' and '/startattack\n' or ''   -- melee: zaroven zapne auto attack
+  local start = (ns.class == 'PALADIN' or ns.class == 'SHAMAN') and '/startattack\n' or ''   -- melee: zaroven zapne auto attack
   for _, sp in ipairs(attacks) do
     if ns.known(sp) then list[#list + 1] = { 'CM ' .. sp, '#showtooltip\n' .. TGT .. start .. '/cast ' .. sp } end
   end
@@ -1012,6 +1016,9 @@ local HELP = {
   '/cm sound - zap/vyp zvuk u nalehavych veci',
   '/cm reset - vratit pozici',
 }
+if ns.class == 'SHAMAN' then
+  table.insert(HELP, '/cm shaman auto/hybrid/resto/ele/enh - styl hrani (jinak podle talentu)')
+end
 if ns.class == 'WARLOCK' then
   table.insert(HELP, '/cm pet auto/imp/voidwalker/succubus/felhunter - ktery pet')
   table.insert(HELP, '/cm curse auto|agony|elements|shadow|weakness|tongues|doom - ktera curse')
@@ -1125,6 +1132,11 @@ SlashCmdList.CLAUDEMASTER = function(msg)
       command = 'Seal of Command', light = 'Seal of Light', justice = 'Seal of Justice', auto = 'auto' }
     db.palSeal = map[arg] or 'auto'
     ns.say('seal: ' .. db.palSeal .. '   (/cm seal auto/righteousness/crusader/wisdom/command/light)')
+  elseif cmd == 'shaman' and ns.class == 'SHAMAN' then
+    local map = { resto = 'resto', ele = 'ele', elemental = 'ele', enh = 'enh', enhancement = 'enh', hybrid = 'hybrid' }
+    db.shamanSpec = map[arg]
+    ns.say('shaman: ' .. (db.shamanSpec or ('auto (podle talentu: ' .. tostring(ns.Shaman and ns.Shaman.spec() or '?') .. ')'))
+      .. '   (/cm shaman resto/ele/enh/hybrid/auto)')
   elseif cmd == 'druid' and ns.class == 'DRUID' then
     db.druidSpec = (arg == 'resto' or arg == 'balance' or arg == 'feral') and arg or nil
     ns.say('druid: ' .. (db.druidSpec or ('auto (podle talentu: ' .. tostring(ns.Druid and ns.Druid.spec() or 'zatim nic') .. ')'))

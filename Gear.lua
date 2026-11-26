@@ -40,15 +40,28 @@ G.SPECS = {
   resto = { label = 'Restoration Druid', heal = 1, sp = 0.9, int = 0.6, spi = 0.55, mp5 = 1.8, spcrit = 6, sta = 0.2,
     armor = 0.003 },
   feral = { label = 'Feral Druid', agi = 1.05, str = 1, ap = 0.5, sta = 0.5, crit = 14, hit = 14, armor = 0.02 },
+  -- shaman: hybrid (leveling melee + leceni) / resto / elemental / enhancement
+  shhybrid = { label = 'Shaman hybrid (melee + leceni)', int = 0.5, heal = 0.5, sp = 0.5, agi = 0.4, str = 0.5, ap = 0.25,
+    sta = 0.5, spi = 0.2, mp5 = 1, crit = 5, spcrit = 3, armor = 0.01, dps = 3 },
+  shresto = { label = 'Restoration Shaman', heal = 1, sp = 0.6, int = 0.75, mp5 = 2, spcrit = 6, spi = 0.2, sta = 0.2,
+    armor = 0.003 },
+  shele = { label = 'Elemental Shaman', sp = 1, natsp = 0.8, firesp = 0.2, int = { 0.25, 0.4 }, spi = 0.1, sta = 0.2,
+    spcrit = { 4, 9 }, sphit = { 4.5, 11 }, mp5 = 1, armor = 0.003 },
+  shenh = { label = 'Enhancement Shaman', str = 1, agi = 0.9, ap = 0.5, sta = 0.4, int = 0.2, crit = 12, hit = 11, dps = 5,
+    armor = 0.01, sp = 0.2 },
   generic = { label = 'obecne', sta = 0.5, armor = 0.01, str = 0.5, agi = 0.5, int = 0.5, sp = 0.5 },
 }
-local CLASS_DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'balance' }
+local CLASS_DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'balance', SHAMAN = 'shhybrid' }
 
 function G.spec()
   local s = ns.db and ns.db.gearSpec
   if s == 'custom' and ns.db.gearWeights then return 'custom' end
   if s and G.SPECS[s] then return s end
   -- druid: podle talentu (resto / balance / feral)
+  if ns.class == 'SHAMAN' and ns.Shaman and ns.Shaman.spec then
+    local m = { resto = 'shresto', ele = 'shele', enh = 'shenh', hybrid = 'shhybrid' }
+    return m[ns.Shaman.spec()] or 'shhybrid'
+  end
   if ns.class == 'DRUID' and ns.Druid and ns.Druid.spec then
     local d = ns.Druid.spec()
     if d == 'resto' then return 'resto' elseif d == 'feral' then return 'feral' end

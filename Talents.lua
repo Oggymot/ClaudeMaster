@@ -394,10 +394,131 @@ local BUILDS = {
       'Destruction - jako Demo body tady chybi.',
     },
   },
+  ------------------------------------------------------------------ SHAMAN
+  -- poradi = priorita; talenty Foreveru z dumpu (popisy jen u casti -> pripravene podle klasiky)
+  shhybrid = {
+    class = 'SHAMAN', band = 3, gear = 'shhybrid', shaman = 'hybrid',
+    label = 'Hybrid na leveling (leceni + damage)',
+    desc = 'Do ~30. levelu: levnejsi kouzla, silnejsi leceni a Water Shield (mana). Pak staci malo predelat na ciste Resto.',
+    trees = { 'Elemental', 'Enhancement', 'Restoration' },
+    list = {
+      { 'Convection', 5, 'Levnejsi shocky a Lightning Bolt - mene problemu s manou.' },
+      { 'Tidal Focus', 5, 'Levnejsi leceni - vic leceni z jedne many.' },
+      { 'Improved Healing Wave', 5, 'Healing Wave se castuje rychleji - mene te mezitim zbije.' },
+      { 'Water Shield', 1, 'Stit, ktery vraci manu pri kazdem zasahu - nejvetsi pomoc s manou.' },
+      { 'Concussion', 5, 'Silnejsi shocky a Lightning Bolt.' },
+      { 'Elemental Focus', 1, 'Obcas kouzlo zdarma (Clearcasting).' },
+      { 'Healing Focus', 3, 'Leceni se pri zasahu nezdrzuje - leceni v boji funguje.' },
+      { 'Call of Flame', 3, 'Silnejsi Flame Shock a ohnive totemy.' },
+      { 'Natural Grace', 3, 'Talent Foreveru z Restoration.' },
+      { 'Restorative Totems', 5, 'Silnejsi Healing Stream / Mana Spring totem.' },
+      { 'Tidal Mastery', 5, '+krit leceni a blesku.' },
+      { 'Healing Way', 3, 'Healing Wave sili na stejnem cili.' },
+      { "Nature's Swiftness", 1, 'Pristi leceni hned - zachrana v nouzi.' },
+      { 'Ancestral Healing', 3, 'Krit leceni da cili vic brneni.' },
+      { 'Mana Tide Totem', 1, 'Totem, ktery vrati spoustu many.' },
+      { 'Purification', 5, 'Silnejsi leceni.' },
+      { 'Riptide', 1, 'Instantni leceni + HoT.' },
+    },
+    no = {},
+    tree = {
+      'Elemental - pro hybrid jen Convection, Concussion, Elemental Focus a Call of Flame.',
+      'Enhancement - melee talenty; hybrid bere leceni a levnejsi kouzla.',
+      'Restoration - tenhle talent ti zatim malo pomuze.',
+    },
+  },
+  shresto = {
+    class = 'SHAMAN', band = 3, gear = 'shresto', shaman = 'resto',
+    label = 'Restoration (lecitel)', desc = 'Ciste leceni party: Healing Wave, Chain Heal, Riptide, totemy na manu.',
+    trees = { 'Elemental', 'Enhancement', 'Restoration' },
+    list = {
+      { 'Tidal Focus', 5, 'Levnejsi leceni.' },
+      { 'Improved Healing Wave', 5, 'Rychlejsi Healing Wave.' },
+      { 'Water Shield', 1, 'Mana pri kazdem zasahu.' },
+      { 'Healing Focus', 3, 'Leceni se pri zasahu nezdrzuje.' },
+      { 'Natural Grace', 3, 'Talent Foreveru z Restoration.' },
+      { 'Mindfulness', 3, 'Talent Foreveru z Restoration.' },
+      { 'Restorative Totems', 5, 'Silnejsi totemy na leceni a manu.' },
+      { 'Tidal Mastery', 5, '+krit leceni.' },
+      { 'Healing Way', 3, 'Healing Wave sili na stejnem cili (tank).' },
+      { "Nature's Swiftness", 1, 'Pristi leceni hned.' },
+      { 'Ancestral Healing', 3, 'Krit leceni = vic brneni na cili.' },
+      { 'Mana Tide Totem', 1, 'Spousta many pro partu.' },
+      { 'Purification', 5, 'Silnejsi leceni.' },
+      { 'Riptide', 1, 'Instantni leceni + HoT.' },
+      { 'Totemic Focus', 5, 'Levnejsi totemy.' },
+      { 'Convection', 5, 'Levnejsi shocky (z Elemental).' },
+    },
+    no = {},
+    tree = {
+      'Elemental - jako lecitel odsud jen Convection.',
+      'Enhancement - melee, lecitel je nepotrebuje.',
+      'Tvoje hlavni vetev, ale tenhle talent lecitelovi malo pomuze.',
+    },
+  },
+  shele = {
+    class = 'SHAMAN', band = 1, gear = 'shele', shaman = 'ele',
+    label = 'Elemental (kouzla na dalku)', desc = 'Lightning Bolt, shocky, Chain Lightning. Hodne damage, ale zere manu.',
+    trees = { 'Elemental', 'Enhancement', 'Restoration' },
+    list = {
+      { 'Convection', 5, 'Levnejsi kouzla.' },
+      { 'Concussion', 5, 'Silnejsi Lightning Bolt a shocky.' },
+      { 'Call of Flame', 3, 'Silnejsi Flame Shock a ohnive totemy.' },
+      { 'Elemental Focus', 1, 'Obcas kouzlo zdarma.' },
+      { 'Reverberation', 5, 'Kratsi cooldown shocku.' },
+      { 'Elemental Alacrity', 3, 'Rychlejsi Lightning Bolt.' },
+      { 'Elemental Devastation', 3, 'Po kritu kouzla vic kritu zbrani.' },
+      { 'Eye of the Storm', 3, 'Lightning Bolt se pri zasahu nezdrzuje.' },
+      { 'Elemental Reach', 2, 'Delsi dosah blesku.' },
+      { 'Call of Thunder', 1, '+krit blesku.' },
+      { 'Elemental Fury', 5, 'Silnejsi krity kouzel.' },
+      { 'Lightning Overload', 3, 'Obcas blesk navic zdarma.' },
+      { 'Lightning Mastery', 1, 'Rychly Lightning Bolt na chvili.' },
+      { 'Tidal Focus', 5, 'Levnejsi leceni (z Restoration).' },
+      { 'Improved Healing Wave', 5, 'Rychlejsi leceni (z Restoration).' },
+    },
+    no = {},
+    tree = {
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Enhancement - melee talenty, kouzelnik je nepotrebuje.',
+      'Restoration - odsud jen Tidal Focus a Improved Healing Wave.',
+    },
+  },
+  shenh = {
+    class = 'SHAMAN', band = 2, gear = 'shenh', shaman = 'enh',
+    label = 'Enhancement (melee)', desc = 'Bojovnik se zbrani: Windfury, Stormstrike, Flurry. Malo many potrebuje.',
+    trees = { 'Elemental', 'Enhancement', 'Restoration' },
+    list = {
+      { 'Ancestral Knowledge', 5, 'Vic many.' },
+      { 'Thundering Strikes', 5, '+1 % krit za bod ke vsemu.' },
+      { 'Improved Lightning Shield', 3, 'Silnejsi Lightning Shield.' },
+      { 'Elemental Weapons', 3, 'Silnejsi imbue zbrane (Windfury, Flametongue).' },
+      { 'Shamanistic Focus', 1, 'Levnejsi shocky po kritu.' },
+      { 'Flurry', 5, 'Po kritu rychlejsi utoky.' },
+      { 'Anticipation', 3, '+dodge.' },
+      { 'Toughness', 5, 'Vic brneni.' },
+      { 'Stormstrike', 1, 'Silny uder + vic damage blesku.' },
+      { 'Spirit Weapons', 1, 'Mene threatu, parry.' },
+      { 'Mental Quickness', 2, 'Talent Foreveru z Enhancement.' },
+      { 'Improved Stormstrike', 2, 'Silnejsi Stormstrike.' },
+      { 'Maelstrom Weapon', 5, 'Melee udery zrychli a zlevni Lightning Bolt.' },
+      { 'Rage of the Farseer', 1, 'Talent Foreveru z Enhancement.' },
+      { "Earth's Grasp", 2, 'Silnejsi zemni totemy.' },
+      { 'Mental Dexterity', 3, 'Talent Foreveru z Enhancement.' },
+      { 'Convection', 5, 'Levnejsi shocky (z Elemental).' },
+    },
+    no = {},
+    tree = {
+      'Elemental - pro melee odsud jen Convection.',
+      'Tvoje hlavni vetev, ale tenhle talent ti malo pomuze.',
+      'Restoration - pro melee tu nic.',
+    },
+  },
 }
 T.BUILDS = BUILDS
-local DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'resto' }
-local ORDER = { 'frost', 'fire', 'arcane', 'destro', 'affli', 'demo', 'ret', 'prot', 'holy', 'balance', 'feral', 'resto' }
+local DEFAULT = { MAGE = 'frost', WARLOCK = 'destro', PALADIN = 'ret', DRUID = 'resto', SHAMAN = 'shhybrid' }
+local ORDER = { 'frost', 'fire', 'arcane', 'destro', 'affli', 'demo', 'ret', 'prot', 'holy', 'balance', 'feral', 'resto',
+  'shhybrid', 'shresto', 'shele', 'shenh' }
 
 -- vlastni build = ulozene talenty postavy (poradi: vetev s nejvic body, pak shora dolu)
 function T.custom()
@@ -448,6 +569,10 @@ function T.mainBand()
 end
 -- automaticky: druid podle specu rotace, ostatni podle vetve s nejvic body, jinak vychozi
 function T.autoKey()
+  if ns.class == 'SHAMAN' and ns.Shaman and ns.Shaman.spec then
+    local m = { hybrid = 'shhybrid', resto = 'shresto', ele = 'shele', enh = 'shenh' }
+    return m[ns.Shaman.spec()] or 'shhybrid'
+  end
   if ns.class == 'DRUID' and ns.Druid and ns.Druid.spec then
     local sp = ns.Druid.spec()
     if sp and BUILDS[sp] then return sp end
@@ -474,6 +599,7 @@ function T.select(k)
   db.talentBuild = k
   local b = T.get(k or T.autoKey())
   if ns.class == 'DRUID' and k then db.druidSpec = b and b.druid or nil end
+  if ns.class == 'SHAMAN' then db.shamanSpec = (k and b and b.shaman) or nil end
   if db.gearSpec ~= 'custom' and ns.Gear and ns.Gear.applySpec then pcall(ns.Gear.applySpec, (k and b and b.gear) or 'auto') end
 end
 

@@ -6,7 +6,8 @@
 local ADDON, ns = ...
 local _, playerClass = UnitClass('player')
 ns.class = playerClass
-ns.enabled = (playerClass == 'MAGE' or playerClass == 'WARLOCK' or playerClass == 'PALADIN' or playerClass == 'DRUID')
+ns.enabled = (playerClass == 'MAGE' or playerClass == 'WARLOCK' or playerClass == 'PALADIN' or playerClass == 'DRUID'
+  or playerClass == 'SHAMAN')
 
 local issecret = issecretvalue or function() return false end
 ns.issecret = issecret
@@ -130,8 +131,20 @@ local DRUID_SPELLS = {
   'Claw', 'Rake', 'Rip', 'Ferocious Bite', 'Primal Bite', 'Shred', 'Ravage', 'Pounce', 'Prowl', "Tiger's Fury", 'Dash', 'Cower',
   'Will to Survive', 'Perception', 'Read Leyline',
 }
+local SHAMAN_SPELLS = {
+  'Attack', 'Lightning Bolt', 'Chain Lightning', 'Earth Shock', 'Flame Shock', 'Frost Shock', 'Purge', 'Fire Nova',
+  'Lightning Shield', 'Water Shield', 'Rockbiter Weapon', 'Flametongue Weapon', 'Frostbrand Weapon', 'Windfury Weapon',
+  'Healing Wave', 'Lesser Healing Wave', 'Chain Heal', 'Riptide', "Nature's Swiftness", 'Ancestral Spirit',
+  'Cure Poison', 'Cure Disease', 'Ghost Wolf', 'Stormstrike', 'Elemental Mastery', 'Shamanistic Rage',
+  'Searing Totem', 'Magma Totem', 'Fire Nova Totem', 'Flametongue Totem', 'Frost Resistance Totem',
+  'Stoneskin Totem', 'Strength of Earth Totem', 'Earthbind Totem', 'Stoneclaw Totem', 'Tremor Totem',
+  'Healing Stream Totem', 'Mana Spring Totem', 'Poison Cleansing Totem', 'Disease Cleansing Totem', 'Fire Resistance Totem',
+  'Mana Tide Totem', 'Windfury Totem', 'Grace of Air Totem', 'Grounding Totem', 'Nature Resistance Totem', 'Windwall Totem',
+  'Tranquil Air Totem', 'Astral Recall', 'Water Breathing', 'Water Walking', 'Far Sight', 'Reincarnation',
+  'War Stomp', 'Cultivation', 'Will to Survive', 'Perception',
+}
 ns.SPELLS = (playerClass == 'WARLOCK') and WARLOCK_SPELLS or (playerClass == 'PALADIN') and PALADIN_SPELLS
-  or (playerClass == 'DRUID') and DRUID_SPELLS or MAGE_SPELLS
+  or (playerClass == 'DRUID') and DRUID_SPELLS or (playerClass == 'SHAMAN') and SHAMAN_SPELLS or MAGE_SPELLS
 -- Zakladni cooldowny (prepisou se skutecnymi, ktere klient ukaze mimo boj)
 ns.BASE_CD = {
   ['Frost Nova'] = 25, ['Cone of Cold'] = 10, ['Fire Blast'] = 8, ['Counterspell'] = 24, ['Ice Barrier'] = 30,
@@ -139,6 +152,11 @@ ns.BASE_CD = {
   ['Ice Lance'] = 0, ['Cryoblast'] = 0, ['Presence of Mind'] = 180, ['Frost Ward'] = 30, ['Fire Ward'] = 30,
   ['Will to Survive'] = 180, ['Perception'] = 180,
   ['Arcane Power'] = 180, ['Combustion'] = 180, ['Blast Wave'] = 45,
+  -- shaman (shocky sdili 6 s)
+  ['Earth Shock'] = 6, ['Flame Shock'] = 6, ['Frost Shock'] = 6, ['Chain Lightning'] = 6, ['Stormstrike'] = 20,
+  ["Nature's Swiftness"] = 180, ['Mana Tide Totem'] = 300, ['Stoneclaw Totem'] = 30, ['Fire Nova Totem'] = 15,
+  ['Earthbind Totem'] = 15, ['Grounding Totem'] = 15, ['War Stomp'] = 90, ['Elemental Mastery'] = 180, ['Riptide'] = 6,
+  ['Reincarnation'] = 3600, ['Cultivation'] = 900,
   -- warlock
   ['Conflagrate'] = 10, ['Shadowburn'] = 15, ['Death Coil'] = 120, ['Howl of Terror'] = 40, ['Soul Fire'] = 60,
   ['Shadow Ward'] = 30, ['Amplify Curse'] = 180, ['Fel Domination'] = 900, ['Inferno'] = 3600, ['Curse of Doom'] = 60,
