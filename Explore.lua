@@ -322,6 +322,7 @@ local function qrow(qid, me, extra)
   if g then p, d = firstSpot(g, me) end
   local v = R().value and R().value(qid, false)
   local st = R().done(qid) and ' |cff40ff60(hotovo)|r' or (R().inLogSet()[qid] and ' |cff66ccff(v logu)|r' or '')
+  if R().isPvP and R().isPvP(qid) then st = st .. ' |cffff5555PvP|r' end
   return { icon = ICON.quest, title = ('|cff9aa6b8[%d]|r %s%s'):format(info[2] or 0, info[1], st),
     sub = (extra and (extra .. ' - ') or '') .. (g and (R().npcName(g) .. (p and (', ' .. where(p)) or '')) or 'neznamy zadavatel'),
     right = v and R().valueText(v) or '', right2 = yd(d), p = p, link = 'quest:' .. qid, open = function() return X.quest(qid) end }

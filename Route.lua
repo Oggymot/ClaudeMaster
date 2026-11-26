@@ -627,10 +627,36 @@ function R.focus(qid, p, title)
   end
 end
 
+-- PvP quest: battleground zona v databazi (AV / WSG / AB / kategorie Battlegrounds) nebo stitek hry "PvP"
+local BG = { [2597] = true, [3277] = true, [3358] = true, [-25] = true }
+local pvpc = {}
+function R.isPvP(qid)
+  if not qid then return false end
+  if pvpc[qid] ~= nil then return pvpc[qid] end
+  local x = DB and DB.qx and DB.qx[qid]
+  local r = type(x) == 'table' and BG[x[11]] == true or false
+  local sure = r or not QL.GetQuestTagInfo
+  if not r and QL.GetQuestTagInfo then
+    local t = pc(QL.GetQuestTagInfo, qid)
+    if type(t) == 'table' then
+      local id, nm = safeNum(t.tagID), safe(t.tagName)
+      r = id == 41 or (type(nm) == 'string' and nm:find('PvP') ~= nil)
+      sure = true
+    end
+  end
+  if sure then pvpc[qid] = r end   -- hra data questu jeste nema: zkusit priste
+  return r
+end
+local function pvpIcon()
+  local f = safe(pc(UnitFactionGroup, 'player'))
+  return '|TInterface\\Icons\\INV_BannerPVP_0' .. (f == 'Horde' and '2' or '1') .. ':14:14:0:0:64:64:5:59:5:59|t'
+end
+
 -- hezci tooltip kroku: nazev, co a kde, odmeny, cile (vc. partaka)
 local function richTip(tt)
   local G = GameTooltip
   G:AddLine(tt.title, 1, 0.82, 0)
+  if tt.pvp then G:AddLine(pvpIcon() .. ' PvP quest', 1, 0.35, 0.35) end
   G:AddDoubleLine(tt.action, tt.dist or '', 1, 1, 1, 0.7, 0.7, 0.7)
   if tt.zone then G:AddDoubleLine('Zona', tt.zone, 0.55, 0.6, 0.7, 1, 1, 1) end
   if tt.who then G:AddDoubleLine('Parta', tt.who, 0.55, 0.6, 0.7, 0.4, 0.8, 1) end
@@ -879,12 +905,14 @@ local function collect()
         if not obj[1] and peerAny then for oi in ipairs(peerAt) do objs[#objs + 1] = { (oi .. '. cil'), peerTxt(oi) } end end
         local others = {}
         for _, w in ipairs(s.who or {}) do if w ~= me then others[#others + 1] = w end end
-        local tt = { title = s.q.title, zone = where, dist = yd(s.d), v = s.mine and v or nil, objs = objs,
+        local pvp = R.isPvP(s.q.id)
+        local tt = { title = s.q.title, zone = where, dist = yd(s.d), v = s.mine and v or nil, objs = objs, pvp = pvp,
           who = others[1] and (s.mine and ('ty + ' .. table.concat(others, ', ')) or (table.concat(others, ', ') .. ' (ty ho nemas)')) or nil,
           action = s.kind == 'turnin' and ('|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff60Odevzdat|r u ' .. (s.npc and npcName(s.npc) or '?'))
             or '|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t |cffffd200Splnit|r - misto plneni' }
-        add({ num = i, color = k, first = i == 1, tt = tt, text = k[1] .. ' ' .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v, true) or '',
-          ctext = k[1] .. ' ' .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s), objTip = objTip,
+        local pv = pvp and (pvpIcon() .. ' ') or ''
+        add({ num = i, color = k, first = i == 1, tt = tt, text = k[1] .. ' ' .. pv .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v, true) or '',
+          ctext = k[1] .. ' ' .. pv .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s), objTip = objTip,
           sub = sub, right2 = isHere and yd(s.d) or '', p = s.p, label = s.q.title, qid = s.q.id, short = s.q.title,
           tip = k[5] .. ': ' .. s.q.title .. '\n' .. (s.kind == 'turnin' and ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where) or ('Misto plneni: ' .. where))
             .. (isHere and '' or (', ' .. yd(s.d))) .. '\n' .. R.valueTip(v) })
@@ -928,16 +956,18 @@ local function collect()
         for _, q in ipairs(pick) do table.insert(here(q.p) and near or far, q) end
         local ICO = '|TInterface\\GossipFrame\\AvailableQuestIcon:15:15|t '
         for _, q in ipairs(near) do
-          add({ tt = { title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v,
+          local pvp = R.isPvP(q.id)
+          add({ tt = { title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v, pvp = pvp,
               action = '|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd200Vzit|r u ' .. q.npc },
-            text = ICO .. ('|cff9aa6b8[%d]|r |cffffffff%s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = q.npc,
+            text = ICO .. (pvp and (pvpIcon() .. ' ') or '') .. ('|cff9aa6b8[%d]|r |cffffffff%s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = q.npc,
             right2 = yd(q.d), p = q.p, label = q.title, qid = q.id, color = { '', 0.3, 1, 0.45 }, first = q.d and q.d < 400, bright = true,
             tip = ('Quest dava %s (%s), %s\n%s'):format(q.npc, mapName(q.p.map), yd(q.d), R.valueTip(q.v)) })
         end
         for _, q in ipairs(far) do
-          add({ tt = { title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v,
+          local pvp = R.isPvP(q.id)
+          add({ tt = { title = ('[%d] %s'):format(q.lvl or 0, q.title), zone = mapName(q.p.map), dist = yd(q.d), v = q.v, pvp = pvp,
               action = '|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd200Vzit|r u ' .. q.npc },
-            text = ('|cff777777[%d] %s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = mapName(q.p.map),
+            text = (pvp and (pvpIcon() .. ' ') or '') .. ('|cff777777[%d] %s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = mapName(q.p.map),
             right2 = '', p = q.p, label = q.title, qid = q.id, color = { '', 0.4, 0.5, 0.6 },
             tip = ('Quest dava %s (%s), %s\n%s'):format(q.npc, mapName(q.p.map), yd(q.d), R.valueTip(q.v)) })
         end
