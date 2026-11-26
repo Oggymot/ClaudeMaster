@@ -31,4 +31,5 @@ UI.lua
 Options.lua
 Quests.lua
 Route.lua
+Explore.lua
 Talents.lua

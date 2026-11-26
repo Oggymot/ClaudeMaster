@@ -39,6 +39,11 @@ a nabidne questy po ceste. Potrebuje samostatny addon [ForeverDB](https://github
 (GPL-3, data z QuestieDB, VMaNGOS, cMaNGOS, pfQuest a dalsich - viz jeho LICENSE-DATA). ClaudeMaster jeho data
 nekopiruje, jen si ho na vyzadani nacte.
 
+V nastaveni je i zalozka **Pruzkumnik**: hledani questu, NPC a itemu (`z:oblast` = questy v oblasti),
+filtry *Kde levelit* (oblasti podle questu a XP pro tvuj level), *Dropy pro tebe* (zelene+ itemy z mobu
+tveho levelu, ktere jsou vylepsenim) a *Blizko* (questy a rare moby pobliz). Klik na radek = sipka na mape.
+Bez ForeverDB funguje zbytek addonu normalne, tyto funkce jen napisou, ze ForeverDB chybi.
+
 ## Data o mobech
 
 `MobData.lua` je vygenerovany z [vmangos](https://github.com/vmangos/core) world databaze (GPL-2.0)

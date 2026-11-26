@@ -508,3 +508,14 @@ ev:SetScript('OnEvent', function()
   ns.say('|cffffd200Nez odletis:|r' .. (#turn > 0 and (' odevzdat tady ' .. table.concat(turn, ', ') .. '.') or '')
     .. (#obj > 0 and (' Dokoncit tady: ' .. table.concat(obj, ', ') .. '.') or ''))
 end)
+
+-- pro Pruzkumnika (Explore.lua)
+R.spots, R.world, R.dist, R.playerPos, R.mapName, R.npcName, R.done, R.factionOk, R.objective =
+  spots, world, dist, playerPos, mapName, npcName, done, factionOk, objective
+function R.DB() return DB end
+function R.inLogSet()
+  local t = {}
+  if not DB then return t end
+  for _, q in ipairs(logQuests()) do t[q.id] = true end
+  return t
+end

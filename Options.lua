@@ -568,6 +568,90 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
     button(p.c, 'Sdilet questy s partou', 170, function() if ns.Quests and ns.Quests.shareAll then ns.Quests.shareAll() end end, '/cm sdilej'))
 end }
 
+PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\Icons\\INV_Misc_Map_01', build = function(p, db)
+  p.section('Pruzkumnik', 'Vyhledavani a chytre filtry nad databazi ForeverDB (questy, NPC, itemy, dropy, oblasti). Klik na radek = sipka na mape.')
+  local status = p.note('', 11)
+  -- vysledky (pevny pocet radku, plni se podle filtru)
+  local rows = {}
+  local function show(list)
+    for i, r in ipairs(rows) do
+      local l = list and list[i]
+      if l then
+        r.text:SetText(l.text) r.p, r.link, r.tipText = l.p, l.link, l.tip
+        r:Show()
+      else r:Hide() end
+    end
+    p.layout()
+    p.upd()
+  end
+  local function ready()
+    local R = ns.Route
+    if R and R.DB() then return true end
+    if not (R and R.available()) then
+      status.fs:SetText('|cffff8855Potrebuje addon ForeverDB - nainstaluj ho vedle ClaudeMasteru.|r') status.fit() p.layout()
+      return false
+    end
+    ns.say('Nacitam ForeverDB (chvili to muze seknout)...')
+    local ok, why = R.load()
+    if not ok then status.fs:SetText('|cffff8855ForeverDB se nepodarilo nacist: ' .. tostring(why) .. '|r') status.fit() p.layout() return false end
+    status.fs:SetText('') status.fit()
+    return true
+  end
+  -- hledani
+  local eb = CreateFrame('EditBox', nil, p.c, 'BackdropTemplate')
+  eb:SetSize(CW, 24) eb:SetAutoFocus(false)
+  eb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+  eb:SetBackdropColor(0, 0, 0, 0.55) eb:SetBackdropBorderColor(0.3, 0.34, 0.42, 1)
+  eb:SetFont(FONT, 12, '') eb:SetTextInsets(8, 8, 0, 0) eb:SetTextColor(1, 1, 1)
+  eb.hint = label(eb, 'Hledat quest, NPC nebo item...   (z:tanaris = questy v oblasti)', 11, 0.5, 0.52, 0.58)
+  eb.hint:SetPoint('LEFT', 8, 0)
+  local pend
+  eb:SetScript('OnTextChanged', function(self)
+    eb.hint:SetShown(self:GetText() == '')
+    if pend or not C_Timer then return end
+    pend = true
+    C_Timer.After(0.4, function()
+      pend = false
+      local t = eb:GetText()
+      if #t >= 3 and ready() then show(ns.Explore.search(t)) end
+    end)
+  end)
+  eb:SetScript('OnEscapePressed', eb.ClearFocus)
+  eb:SetScript('OnEnterPressed', eb.ClearFocus)
+  p.add(eb, 8)
+  p.row(button(p.c, 'Kde levelit', 110, function() if ready() then show(ns.Explore.leveling()) end end,
+      'Oblasti s nejvic questy pro tvuj level a kolik XP daji.'),
+    button(p.c, 'Dropy pro tebe', 120, function()
+      if ready() then show(ns.Explore.drops(function(list) show(list) end)) end
+    end, 'Zelene a lepsi itemy z mobu tveho levelu, ktere jsou pro tebe vylepsenim (podle vah gearu). Pocita se chvili.'),
+    button(p.c, 'Blizko', 80, function() if ready() then show(ns.Explore.nearby()) end end,
+      'Questy k vzeti a rare moby pobliz.'),
+    button(p.c, 'Trasa questu', 110, function() if ns.Route then ns.Route.toggle() end end, '/cm trasa'))
+  for i = 1, 30 do
+    local r = CreateFrame('Button', nil, p.c)
+    r:SetSize(CW, 17)
+    r.text = label(r, '', 11) r.text:SetPoint('LEFT', 2, 0) r.text:SetWidth(CW - 4) r.text:SetWordWrap(false)
+    r.hl = r:CreateTexture(nil, 'HIGHLIGHT') r.hl:SetAllPoints() r.hl:SetColorTexture(1, 1, 1, 0.06)
+    r:SetScript('OnClick', function(self)
+      if self.p and ns.Route then ns.Route.waypoint(self.p, (self.text:GetText() or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', '')) end
+    end)
+    r:SetScript('OnEnter', function(self)
+      GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+      if self.link then pcall(GameTooltip.SetHyperlink, GameTooltip, self.link) else GameTooltip:AddLine(self.text:GetText() or '', 1, 1, 1, true) end
+      if self.tipText then GameTooltip:AddLine(self.tipText, 0.8, 0.8, 0.8, true) end
+      if self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
+      GameTooltip:Show()
+    end)
+    r:SetScript('OnLeave', function() GameTooltip:Hide() end)
+    r:Hide()
+    rows[i] = r
+    p.add(r, i == 1 and 8 or 0)
+  end
+  if not (ns.Route and ns.Route.available()) then
+    status.fs:SetText('|cffff8855Pruzkumnik potrebuje addon ForeverDB (data o questech, NPC a dropech).|r') status.fit()
+  end
+end }
+
 PAGES[#PAGES + 1] = { key = 'memory', name = 'Pamet a uceni', icon = 'Interface\\Icons\\INV_Misc_Note_05', build = function(p, db)
   p.section('Uceni z hrani', 'Addon si pamatuje, jak hrajes, a podle toho upravuje rady (nerusive, v shrnuti po boji).')
   p.add(checkbox(p.c, 'Ucit se z meho hrani', 'Napr. kdyz strhnes aggro, priste doporuci AoE pozdeji.',
