@@ -1537,7 +1537,8 @@ local function onRoll(rollID, attempt)
       if fr:IsShown() and rollIdOf(fr) == rollID then
         local ic = fr.IconFrame or fr.Icon or fr.icon or fr.button or fr
         if not fr.cmUp then
-          local t = fr:CreateTexture(nil, 'OVERLAY', nil, 7)
+          local host = (type(ic) == 'table' and ic.CreateTexture and ic ~= fr and ic.GetChildren) and ic or fr
+          local t = host:CreateTexture(nil, 'OVERLAY', nil, 7)
           t:SetSize(20, 20) t:SetPoint('BOTTOMRIGHT', ic, 'BOTTOMRIGHT', 4, -4)
           fr.cmUp = t
         end
