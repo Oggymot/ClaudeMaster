@@ -702,7 +702,7 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     filter('Moje questy', 100, 'Moje questy', function() return ns.Explore.active() end,
       'Questy v logu: hotove k odevzdani nahore, pak rozpracovane podle vzdalenosti. Klik = detail (cile, retez, co odemkne).'),
     button(p.c, 'Trasa questu', 110, function() if ns.Route then ns.Route.toggle() end end, 'Okno s trasou questu (/cm trasa).'))
-  p.add(checkbox(p.c, 'Nacitat ForeverDB po prihlaseni', 'Databaze se nacte sama chvili po prihlaseni (mimo boj). Tooltipy pak berou dropy mobu a questove itemy z ForeverDB (presnejsi pro Forever). Stoji trochu pameti.',
+  p.add(checkbox(p.c, 'Data ForeverDB v tooltipech', 'Dropy mobu, penize a itemy zacinajici quest z ForeverDB. Addon si z databaze jednou udela malou cache (po prihlaseni, jen pri nove verzi ForeverDB) - cela databaze se pak drzi v pameti jen pri pouziti Pruzkumnika / trasy.',
     function() return db.fdbAuto ~= false end, function(v) db.fdbAuto = v end), 8)
   p.add(head, 6)
   for i = 1, 30 do

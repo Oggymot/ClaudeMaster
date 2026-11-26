@@ -48,7 +48,8 @@ reputace, cile, co je predtim, co quest odemkne a cely retez dal se souctem XP).
 V parte si addony posilaji quest log, takze trasa je spolecna: zahrne i questy, ktere ma jen partak,
 a u zastavky napise, kdo tam co odevzda nebo splni navic.
 
-Kdyz je ForeverDB nainstalovana, addon ji po prihlaseni nacte (vypnout v Pruzkumniku) a tooltip moba
+Kdyz je ForeverDB nainstalovana, addon si z ni udela malou cache (jen pri nove verzi ForeverDB; cela databaze
+se v pameti drzi jen pri pouziti Pruzkumnika / trasy) a tooltip moba
 ukazuje dropy podle Foreveru (vc. dat ze skutecnych killu) misto classic databaze; itemy, ktere zacinaji quest,
 to napisou v tooltipu. Tooltip moba ukazuje i kolik penez z nej pada (prumer a rozsah ze skutecnych killu)
 a v Pruzkumniku jde rozkliknout moba/NPC (boj, naucene imunity, penize, kde se spawnuje, dropy, questy).

@@ -593,24 +593,30 @@ end
 ------------------------------------------------------------------------------------------
 -- Tooltip itemu: zacina quest (ForeverDB)
 ------------------------------------------------------------------------------------------
+local function inLog(qid)
+  local QL = C_QuestLog
+  if QL and QL.GetLogIndexForQuestID then return (safeNum(pc(QL.GetLogIndexForQuestID, qid)) or 0) > 0 end
+  if QL and QL.IsOnQuest then return safeBool(pc(QL.IsOnQuest, qid)) == true end
+  return false
+end
 local function onItem(tt, data)
   if tt ~= GameTooltip and tt ~= ItemRefTooltip then return end
-  local D = DB()
-  if not (D and D.start) then return end
+  local MD = ns.MobDB
+  if not (MD and MD.startsQuest) then return end
   local id = type(data) == 'table' and safeNum(data.id)
   if not id then
     local ok, _, link = pcall(tt.GetItem, tt)
     link = ok and safe(link)
     id = type(link) == 'string' and tonumber(link:match('item:(%d+)'))
   end
-  local qid = id and D.start[id]
-  local info = qid and D.quest[qid]
-  if not info then return end
+  local q = id and MD.startsQuest(id)
+  if not q then return end
+  local QL = C_QuestLog
   local st
-  if R().done(qid) then st = '|cff888888uz mas hotovo - prodat|r'
-  elseif R().inLogSet()[qid] then st = '|cff66ccffuz mas v logu|r'
-  else st = (info[3] or 1) > lvl() and ('|cffffcc00od levelu %d|r'):format(info[3]) or '|cff40ff60pravym klikem prijmes|r' end
-  tt:AddLine(('|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd100Zacina quest:|r %s |cff9aa6b8[%d]|r - %s'):format(info[1], info[2] or 0, st))
+  if QL and QL.IsQuestFlaggedCompleted and safeBool(pc(QL.IsQuestFlaggedCompleted, q.qid)) == true then st = '|cff888888uz mas hotovo - prodat|r'
+  elseif inLog(q.qid) then st = '|cff66ccffuz mas v logu|r'
+  else st = q.min > lvl() and ('|cffffcc00od levelu %d|r'):format(q.min) or '|cff40ff60pravym klikem prijmes|r' end
+  tt:AddLine(('|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t |cffffd100Zacina quest:|r %s |cff9aa6b8[%d]|r - %s'):format(q.title, q.lvl, st))
 end
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
   pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Item, function(tt, data) pcall(onItem, tt, data) end)
@@ -650,7 +656,7 @@ function X.npc(id)
     if l[1] then learned[#learned + 1] = 'kouzli: ' .. table.concat(l, ', ') end
   end
   if learned[1] then fight[#fight + 1] = { t = 'Naucene ve hre', s = table.concat(learned, ', ') } end
-  local money = MD and MD.money and MD.money(id)
+  local money = MD and MD.money and MD.money(id, true)
   if #fight > 0 or money then out[#out + 1] = { head = 'Boj a odmena' } end
   for _, f in ipairs(fight) do out[#out + 1] = { icon = 'Interface\\Icons\\Ability_Warrior_BattleShout', title = f.t, sub = f.s, tip = f.s } end
   if money and money.avg > 0 then

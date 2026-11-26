@@ -35,16 +35,20 @@ function R.load()
   end
   if not (ForeverDB and ForeverDB.quest and ForeverDB.spm) then return false, 'ForeverDB bez dat' end
   DB = ForeverDB
-  if ns.MobDB and ns.MobDB.reset then pcall(ns.MobDB.reset) end
+  if ns.MobDB then
+    if ns.MobDB.cacheFresh and not ns.MobDB.cacheFresh() then pcall(ns.MobDB.buildCache) end
+    if ns.MobDB.reset then pcall(ns.MobDB.reset) end
+  end
   return true
 end
--- po prihlaseni nacist databazi sama (mimo boj), at maji tooltipy (dropy, questy) lepsi data
+-- po prihlaseni: jen kdyz tooltipova cache chybi / je ze starsi verze ForeverDB (jinak se databaze nenacita = setri pamet a FPS)
 do
   local f = CreateFrame('Frame')
   pcall(f.RegisterEvent, f, 'PLAYER_ENTERING_WORLD')
   local tries = 0
   local function try()
     if DB or not ns.db or ns.db.fdbAuto == false or not R.available() then return end
+    if ns.MobDB and ns.MobDB.cacheFresh and ns.MobDB.cacheFresh() then return end
     tries = tries + 1
     if InCombatLockdown() then if tries < 30 and C_Timer then C_Timer.After(10, try) end return end
     pcall(R.load)
@@ -714,6 +718,10 @@ end
 
 -- prubezne obnovovani okna (mimo boj, kazde 3 s)
 local acc, sendAcc = 0, 0
+local lastPos, lastRefresh, logDirty = nil, 0, true
+local qev = CreateFrame('Frame')
+pcall(qev.RegisterEvent, qev, 'QUEST_LOG_UPDATE')
+qev:SetScript('OnEvent', function() logDirty = true end)
 local tick = CreateFrame('Frame')
 tick:SetScript('OnUpdate', function(_, el)
   acc = acc + el
@@ -721,7 +729,16 @@ tick:SetScript('OnUpdate', function(_, el)
   acc = 0
   sendAcc = (sendAcc or 0) + 1
   if sendAcc >= 4 then sendAcc = 0 pcall(sendLog) end
-  if frame and frame:IsShown() and not InCombatLockdown() then pcall(R.refresh) end
+  if frame and frame:IsShown() and not InCombatLockdown() then
+    -- prepocet jen pri pohybu (25+ yd), zmene logu nebo jednou za 15 s
+    local me = playerPos()
+    local now = GetTime()
+    local moved = not (me and lastPos) or dist(me, lastPos) > 25
+    if moved or logDirty or now - lastRefresh > 15 then
+      lastPos, lastRefresh, logDirty = me, now, false
+      pcall(R.refresh)
+    end
+  end
 end)
 
 ------------------------------------------------------------------------------------------
@@ -731,8 +748,7 @@ local ev = CreateFrame('Frame')
 pcall(ev.RegisterEvent, ev, 'TAXIMAP_OPENED')
 ev:SetScript('OnEvent', function()
   if not ns.db or ns.db.routeWarn == false then return end
-  if not DB and R.available() then pcall(R.load) end   -- databaze se nacte jednou (u letce, mimo boj)
-  if not DB then return end
+  if not DB then return end   -- jen kdyz je databaze uz nactena (Pruzkumnik / trasa); kvuli tomu ji nenacitame
   local me = playerPos()
   if not me then return end
   local turn, obj = {}, {}

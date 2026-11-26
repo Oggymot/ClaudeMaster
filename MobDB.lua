@@ -32,49 +32,130 @@ end
 ------------------------------------------------------------------------------------------
 -- ForeverDB (volitelna): presnejsi dropy pro Forever (vc. novych itemu a dropu ze skutecnych killu)
 ------------------------------------------------------------------------------------------
-local fdrops      -- [npcId] = { {id, chance, kind, name}, ... }
-local fname       -- [jmeno] = { npcId, ... } (moby, ktere vmangos databaze nezna)
+-- Celou databazi (~40 MB) neni dobre drzet v pameti kvuli tooltipum (zpomaluje GC = trhane FPS).
+-- Proto se z ni jednou vytahne mala cache retezcu (ns.db.fdbc) a ta se pouziva i v dalsich sezenich.
 local function FDB() return ns.Route and ns.Route.DB and ns.Route.DB() end
-local function fdbDrops(npc)
+local function fdbVersion()
+  local get = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+  local v = get and safe(pc(get, 'ForeverDB', 'Version'))
+  if type(v) == 'string' and v ~= '' then return v end
   local D = FDB()
-  if not D or not D.drop then return nil end
-  if not fdrops then
-    fdrops = {}
-    for item, dl in pairs(D.drop) do
-      local it = D.item[item]
-      local q, cls = it and it[2] or 1, it and it[5]
-      for j = 1, #dl - 1, 2 do
-        local ch = (dl[j + 1] or 0) / 100
-        local kind
-        if cls == 12 then kind = 'q'
-        elseif q >= 2 then kind = tostring(math.min(q, 5))
-        elseif q == 1 and ch >= 5 then kind = 'c' end
-        if kind and it and it[1] and ch >= 0.5 then
-          local l = fdrops[dl[j]]
-          if not l then l = {} fdrops[dl[j]] = l end
-          l[#l + 1] = { id = item, chance = ch, kind = kind, name = it[1] }
-        end
+  return D and D.meta and D.meta.hash or nil
+end
+-- force = Pruzkumnik (bere data vzdy); tooltipy respektuji nastaveni
+local function C(force)
+  if not force and ns.db and ns.db.fdbAuto == false then return nil end
+  local c = ns.db and ns.db.fdbc
+  return (c and c.drops) and c or nil
+end
+function MD.cacheFresh()
+  local c = C(true)
+  local v = fdbVersion()
+  return c ~= nil and (v == nil or c.ver == v)
+end
+-- sestavi cache z nactene databaze
+function MD.buildCache()
+  local D = FDB()
+  if not (D and D.drop and ns.db) then return false end
+  local per = {}
+  for item, dl in pairs(D.drop) do
+    local it = D.item[item]
+    local q, cls = it and it[2] or 1, it and it[5]
+    for j = 1, #dl - 1, 2 do
+      local ch = (dl[j + 1] or 0) / 100
+      local kind
+      if cls == 12 then kind = 'q'
+      elseif q >= 2 then kind = tostring(math.min(q, 5))
+      elseif q == 1 and ch >= 5 then kind = 'c' end
+      if kind and it and it[1] and ch >= 0.5 then
+        local l = per[dl[j]]
+        if not l then l = {} per[dl[j]] = l end
+        l[#l + 1] = { id = item, chance = ch, kind = kind, name = it[1] }
       end
     end
-    local W = { ['5'] = 8, ['4'] = 5, ['3'] = 3, ['2'] = 1.5, c = 1 }
-    for _, l in pairs(fdrops) do
-      table.sort(l, function(a, b)
-        if (a.kind == 'q') ~= (b.kind == 'q') then return a.kind == 'q' end
-        local sa, sb = a.chance * (W[a.kind] or 1), b.chance * (W[b.kind] or 1)
-        if sa ~= sb then return sa > sb end
-        return a.id < b.id
-      end)
-      for i = #l, 7, -1 do l[i] = nil end   -- max 6 radku
+  end
+  local W = { ['5'] = 8, ['4'] = 5, ['3'] = 3, ['2'] = 1.5, c = 1 }
+  local drops = {}
+  for npc, l in pairs(per) do
+    table.sort(l, function(a, b)
+      if (a.kind == 'q') ~= (b.kind == 'q') then return a.kind == 'q' end
+      local sa, sb = a.chance * (W[a.kind] or 1), b.chance * (W[b.kind] or 1)
+      if sa ~= sb then return sa > sb end
+      return a.id < b.id
+    end)
+    local parts = {}
+    for i = 1, math.min(6, #l) do
+      local d = l[i]
+      parts[i] = ('%d~%s~%s~%s'):format(d.id, ('%.2f'):format(d.chance):gsub('%.?0+$', ''), d.kind, d.name:gsub('[~;]', ''))
+    end
+    drops[npc] = table.concat(parts, ';')
+  end
+  local gold = {}
+  for npc, g in pairs(D.gold or {}) do
+    if type(g) == 'table' and g[1] then gold[npc] = ('%d,%d,%d,%d'):format(g[1], g[2] or g[1], g[3] or g[1], g[4] or 0) end
+  end
+  -- moby mimo vmangos databazi (jen ty, ktere neco dropi / maji penize)
+  local names = {}
+  for id, n in pairs(D.npc) do
+    if n[1] and not (ns.MOBDATA and ns.MOBDATA[id]) and (drops[id] or gold[id]) then
+      local e = ('%d:%d:%d:%d'):format(id, n[3] or 1, n[4] or n[3] or 1, n[5] or 0)
+      names[n[1]] = names[n[1]] and (names[n[1]] .. ',' .. e) or e
     end
   end
-  return fdrops[npc]
+  local lv = {}
+  for id in pairs(drops) do local n = D.npc[id] if n and n[3] then lv[id] = (n[3]) .. ',' .. (n[4] or n[3]) end end
+  local start = {}
+  for item, qid in pairs(D.start or {}) do
+    local q = D.quest[qid]
+    if q and q[1] then start[item] = ('%d|%d|%d|%s'):format(qid, q[3] or 1, q[2] or 0, q[1]) end
+  end
+  ns.db.fdbc = { ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start }
+  MD.reset()
+  return true
+end
+
+local dcache = {}
+local function fdbDrops(npc, force)
+  local c = C(force)
+  if not c then
+    if FDB() and not C(true) then MD.buildCache() c = C(force) end
+    if not c then return nil end
+  end
+  local s = c.drops[npc]
+  if not s then return nil end
+  local l = dcache[npc]
+  if l then return l end
+  l = {}
+  for id, ch, kind, name in s:gmatch('(%d+)~([%d%.]+)~(%w)~([^;]*)') do
+    l[#l + 1] = { id = tonumber(id), chance = tonumber(ch), kind = kind, name = name }
+  end
+  dcache[npc] = l
+  return l
+end
+local function fdbLevels(npc)
+  local c = C()
+  local s = c and c.lv and c.lv[npc]
+  if not s then return nil end
+  local lo, hi = s:match('(%d+),(%d+)')
+  return tonumber(lo), tonumber(hi)
 end
 -- penize z moba (ForeverDB, skutecne killy): { avg, min, max, n } v copperech
-function MD.money(id)
-  local D = FDB()
-  local g = D and D.gold and type(id) == 'number' and D.gold[id]
-  if type(g) ~= 'table' or not g[1] then return nil end
-  return { avg = g[1], min = g[2] or g[1], max = g[3] or g[1], n = g[4] or 0 }
+function MD.money(id, force)
+  local c = C(force)
+  local s = c and type(id) == 'number' and c.gold[id]
+  if not s then return nil end
+  local a, mn, mx, n = s:match('(%d+),(%d+),(%d+),(%d+)')
+  if not a then return nil end
+  return { avg = tonumber(a), min = tonumber(mn), max = tonumber(mx), n = tonumber(n) }
+end
+-- item zacina quest: { qid, minLvl, lvl, title }
+function MD.startsQuest(item)
+  local c = C()
+  local s = c and c.start and c.start[item]
+  if not s then return nil end
+  local q, mn, lv, t = s:match('^(%d+)|(%d+)|(%d+)|(.*)$')
+  if not q then return nil end
+  return { qid = tonumber(q), min = tonumber(mn), lvl = tonumber(lv), title = t }
 end
 function MD.coin(c)
   c = math.floor(c + 0.5)
@@ -82,9 +163,9 @@ function MD.coin(c)
   if c >= 100 then return ('%ds %dc'):format(math.floor(c / 100), c % 100) end
   return c .. 'c'
 end
-function MD.dropsOf(id) return fdbDrops(id) end
+function MD.dropsOf(id) return fdbDrops(id, true) end
 -- databaze se nacetla: zahodit cache, at se dropy prepocitaji
-function MD.reset() MD.cache = {} fdrops = nil fname = nil end
+function MD.reset() MD.cache = {} dcache = {} end
 
 local function parse(id)
   local c = MD.cache[id]
@@ -118,8 +199,7 @@ local function parse(id)
   local fd = fdbDrops(id)
   if fd then
     r.drops, r.fdb = fd, true
-    local n = FDB().npc and FDB().npc[id]
-    if n and n[3] then r.dlmin, r.dlmax = n[3], n[4] or n[3] end
+    r.dlmin, r.dlmax = fdbLevels(id)
   end
   r.immPoly = has(r.mech, MECH.polymorph)
   r.immFear = has(r.mech, MECH.fear)
@@ -135,33 +215,21 @@ end
 
 -- zaznam podle jmena; pri vic zaznamech se stejnym jmenem ten, jehoz level sedi
 local function fdbOnly(name, level)
-  local D = FDB()
-  if not (D and D.npc) then return nil end
-  if not fname then
-    fname = {}
-    for id, n in pairs(D.npc) do
-      if n[1] and not (ns.MOBDATA and ns.MOBDATA[id]) then
-        local l = fname[n[1]]
-        if not l then l = {} fname[n[1]] = l end
-        l[#l + 1] = id
-      end
-    end
-  end
-  local l = fname[name]
-  if not l then return nil end
-  local best, bd
-  for _, id in ipairs(l) do
-    local n = D.npc[id]
-    local lo, hi = n[3] or 1, n[4] or n[3] or 1
+  local c = C()
+  local s = c and c.names and c.names[name]
+  if not s then return nil end
+  local best, bd, blo, bhi, brk
+  for sid, slo, shi, rk in s:gmatch('(%d+):(%d+):(%d+):(%d+)') do
+    local id, lo, hi = tonumber(sid), tonumber(slo), tonumber(shi)
     local d = level and ((level < lo and lo - level) or (level > hi and level - hi) or 0) or 0
-    if not bd or d < bd then best, bd = id, d end
+    if not bd or d < bd then best, bd, blo, bhi, brk = id, d, lo, hi, tonumber(rk) end
   end
+  if not best then return nil end
   local key = 'f' .. best
   if MD.cache[key] then return MD.cache[key] end
-  local n = D.npc[best]
-  local r = { id = best, name = n[1], lmin = n[3], lmax = n[4] or n[3], rank = n[5] or 0, mech = 0, school = 0,
+  local r = { id = best, name = name, lmin = blo, lmax = bhi, rank = brk or 0, mech = 0, school = 0,
     res = {}, spells = {}, heal = {}, cc = {}, summon = {}, dmgSchool = {}, immSchool = {}, drops = fdbDrops(best) or {}, fdb = true, fdbOnly = true }
-  r.dlmin, r.dlmax = r.lmin, r.lmax
+  r.dlmin, r.dlmax = blo, bhi
   MD.cache[key] = r
   return r
 end
