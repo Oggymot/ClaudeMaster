@@ -37,7 +37,8 @@ GitHub Action postavi zip a vytvori Release; WowUp pak nabidne aktualizaci.
 `/cm trasa` naplanuje poradi zastavek (odevzdat / splnit) s nejkratsi cestou, upozorni na navazujici questy
 a nabidne questy po ceste. Okno jde zvetsit tahem za roh (kolecko = posun), v hlavicce je kompaktni rezim (K),
 pruhledny rezim (T) a minimalizace do ikony (_), ktera po najeti ukaze trasu. Klik na navazujici quest
-(nebo pravy klik na krok) otevre jeho detail v Pruzkumnikovi. Potrebuje samostatny addon [ForeverDB](https://github.com/foreverfraddons/forever-db)
+(nebo pravy klik na krok) otevre jeho detail v Pruzkumnikovi. Pod kroky "Splnit" jsou cile s pocty (jako seznam
+questu ve hre) vc. postupu partaka; v kompaktnim rezimu je pocet za nazvem a cile v tooltipu. Potrebuje samostatny addon [ForeverDB](https://github.com/foreverfraddons/forever-db)
 (GPL-3, data z QuestieDB, VMaNGOS, cMaNGOS, pfQuest a dalsich - viz jeho LICENSE-DATA). ClaudeMaster jeho data
 nekopiruje, jen si ho na vyzadani nacte.
 

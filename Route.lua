@@ -349,9 +349,36 @@ local function inParty(name)
   end
 end
 function R.recvLog(name, msg)
-  local q = {}
-  for id, c in msg:gmatch('(%d+):(%d)') do q[tonumber(id)] = c == '1' end
-  R.peerLogs[name] = { q = q, at = GetTime() }
+  local q, prog = {}, {}
+  for e in msg:sub(4):gmatch('[^,]+') do
+    local id, c, pr = e:match('^(%d+):(%d):?(.*)$')
+    if id then
+      q[tonumber(id)] = c == '1'
+      if pr and pr ~= '' then prog[tonumber(id)] = pr end
+    end
+  end
+  R.peerLogs[name] = { q = q, prog = prog, at = GetTime() }
+end
+-- cile questu v mem logu: { {text, done, have, need}, ... }
+local function objectives(qid)
+  local out = {}
+  local l = QL.GetQuestObjectives and pc(QL.GetQuestObjectives, qid)
+  for _, o in ipairs(type(l) == 'table' and l or {}) do
+    local t = safe(o.text)
+    if type(t) == 'string' and t ~= '' then
+      local name, a, b = t:match('^(.-):%s*(%d+)%s*/%s*(%d+)$')
+      out[#out + 1] = { text = name or t, done = safeBool(o.finished) == true,
+        have = tonumber(a) or safeNum(o.numFulfilled), need = tonumber(b) or safeNum(o.numRequired) }
+    end
+  end
+  return out
+end
+R.objectives = objectives
+-- prvni nesplneny cil s pocty ("5/15") - pro partu a kompaktni rezim
+local function progShort(qid)
+  for _, o in ipairs(objectives(qid)) do
+    if not o.done and o.need and o.need > 1 then return (o.have or 0) .. '/' .. o.need end
+  end
 end
 local lastLog, lastLogAt = nil, -99
 local function sendLog()
@@ -363,7 +390,9 @@ local function sendLog()
     local info = pc(QL.GetInfo, i)
     local id = type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID)
     if id then
-      local p = id .. ':' .. ((QL.IsComplete and safeBool(pc(QL.IsComplete, id))) and '1' or '0')
+      local comp = QL.IsComplete and safeBool(pc(QL.IsComplete, id))
+      local pr = not comp and progShort(id)
+      local p = id .. ':' .. (comp and '1' or '0') .. (pr and (':' .. pr) or '')
       if len + #p + 1 > 250 then break end
       parts[#parts + 1] = p len = len + #p + 1
     end
@@ -379,7 +408,7 @@ R.sendLog = sendLog
 local function peers()
   local out = {}
   for name, l in pairs(R.peerLogs) do
-    if GetTime() - l.at < 120 and inParty(name) then out[#out + 1] = { name = name, unit = inParty(name), q = l.q } end
+    if GetTime() - l.at < 120 and inParty(name) then out[#out + 1] = { name = name, unit = inParty(name), q = l.q, prog = l.prog or {} } end
   end
   table.sort(out, function(a, b) return a.name < b.name end)
   return out
@@ -703,11 +732,38 @@ local function collect()
         steps = steps + 1
         if s.mine and s.kind == 'turnin' and v.xp then sumXP = sumXP + v.xp end
         local k = KIND[s.kind]
+        -- cile (jen rozpracovane): moje pocty + postup partaku
+        local obj = (s.kind == 'obj' and s.mine) and objectives(s.q.id) or {}
+        local peerProg = {}
+        if s.kind == 'obj' then
+          for _, pr in ipairs(R.peers()) do
+            local pg = pr.prog and pr.prog[s.q.id]
+            if pg then peerProg[#peerProg + 1] = short(pr.name) .. ' ' .. pg end
+          end
+        end
+        local objTip = {}
+        for _, o in ipairs(obj) do
+          objTip[#objTip + 1] = (o.done and '|cff40ff60' or '|cffffffff') .. (o.need and ((o.have or 0) .. '/' .. o.need .. ' ') or '- ') .. o.text .. '|r'
+        end
+        if peerProg[1] then objTip[#objTip + 1] = '|cff66ccff' .. table.concat(peerProg, ', ') .. '|r' end
+        local ps = s.mine and s.kind == 'obj' and progShort(s.q.id)
         add({ num = i, color = k, first = i == 1, text = k[1] .. '  ' .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v) or '',
+          ctext = k[1] .. '  ' .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s), objTip = objTip,
           sub = s.kind == 'turnin' and ((s.npc and npcName(s.npc) or '?') .. ', ' .. where) or ('misto plneni, ' .. where),
           right2 = yd(s.d), p = s.p, label = s.q.title, qid = s.q.id, short = s.q.title,
           tip = (s.kind == 'turnin' and ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where) or ('Misto plneni: ' .. where))
             .. '\n' .. R.valueTip(v) })
+        -- radky cilu pod krokem (jako seznam questu ve hre); v kompaktnim rezimu jen v tooltipu
+        local nobj = 0
+        for _, o in ipairs(obj) do
+          nobj = nobj + 1
+          if nobj > 4 then break end
+          add({ small = true, obj = true, qid = s.q.id, p = s.p, label = s.q.title,
+            text = ('        %s%s%s|r'):format(o.done and '|cff40ff60' or '|cffdddddd', o.need and ((o.have or 0) .. '/' .. o.need .. ' ') or '- ', o.text) })
+        end
+        if peerProg[1] then
+          add({ small = true, obj = true, qid = s.q.id, text = '        |cff66ccff' .. table.concat(peerProg, ', ') .. '|r' })
+        end
         for _, o in ipairs(s.also or {}) do
           local ov = o.mine and R.value(o.q.id, true)
           if o.mine and o.kind == 'turnin' and ov and ov.xp then sumXP = sumXP + ov.xp end
@@ -756,6 +812,11 @@ function R.refresh()
   local y, odd = compact and -26 or -42, false
   local start = math.min(frame.scroll or 0, math.max(0, #lines - 1))
   frame.scroll = start
+  if compact then
+    local f = {}
+    for _, l in ipairs(lines) do if not l.obj then f[#f + 1] = l end end
+    lines = f
+  end
   local shown = 0
   for i, r in ipairs(frame.rows) do
     local l = lines[i + start]
@@ -767,6 +828,7 @@ function R.refresh()
       r:SetHeight(h) r:ClearAllPoints() r:SetPoint('TOPLEFT', 6, y) y = y - h
       r.p, r.label, r.tip, r.qid, r.detailFirst = l.p, l.label, l.tip, l.qid, l.detailFirst
       if compact and l.sub then r.tip = (l.sub .. (l.right2 and l.right2 ~= '' and (', ' .. l.right2) or '')) .. (l.tip and ('\n' .. l.tip) or '') end
+      if l.objTip and l.objTip[1] then r.tip = (r.tip and (r.tip .. '\n') or '') .. '|cffffd200Cile:|r\n' .. table.concat(l.objTip, '\n') end
       r.num:SetText(l.num and (l.num .. '.') or '')
       r.right:SetText(l.right or '') r.right2:SetText((not compact) and l.right2 or '')
       r.right:ClearAllPoints()
@@ -788,7 +850,7 @@ function R.refresh()
         local rw = math.max(r.right:GetStringWidth() or 0, compact and 0 or (r.right2:GetStringWidth() or 0))
         local left = l.num and 28 or 10
         if compact then r.text:SetPoint('LEFT', left, 0) else r.text:SetPoint('TOPLEFT', left, -3) end
-        r.text:SetText(l.text) r.text:SetWidth(w - 24 - left - rw - 8)
+        r.text:SetText(compact and l.ctext or l.text) r.text:SetWidth(w - 24 - left - rw - 8)
         r.sub:ClearAllPoints() r.sub:SetPoint('BOTTOMLEFT', left, 3) r.sub:SetWidth(w - 24 - left - rw - 8)
       end
       r:Show()
@@ -836,7 +898,7 @@ local function buildIcon()
           n = n + 1
           if n > 14 then break end
           if l.head then GameTooltip:AddLine(l.head, 0.4, 0.8, 1)
-          else GameTooltip:AddDoubleLine(l.num .. '. ' .. l.text, l.right2 or '', 1, 1, 1, 0.6, 0.6, 0.6) end
+          else GameTooltip:AddDoubleLine(l.num .. '. ' .. (l.ctext or l.text), l.right2 or '', 1, 1, 1, 0.6, 0.6, 0.6) end
         elseif not l.small and l.text then
           n = n + 1
           if n > 14 then break end
