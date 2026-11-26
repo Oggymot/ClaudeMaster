@@ -222,13 +222,75 @@ local function gameWaypoint(qid)
   local w = world(map, px, py)
   return w and { map = map, x = px, y = py, w = w } or nil
 end
+local zcache = {}
+local function zoneOf(map)
+  if not map then return nil end
+  if zcache[map] ~= nil then return zcache[map] or nil end
+  local m, guard = map, 0
+  while m and guard < 6 do
+    local i = C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, m)
+    local t = type(i) == 'table' and safeNum(i.mapType)
+    if not t or t <= 3 then break end
+    m = safeNum(i.parentMapID) guard = guard + 1
+  end
+  zcache[map] = m or false
+  return m
+end
+-- poloha questu z mapy hry (modra oblast / tecka): hledame na mapach, kde quest podle databaze je + zona hrace
+local gpc = {}
+local function gamePoi(qid, from)
+  if not QL.GetQuestsOnMap then return nil end
+  local c = gpc[qid]
+  if c and GetTime() - c.at < 3 then
+    if not c.p then return nil end
+    return c.p, dist(from, c.p.w)
+  end
+  local maps = {}
+  local me = playerPos()
+  if me and me.map then maps[#maps + 1] = me.map local z = zoneOf(me.map) if z and z ~= me.map then maps[#maps + 1] = z end end
+  local MD = ns.MobDB
+  local o, t = MD and MD.questMaps and MD.questMaps(qid)
+  for m in pairs(o or {}) do maps[#maps + 1] = m end
+  for m in pairs(t or {}) do maps[#maps + 1] = m end
+  local best, bd
+  for _, m in ipairs(maps) do
+    local l = pc(QL.GetQuestsOnMap, m)
+    for _, q in ipairs(type(l) == 'table' and l or {}) do
+      if safeNum(q.questID) == qid and safeNum(q.x) and safeNum(q.y) then
+        local x, y = math.floor(q.x * 1000), math.floor(q.y * 1000)
+        local w = world(m, x, y)
+        local d = w and dist(from, w) or 99999
+        if w and (not bd or d < bd) then best, bd = { map = m, x = x, y = y, w = w }, d end
+      end
+    end
+  end
+  gpc[qid] = { at = GetTime(), p = best }
+  return best, bd
+end
 local function objective(qid, from)
+  -- 1) hra (presna oblast cile), 2) databaze (qsp / x[16]), 3) moby k zabiti / zdroje potrebnych itemu
+  local gp, gd = gamePoi(qid, from)
+  if gp then return gp, gd end
   local m = DB.qsp and DB.qsp[qid]
   local x = DB.qx and DB.qx[qid]
   if type(m) ~= 'table' and type(x) == 'table' and type(x[16]) == 'table' then m = x[16] end
   if type(m) ~= 'table' then
     local g = gameWaypoint(qid)
     if g then return g, dist(from, g.w) end
+    if type(x) == 'table' then
+      local keys = {}
+      for _, nid in ipairs(type(x[8]) == 'table' and x[8] or {}) do keys[#keys + 1] = 'c' .. nid end
+      for _, iid in ipairs(type(x[10]) == 'table' and x[10] or {}) do
+        local dl = DB.drop[iid]
+        if dl then for j = 1, math.min(#dl - 1, 6), 2 do keys[#keys + 1] = 'c' .. dl[j] end end
+        local od = DB.odrop and DB.odrop[iid]
+        if od then for j = 1, math.min(#od - 1, 6), 2 do keys[#keys + 1] = 'o' .. od[j] end end
+      end
+      if keys[1] then
+        local p, d = nearest(keys, from)
+        if p then return p, d end
+      end
+    end
     return nil
   end
   local best, bd
@@ -483,17 +545,22 @@ function R.plan()
     if s.kind == 'turnin' then
       local p, d, k = nearest(s.keys, pos)
       if not p and mineIn(s) then p = gameWaypoint(s.q.id) d = p and dist(pos, p.w) end
+      if not p and mineIn(s) then p, d = gamePoi(s.q.id, pos) end
       return p, d, k
     end
     return objective(s.q.id, pos)
   end
   local route, pos, left = {}, start, stops
-  while #left > 0 and #route < 10 do
-    local bi, bp, bd, bk
+  -- nejdriv vse v zone, kde hrac je; pak zbytek (nejblizsi soused)
+  local myZone = zoneOf(me.map)
+  while #left > 0 and #route < 14 do
+    local bi, bp, bd, bk, hi, hp, hd, hk
     for i, s in ipairs(left) do
       local p, d, k = locate(s, pos)
       if p and (not bd or d < bd - 0.01) then bi, bp, bd, bk = i, p, d, k end
+      if p and myZone and zoneOf(p.map) == myZone and (not hd or d < hd - 0.01) then hi, hp, hd, hk = i, p, d, k end
     end
+    if hi then bi, bp, bd, bk = hi, hp, hd, hk end
     if not bi then break end
     local s = table.remove(left, bi)
     s.p, s.d, s.npc, s.mine = bp, dist(me, bp.w), bk, mineIn(s)
@@ -828,20 +895,6 @@ end
 local KIND = { turnin = { '|TInterface\\RaidFrame\\ReadyCheck-Ready:15:15|t', 0.25, 1, 0.38, 'Odevzdat' },
   obj = { '|TInterface\\GossipFrame\\IncompleteQuestIcon:15:15|t', 1, 0.82, 0, 'Splnit' } }
 -- zona mapy (podzona / mesto / patro -> zona), at jde porovnat "tady" vs. jinde
-local zcache = {}
-local function zoneOf(map)
-  if not map then return nil end
-  if zcache[map] ~= nil then return zcache[map] or nil end
-  local m, guard = map, 0
-  while m and guard < 6 do
-    local i = C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, m)
-    local t = type(i) == 'table' and safeNum(i.mapType)
-    if not t or t <= 3 then break end
-    m = safeNum(i.parentMapID) guard = guard + 1
-  end
-  zcache[map] = m or false
-  return m
-end
 -- obsah trasy (bez vykresleni): radky + souhrn
 local function collect()
   local lines = {}
@@ -869,9 +922,16 @@ local function collect()
       end
       local myZone = R.lastMe and zoneOf(R.lastMe.map)
       local function here(p) return p and p.map and myZone and zoneOf(p.map) == myZone end
+      local shownHere, shownOther = false, false
       for i, s in ipairs(route) do
         local where = s.p and mapName(s.p.map) or '?'
         local isHere = here(s.p)
+        -- sekce: nejdriv aktualni zona, pak ostatni
+        if isHere and not shownHere then
+          add({ head = 'Tady: ' .. (myZone and mapName(myZone) or '?') }) shownHere = true
+        elseif not isHere and shownHere and not shownOther then
+          add({ head = 'Dalsi zony' }) shownOther = true
+        end
         local v = s.mine and R.value(s.q.id, true) or R.value(s.q.id, false)
         steps = steps + 1
         if s.mine and s.kind == 'turnin' and v.xp then sumXP = sumXP + v.xp end
