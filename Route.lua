@@ -893,6 +893,7 @@ function R.refresh()
     for _, l in ipairs(lines) do if not l.obj then f[#f + 1] = l end end
     lines = f
   end
+  local sup = ns.Quests and ns.Quests.superId and ns.Quests.superId()
   local shown = 0
   for i, r in ipairs(frame.rows) do
     local l = lines[i + start]
@@ -911,7 +912,10 @@ function R.refresh()
       if compact then r.right:SetPoint('RIGHT', -6, 0) else r.right:SetPoint('TOPRIGHT', -6, -3) end
       r.text:ClearAllPoints() r.sub:SetText((not compact) and l.sub or '')
       r.stripe:SetShown(l.color ~= nil and not l.head)
-      if l.color then r.stripe:SetVertexColor(l.color[2], l.color[3], l.color[4], l.first and 1 or 0.45) end
+      local focus = sup and l.qid == sup and not l.small and not l.head
+      r.stripe:SetWidth(focus and 4 or 2)
+      if focus then r.stripe:Show() r.stripe:SetVertexColor(1, 0.82, 0, 1)
+      elseif l.color then r.stripe:SetVertexColor(l.color[2], l.color[3], l.color[4], l.first and 1 or 0.45) end
       local a = tr and 0.5 or 1
       if l.head then
         r.bg:SetColorTexture(0, 0, 0, 0)
@@ -922,7 +926,8 @@ function R.refresh()
         r.text:SetPoint('LEFT', 4, 0) r.text:SetText(l.text or l.msg) r.text:SetWidth(w - 24)
       else
         odd = not odd
-        r.bg:SetColorTexture(1, 1, 1, (l.first and 0.08 or (odd and 0.035 or 0.012)) * a)
+        if focus then r.bg:SetColorTexture(1, 0.82, 0, 0.16 * a)
+        else r.bg:SetColorTexture(1, 1, 1, (l.first and 0.08 or (odd and 0.035 or 0.012)) * a) end
         local rw = math.max(r.right:GetStringWidth() or 0, compact and 0 or (r.right2:GetStringWidth() or 0))
         local left = l.num and 28 or 10
         if compact then r.text:SetPoint('LEFT', left, 0) else r.text:SetPoint('TOPLEFT', left, -3) end
@@ -974,7 +979,10 @@ local function buildIcon()
           n = n + 1
           if n > 14 then break end
           if l.head then GameTooltip:AddLine(l.head, 0.4, 0.8, 1)
-          else GameTooltip:AddDoubleLine(l.num .. '. ' .. (l.ctext or l.text), l.right2 or '', 1, 1, 1, 0.6, 0.6, 0.6) end
+          else
+            local sup = ns.Quests and ns.Quests.superId and ns.Quests.superId()
+            GameTooltip:AddDoubleLine((sup and l.qid == sup and '|cffffd200>|r ' or '') .. l.num .. '. ' .. (l.ctext or l.text), l.right2 or '', 1, 1, 1, 0.6, 0.6, 0.6)
+          end
         elseif not l.small and l.text then
           n = n + 1
           if n > 14 then break end
@@ -1027,7 +1035,14 @@ local acc, sendAcc = 0, 0
 local lastPos, lastRefresh, logDirty = nil, 0, true
 local qev = CreateFrame('Frame')
 pcall(qev.RegisterEvent, qev, 'QUEST_LOG_UPDATE')
-qev:SetScript('OnEvent', function() logDirty = true end)
+pcall(qev.RegisterEvent, qev, 'SUPER_TRACKING_CHANGED')
+qev:SetScript('OnEvent', function(_, e)
+  logDirty = true
+  -- zmena aktivniho questu: hned prekreslit zvyrazneni
+  if e == 'SUPER_TRACKING_CHANGED' and frame and frame:IsShown() and not InCombatLockdown() then
+    if C_Timer then C_Timer.After(0.1, function() pcall(R.refresh) end) else pcall(R.refresh) end
+  end
+end)
 local tick = CreateFrame('Frame')
 tick:SetScript('OnUpdate', function(_, el)
   acc = acc + el
