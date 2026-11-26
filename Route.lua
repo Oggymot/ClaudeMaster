@@ -855,11 +855,17 @@ local function collect()
     else
       if #route == 0 then add({ msg = '|cff9aa6b8Zadne questy v logu se znamou polohou.|r' }) end
       local me = R.lastMyName
+      -- partak ma quest taky: modra postavicka (jen partak, ty ne: oranzova); jmena jsou v tooltipu
+      local function people(n, mine, size)
+        local c = mine and '102:204:255' or '255:170:60'
+        local one = ('|TInterface\\FriendsFrame\\UI-Toast-FriendOnlineIcon:%d:%d:0:0:32:32:2:30:2:30:%s|t'):format(size, size, c)
+        return ' ' .. one:rep(math.min(n, 3))
+      end
       local function whoTag(s)
-        local others = {}
-        for _, w in ipairs(s.who or {}) do if w ~= me then others[#others + 1] = w end end
-        if #others == 0 then return '' end
-        return s.mine and (' |cff66ccff(i ' .. table.concat(others, ', ') .. ')|r') or (' |cff66ccff[' .. table.concat(others, ', ') .. ']|r')
+        local n = 0
+        for _, w in ipairs(s.who or {}) do if w ~= me then n = n + 1 end end
+        if n == 0 then return '' end
+        return people(n, s.mine, 14)
       end
       local myZone = R.lastMe and zoneOf(R.lastMe.map)
       local function here(p) return p and p.map and myZone and zoneOf(p.map) == myZone end
@@ -939,7 +945,7 @@ local function collect()
           -- stejne misto: ikona + quest + kdo, XP vpravo (jako krok, jen mensi)
           local oth = {}
           for _, w in ipairs(o.who or {}) do if w ~= me then oth[#oth + 1] = w end end
-          local tag = oth[1] and (o.mine and (' |cff66ccff(i ' .. table.concat(oth, ', ') .. ')|r') or (' |cff66ccff[' .. table.concat(oth, ', ') .. ']|r')) or ''
+          local tag = oth[1] and people(#oth, o.mine, 12) or ''
           local ico = o.kind == 'turnin' and '|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t' or '|TInterface\\GossipFrame\\IncompleteQuestIcon:12:12|t'
           add({ small = true, text = ('        %s %s%s'):format(ico, o.q.title, tag), right = ov and R.valueText(ov, true) or '',
             p = o.p, label = o.q.title, qid = o.q.id,
