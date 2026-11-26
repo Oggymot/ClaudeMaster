@@ -26,6 +26,22 @@ local function firstSpot(key, me)
   return best, bd
 end
 local function where(p) return p and p.map and R().mapName(p.map) or '?' end
+local function unknown(key)
+  local n = key:sub(1, 1) == 'c' and DB().npc[tonumber(key:sub(2))]
+  if n and (n[5] or 0) == 1 then return 'neznama poloha (elitni - asi dungeon)' end
+  return 'neznama poloha'
+end
+-- kde je zdroj: { p, d, text } (svet / dungeon / nic)
+local function locate(key, me)
+  local p, d = firstSpot(key, me)
+  if p then return p, d, where(p) end
+  local ins = R().instance and R().instance(key)
+  if ins then
+    local ed = ins.p and me and R().dist(me, ins.p.w)
+    return ins.p, ed, '|cffff9933dungeon ' .. ins.name .. '|r'
+  end
+  return nil, nil, unknown(key)
+end
 local QCOL = { [0] = 'ff9d9d9d', 'ffffffff', 'ff1eff00', 'ff0070dd', 'ffa335ee', 'ffff8000' }
 local function itemName(id)
   local it = DB().item[id]
@@ -145,11 +161,11 @@ function X.drops(done)
     for k, r in ipairs(res) do
       if k > 20 then break end
       local key = r.npc and ('c' .. r.npc)
-      local p = key and firstSpot(key, me)
+      local p, d, wtxt = nil, nil, '?'
+      if key then p, d, wtxt = locate(key, me) end
       local npc = key and R().npcName(key) or '?'
-      local _, d = key and firstSpot(key, me)
       out[#out + 1] = { icon = itemIcon(r.id), title = itemName(r.id),
-        sub = ('pada z %s (%.1f %%), %s'):format(npc, (r.ch or 0) / 100, p and where(p) or 'dungeon / neznama poloha'),
+        sub = ('pada z %s (%.1f %%), %s'):format(npc, (r.ch or 0) / 100, wtxt),
         right = ('|cff40ff60+%d %%|r'):format(math.floor(r.pct * 100 + 0.5)), right2 = yd(d),
         p = p, link = 'item:' .. r.id, open = function() return X.item(r.id) end }
     end
@@ -264,11 +280,11 @@ function X.search(text)
   for id, n in pairs(D.npc) do
     if nn >= 10 then break end
     if n[1] and n[1]:lower():find(text, 1, true) and not n[1]:find('UNUSED') then
-      local p, d = firstSpot('c' .. id, me)
-      if p then
+      local p, d, wt = locate('c' .. id, me)
+      do
         nn = nn + 1
         add({ icon = ICON.npc, title = ('|cff66ccff%s|r |cff9aa6b8[%s]|r'):format(n[1], n[3] or '?'),
-          sub = ('NPC%s - %s'):format(n[2] and (' <' .. n[2] .. '>') or '', where(p)), right2 = yd(d), p = p })
+          sub = ('NPC%s - %s'):format(n[2] and (' <' .. n[2] .. '>') or '', wt), right2 = yd(d), p = p })
       end
     end
   end
@@ -278,13 +294,13 @@ function X.search(text)
     if it[1] and it[1]:lower():find(text, 1, true) then
       ni = ni + 1
       local dl = D.drop[id]
-      local src, p, d = 'item', nil, nil
+      local src, p, d, wt = 'item', nil, nil, nil
       if dl then
         local key = 'c' .. dl[1]
-        p, d = firstSpot(key, me)
+        p, d, wt = locate(key, me)
         src = ('pada z %s (%.1f %%)'):format(R().npcName(key), (dl[2] or 0) / 100)
       elseif D.vend and D.vend[id] then src = 'koupis u vendora' end
-      add({ icon = itemIcon(id), title = itemName(id), sub = src .. (p and (', ' .. where(p)) or ''), right2 = yd(d), p = p, link = 'item:' .. id,
+      add({ icon = itemIcon(id), title = itemName(id), sub = src .. (wt and (', ' .. wt) or ''), right2 = yd(d), p = p, link = 'item:' .. id,
         open = function() return X.item(id) end })
     end
   end
@@ -360,8 +376,14 @@ local function itemRow(id, sub, me)
 end
 local function spotRow(icon, key, me, label)
   local p, d = firstSpot(key, me)
-  return { icon = icon, title = R().npcName(key), sub = label .. (p and (' - ' .. where(p)) or ' - neznama poloha (dungeon?)'),
-    right2 = yd(d), p = p }
+  if p then return { icon = icon, title = R().npcName(key), sub = label .. ' - ' .. where(p), right2 = yd(d), p = p } end
+  local ins = R().instance and R().instance(key)
+  if ins then
+    local ed = ins.p and me and R().dist(me, ins.p.w)
+    return { icon = icon, title = R().npcName(key), sub = label .. ' - |cffff9933dungeon ' .. ins.name .. '|r' .. (ins.p and (' (vchod: ' .. where(ins.p) .. ')') or ''),
+      right2 = ed and ed < 99999 and ('vchod ' .. yd(ed)) or '', p = ins.p, tip = ins.p and 'Klik = sipka ke vchodu do dungeonu.' or nil }
+  end
+  return { icon = icon, title = R().npcName(key), sub = label .. ' - ' .. unknown(key), p = nil }
 end
 
 function X.quest(qid)

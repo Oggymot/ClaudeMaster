@@ -121,7 +121,8 @@ local function spots(key)
   if #out == 0 and type(DB.spw) == 'table' and type(DB.spw[key]) == 'table' then
     for _, e in ipairs(DB.spw[key]) do
       local cont = e[1]
-      for i = 2, math.min(#e - 1, 12), 2 do
+      -- instance (dungeon) se preskoci: viz R.instance
+      for i = 2, (cont == 0 or cont == 1 or cont == 530) and math.min(#e - 1, 12) or 0, 2 do
         local w = { c = cont, x = e[i], y = e[i + 1] }
         local map, mx, my
         if C_Map and C_Map.GetMapPosFromWorldPos and CreateVector2D then
@@ -135,6 +136,43 @@ local function spots(key)
   end
   scache[key] = out
   return out
+end
+-- dungeony: id instance (spw) -> nazev, vchod (D.dng podle jmena)
+local INST = { [30] = 'Alterac Valley', [33] = 'Shadowfang Keep', [34] = 'The Stockade', [36] = 'The Deadmines',
+  [43] = 'Wailing Caverns', [47] = 'Razorfen Kraul', [48] = 'Blackfathom Deeps', [70] = 'Uldaman', [90] = 'Gnomeregan',
+  [109] = "The Temple of Atal'Hakkar", [129] = 'Razorfen Downs', [189] = 'Scarlet Monastery', [209] = "Zul'Farrak",
+  [229] = 'Blackrock Spire', [230] = 'Blackrock Depths', [249] = "Onyxia's Lair", [289] = 'Scholomance', [309] = "Zul'Gurub",
+  [329] = 'Stratholme', [349] = 'Maraudon', [369] = 'Deeprun Tram', [389] = 'Ragefire Chasm', [409] = 'Molten Core',
+  [429] = 'Dire Maul', [449] = "Champions' Hall", [450] = 'Hall of Legends', [469] = 'Blackwing Lair', [489] = 'Warsong Gulch',
+  [509] = "Ruins of Ahn'Qiraj", [529] = 'Arathi Basin', [531] = "Temple of Ahn'Qiraj", [533] = 'Naxxramas' }
+local SHOW = { ["The Temple of Atal'Hakkar"] = 'Sunken Temple' }
+local entr = {}
+local function entrance(name)
+  if entr[name] == nil then
+    entr[name] = false
+    for _, d in pairs(DB.dng or {}) do
+      local e = type(d) == 'table' and d[1] == name and type(d[3]) == 'table' and d[3]
+      if e then
+        local w = world(e[1], e[2], e[3])
+        if w then entr[name] = { map = e[1], x = e[2], y = e[3], w = w } break end
+      end
+    end
+  end
+  return entr[name] or nil
+end
+-- { id, name, p = vchod } nebo nil
+function R.instance(key)
+  local list = type(DB.spw) == 'table' and DB.spw[key]
+  if type(list) ~= 'table' then return nil end
+  for _, e in ipairs(list) do
+    local id = e[1]
+    if id ~= 0 and id ~= 1 and id ~= 530 then
+      local name = INST[id]
+      if not name and GetRealZoneText then local z = safe(pc(GetRealZoneText, id)) if type(z) == 'string' and z ~= '' then name = z end end
+      name = name or ('instance ' .. id)
+      return { id = id, name = SHOW[name] or name, p = entrance(name) }
+    end
+  end
 end
 local function npcName(key)
   local id = tonumber(key:sub(2))
