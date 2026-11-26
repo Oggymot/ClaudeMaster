@@ -41,7 +41,8 @@ G.SPECS = {
     armor = 0.003 },
   feral = { label = 'Feral Druid', agi = 1.05, str = 1, ap = 0.5, sta = 0.5, crit = 14, hit = 14, armor = 0.02 },
   -- shaman: hybrid (leveling melee + leceni) / resto / elemental / enhancement
-  shhybrid = { label = 'Shaman hybrid (melee + leceni)', int = 0.5, heal = 0.5, sp = 0.5, agi = 0.4, str = 0.5, ap = 0.25,
+  -- Forever: Mental Dexterity (AP = Int) a Mental Quickness (leceni = 30 % Int) -> Intellect je hlavni stat
+  shhybrid = { label = 'Shaman hybrid (melee + leceni)', int = 0.9, heal = 0.4, sp = 0.4, agi = 0.4, str = 0.5, ap = 0.25,
     sta = 0.5, spi = 0.2, mp5 = 1, crit = 5, spcrit = 3, armor = 0.01, dps = 3 },
   shresto = { label = 'Restoration Shaman', heal = 1, sp = 0.6, int = 0.75, mp5 = 2, spcrit = 6, spi = 0.2, sta = 0.2,
     armor = 0.003 },

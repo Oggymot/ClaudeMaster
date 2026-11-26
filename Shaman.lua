@@ -42,6 +42,8 @@ function SH.spec()
   for k, v in pairs(n) do if v > bn then best, bn = k, v end end
   if not best then return 'hybrid' end
   if best ~= 'enh' and n.resto > 0 and n.ele > 0 and math.abs(n.resto - n.ele) <= 5 then return 'hybrid' end
+  -- leveling build Foreveru: Enhancement (Mental Dexterity / Quickness) + trochu Restoration = melee + leceni
+  if best == 'enh' and n.resto > 0 then return 'hybrid' end
   return best
 end
 local SPEC_CZ = { resto = 'Resto (lecitel)', ele = 'Elemental (kouzla)', enh = 'Enhancement (melee)', hybrid = 'Hybrid (melee + leceni)' }
@@ -428,7 +430,11 @@ local function decide(c, s)
     if c.manaKnown and s.mana < 0.8 then return A('Attack', 'Setri manu na leceni (vsichni v poradku)', 'wait', { dur = 1.5 }) end
   end
   -- Stormstrike (enhancement)
-  if c.near and ready('Stormstrike') then return A('Stormstrike', 'Stormstrike') end
+  if c.near and ready('Stormstrike') then return A('Stormstrike', 'Stormstrike (dalsi Lightning Bolt / Earth Shock +20 %)') end
+  -- Maelstrom Weapon nabity (hra rozsviti Lightning Bolt): rychly a levny blesk
+  if ns.glowing and ns.glowing('Lightning Bolt') and spare('Lightning Bolt') and c.castR ~= false then
+    return A('Lightning Bolt', 'Maelstrom Weapon: rychly a levny Lightning Bolt')
+  end
   -- Flame Shock na delsi boj (DoT)
   if c.fs <= s.t and (c.ttd == nil or c.ttd > 9) and spare('Flame Shock', 0.05) and c.shockR ~= false and not s.used.fs then
     s.used.fs = true
