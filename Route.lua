@@ -767,7 +767,7 @@ local function build()
   return f
 end
 
-local KIND = { turnin = { '|TInterface\\GossipFrame\\ActiveQuestIcon:15:15|t', 0.25, 1, 0.38, 'Odevzdat' },
+local KIND = { turnin = { '|TInterface\\RaidFrame\\ReadyCheck-Ready:15:15|t', 0.25, 1, 0.38, 'Odevzdat' },
   obj = { '|TInterface\\GossipFrame\\IncompleteQuestIcon:15:15|t', 1, 0.82, 0, 'Splnit' } }
 -- zona mapy (podzona / mesto / patro -> zona), at jde porovnat "tady" vs. jinde
 local zcache = {}
@@ -943,7 +943,8 @@ function R.refresh()
       r.stripe:SetShown(l.color ~= nil and not l.head)
       local focus = sup and l.qid == sup and not l.small and not l.head
       r.stripe:SetWidth(focus and 4 or 2)
-      if focus then r.stripe:Show() r.stripe:SetVertexColor(1, 0.82, 0, 1)
+      local fc = (l.color and l.color[2]) and l.color or { '', 1, 0.82, 0 }
+      if focus then r.stripe:Show() r.stripe:SetVertexColor(fc[2], fc[3], fc[4], 1)
       elseif l.color then r.stripe:SetVertexColor(l.color[2], l.color[3], l.color[4], l.first and 1 or 0.45) end
       local a = tr and 0.5 or 1
       if l.head then
@@ -955,7 +956,7 @@ function R.refresh()
         r.text:SetPoint('LEFT', 4, 0) r.text:SetText(l.text or l.msg) r.text:SetWidth(w - 24)
       else
         odd = not odd
-        if focus then r.bg:SetColorTexture(1, 0.82, 0, 0.16 * a)
+        if focus then r.bg:SetColorTexture(fc[2], fc[3], fc[4], 0.16 * a)
         else r.bg:SetColorTexture(1, 1, 1, (l.first and 0.08 or (odd and 0.035 or 0.012)) * a) end
         local rw = math.max(r.right:GetStringWidth() or 0, compact and 0 or (r.right2:GetStringWidth() or 0))
         local left = l.num and 28 or 10
