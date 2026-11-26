@@ -296,11 +296,11 @@ function R.value(qid, inLog)
   return v
 end
 -- kratky text hodnoty do radku
-function R.valueText(v)
+function R.valueText(v, noPct)
   local p = {}
   if v.xp and v.xp > 0 then
     local col = (v.pctLvl and v.pctLvl >= 5) and '|cff40ff60' or ((v.pctLvl and v.pctLvl < 1) and '|cff888888' or '|cffffd200')
-    p[#p + 1] = ('%s%s%d XP%s|r'):format(col, v.est and '~' or '+', v.xp, v.pctLvl and (' (%d %%)'):format(math.floor(v.pctLvl + 0.5)) or '')
+    p[#p + 1] = ('%s%s%d XP%s|r'):format(col, v.est and '~' or '+', v.xp, (v.pctLvl and not noPct) and (' (%d %%)'):format(math.floor(v.pctLvl + 0.5)) or '')
   end
   if v.best then
     p[#p + 1] = ('%s|cff40ff60%s +%d %%|r'):format(UP, (v.best.link:match('%[(.-)%]') or '?'), math.floor(v.best.pct * 100 + 0.5))
@@ -367,6 +367,7 @@ local function objectives(qid)
     local t = safe(o.text)
     if type(t) == 'string' and t ~= '' then
       local name, a, b = t:match('^(.-):%s*(%d+)%s*/%s*(%d+)$')
+      if not name then a, b, name = t:match('^(%d+)%s*/%s*(%d+)%s+(.+)$') end   -- Forever: "0/1 Ancient Egg"
       out[#out + 1] = { text = name or t, done = safeBool(o.finished) == true,
         have = tonumber(a) or safeNum(o.numFulfilled), need = tonumber(b) or safeNum(o.numRequired) }
     end
@@ -655,6 +656,14 @@ local function build()
   f.title:SetText('Trasa questu') f.title:SetTextColor(unpack(T.title))
   f.sum = f:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') f.sum:SetPoint('TOPLEFT', 10, -24)
   f.sum:SetTextColor(0.6, 0.65, 0.73)
+  local sh = CreateFrame('Frame', nil, f)
+  sh:SetPoint('TOPLEFT', f.sum, 'TOPLEFT', -2, 2) sh:SetPoint('BOTTOMRIGHT', f.sum, 'BOTTOMRIGHT', 2, -2)
+  sh:EnableMouse(true)
+  sh:SetScript('OnEnter', function(self)
+    if not R.sumTip then return end
+    GameTooltip:SetOwner(self, 'ANCHOR_TOP') GameTooltip:AddLine(R.sumTip, 1, 1, 1, true) GameTooltip:Show()
+  end)
+  sh:SetScript('OnLeave', function() GameTooltip:Hide() end)
   -- tlacitka v hlavicce: kompaktni / pruhledny / minimalizovat / zavrit
   local function hb(txt, tipT, tipD, onClick)
     local b = CreateFrame('Button', nil, f)
@@ -742,7 +751,23 @@ local function build()
   return f
 end
 
-local KIND = { turnin = { '|cff40ff60Odevzdat|r', 0.25, 1, 0.38 }, obj = { '|cffffd200Splnit|r', 1, 0.82, 0 } }
+local KIND = { turnin = { '|TInterface\\GossipFrame\\ActiveQuestIcon:15:15|t', 0.25, 1, 0.38, 'Odevzdat' },
+  obj = { '|TInterface\\GossipFrame\\IncompleteQuestIcon:15:15|t', 1, 0.82, 0, 'Splnit' } }
+-- zona mapy (podzona / mesto / patro -> zona), at jde porovnat "tady" vs. jinde
+local zcache = {}
+local function zoneOf(map)
+  if not map then return nil end
+  if zcache[map] ~= nil then return zcache[map] or nil end
+  local m, guard = map, 0
+  while m and guard < 6 do
+    local i = C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, m)
+    local t = type(i) == 'table' and safeNum(i.mapType)
+    if not t or t <= 3 then break end
+    m = safeNum(i.parentMapID) guard = guard + 1
+  end
+  zcache[map] = m or false
+  return m
+end
 -- obsah trasy (bez vykresleni): radky + souhrn
 local function collect()
   local lines = {}
@@ -762,8 +787,11 @@ local function collect()
         if #others == 0 then return '' end
         return s.mine and (' |cff66ccff(i ' .. table.concat(others, ', ') .. ')|r') or (' |cff66ccff[' .. table.concat(others, ', ') .. ']|r')
       end
+      local myZone = R.lastMe and zoneOf(R.lastMe.map)
+      local function here(p) return p and p.map and myZone and zoneOf(p.map) == myZone end
       for i, s in ipairs(route) do
         local where = s.p and mapName(s.p.map) or '?'
+        local isHere = here(s.p)
         local v = s.mine and R.value(s.q.id, true) or R.value(s.q.id, false)
         steps = steps + 1
         if s.mine and s.kind == 'turnin' and v.xp then sumXP = sumXP + v.xp end
@@ -783,12 +811,15 @@ local function collect()
         end
         if peerProg[1] then objTip[#objTip + 1] = '|cff66ccff' .. table.concat(peerProg, ', ') .. '|r' end
         local ps = s.mine and s.kind == 'obj' and progShort(s.q.id)
-        add({ num = i, color = k, first = i == 1, text = k[1] .. '  ' .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v) or '',
-          ctext = k[1] .. '  ' .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s), objTip = objTip,
-          sub = s.kind == 'turnin' and ((s.npc and npcName(s.npc) or '?') .. ', ' .. where) or ('misto plneni, ' .. where),
-          right2 = yd(s.d), p = s.p, label = s.q.title, qid = s.q.id, short = s.q.title,
-          tip = (s.kind == 'turnin' and ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where) or ('Misto plneni: ' .. where))
-            .. '\n' .. R.valueTip(v) })
+        -- v teto zone: kdo / kde + vzdalenost; jinde jen zona
+        local sub
+        if isHere then sub = s.kind == 'turnin' and (s.npc and npcName(s.npc) or '?') or 'misto plneni'
+        else sub = where end
+        add({ num = i, color = k, first = i == 1, text = k[1] .. ' ' .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v, true) or '',
+          ctext = k[1] .. ' ' .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s), objTip = objTip,
+          sub = sub, right2 = isHere and yd(s.d) or '', p = s.p, label = s.q.title, qid = s.q.id, short = s.q.title,
+          tip = k[5] .. ': ' .. s.q.title .. '\n' .. (s.kind == 'turnin' and ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where) or ('Misto plneni: ' .. where))
+            .. (isHere and '' or (', ' .. yd(s.d))) .. '\n' .. R.valueTip(v) })
         -- radky cilu pod krokem (jako seznam questu ve hre); v kompaktnim rezimu jen v tooltipu
         local nobj = 0
         for _, o in ipairs(obj) do
@@ -807,30 +838,39 @@ local function collect()
           for _, w in ipairs(o.who or {}) do who[#who + 1] = (w == me) and 'ty' or w end
           local verb = #who > 1 and { 'odevzdate', 'splnite' } or (who[1] == 'ty' and { 'odevzdas', 'splnis' } or { 'odevzda', 'splni' })
           add({ small = true, text = ('      |cff66ccff+|r %s tu %s |cff9aa6b8i:|r %s %s'):format(table.concat(who, ' + '),
-            o.kind == 'turnin' and ('|cff40ff60' .. verb[1] .. '|r') or ('|cffffd200' .. verb[2] .. '|r'), o.q.title, ov and R.valueText(ov) or ''),
+            o.kind == 'turnin' and ('|cff40ff60' .. verb[1] .. '|r') or ('|cffffd200' .. verb[2] .. '|r'), o.q.title, ov and R.valueText(ov, true) or ''),
             p = o.p, label = o.q.title, qid = o.q.id, tip = 'Na stejnem miste: ' .. o.q.title })
         end
         if s.next then
           local far = s.next.far and s.next.far > 400
           add({ small = true, qid = s.next.id, detailFirst = true, tip = 'Navazujici quest: ' .. s.next.title,
-            text = ('      |cffffd200->|r |cff9aa6b8navazuje:|r %s %s%s'):format(s.next.title, R.valueText(s.next.v),
+            text = ('      |cffffd200->|r |cff9aa6b8navazuje:|r %s %s%s'):format(s.next.title, R.valueText(s.next.v, true),
             s.next.where and (' |cff9aa6b8(' .. s.next.where .. (far and ', daleko' or ', blizko') .. ')|r') or '') })
         end
       end
       local pick = R.pickups(route)
       if #pick > 0 then
         add({ head = 'Po ceste muzes vzit' })
-        for _, q in ipairs(pick) do
-          add({ text = ('|cff9aa6b8[%d]|r %s'):format(q.lvl or 0, q.title), right = R.valueText(q.v), sub = q.npc .. ', ' .. mapName(q.p.map),
-            right2 = yd(q.d), p = q.p, label = q.title, qid = q.id, color = { '', 0.4, 0.8, 1 },
-            tip = ('Quest dava %s (%s)\n%s'):format(q.npc, mapName(q.p.map), R.valueTip(q.v)) })
+        -- nejdriv questy v teto zone (zvyraznene), pak ostatni (tlumene, jen zona)
+        local near, far = {}, {}
+        for _, q in ipairs(pick) do table.insert(here(q.p) and near or far, q) end
+        local ICO = '|TInterface\\GossipFrame\\AvailableQuestIcon:15:15|t '
+        for _, q in ipairs(near) do
+          add({ text = ICO .. ('|cff9aa6b8[%d]|r |cffffffff%s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = q.npc,
+            right2 = yd(q.d), p = q.p, label = q.title, qid = q.id, color = { '', 0.3, 1, 0.45 }, first = q.d and q.d < 400, bright = true,
+            tip = ('Quest dava %s (%s), %s\n%s'):format(q.npc, mapName(q.p.map), yd(q.d), R.valueTip(q.v)) })
+        end
+        for _, q in ipairs(far) do
+          add({ text = ('|cff777777[%d] %s|r'):format(q.lvl or 0, q.title), right = R.valueText(q.v, true), sub = mapName(q.p.map),
+            right2 = '', p = q.p, label = q.title, qid = q.id, color = { '', 0.4, 0.5, 0.6 },
+            tip = ('Quest dava %s (%s), %s\n%s'):format(q.npc, mapName(q.p.map), yd(q.d), R.valueTip(q.v)) })
         end
       end
     end
   end
   local maxXP = safeNum(pc(UnitXPMax, 'player'))
-  local sum = steps > 0 and ('%d krok%s  -  odevzdanim ziskas |cffffd200+%d XP|r%s'):format(steps, steps == 1 and '' or (steps < 5 and 'y' or 'u'),
-    sumXP, (maxXP and maxXP > 0) and (' (%d %% levelu)'):format(math.floor(sumXP / maxXP * 100 + 0.5)) or '') or ''
+  local sum = steps > 0 and ('%d krok%s  -  odevzdanim ziskas |cffffd200+%d XP|r'):format(steps, steps == 1 and '' or (steps < 5 and 'y' or 'u'), sumXP) or ''
+  R.sumTip = (steps > 0 and maxXP and maxXP > 0) and ('Odevzdanim vsech kroku ziskas %d XP = %d %% levelu.'):format(sumXP, math.floor(sumXP / maxXP * 100 + 0.5)) or nil
   return lines, sum, steps
 end
 
