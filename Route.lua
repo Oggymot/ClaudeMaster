@@ -162,6 +162,82 @@ end
 local function done(qid) return QL.IsQuestFlaggedCompleted and safeBool(pc(QL.IsQuestFlaggedCompleted, qid)) == true end
 
 ------------------------------------------------------------------------------------------
+-- Hodnota questu: XP (z hry u questu v logu, jinak z databaze s ohledem na level), penize, odmeny
+------------------------------------------------------------------------------------------
+local function xpFactor(qlvl)
+  local lvl = safeNum(pc(UnitLevel, 'player')) or 1
+  local d = lvl - (qlvl or lvl)
+  if d >= 10 then return 0.1 elseif d >= 9 then return 0.2 elseif d >= 8 then return 0.4
+  elseif d >= 7 then return 0.6 elseif d >= 6 then return 0.8 end
+  return 1
+end
+local vcache = {}
+local UP = '|TInterface\\AddOns\\ClaudeMaster\\Textures\\UpgradeArrow:12:12|t'
+function R.value(qid, inLog)
+  local c = vcache[qid]
+  if c and GetTime() - c.at < 30 then return c end
+  local v = { at = GetTime(), items = {} }
+  if inLog and GetQuestLogRewardXP then v.xp = safeNum(pc(GetQuestLogRewardXP, qid)) end
+  if inLog and GetQuestLogRewardMoney then v.money = safeNum(pc(GetQuestLogRewardMoney, qid)) end
+  if not v.xp or v.xp == 0 then
+    local r = DB.qrw and DB.qrw[qid]
+    local info = DB.quest[qid]
+    if type(r) == 'table' and r[2] then v.xp = math.floor(r[2] * xpFactor(info and info[2])) v.est = true end
+  end
+  -- odmeny (jen quest v logu - hra je zna presne): nejlepsi vylepseni podle vah gearu
+  if inLog and GetQuestLogItemLink then
+    local G = ns.Gear
+    local function scan(kind, n)
+      for i = 1, n do
+        local link = safe(pc(GetQuestLogItemLink, kind, i, qid))
+        if type(link) == 'string' then
+          local it = { link = link, kind = kind }
+          if G and G.parse and G.compare and C_TooltipInfo and C_TooltipInfo.GetHyperlink then
+            local st, blocked = G.parse(pc(C_TooltipInfo.GetHyperlink, link))
+            if st and not blocked then
+              local pct = pc(G.compare, link, st)
+              it.pct = safeNum(pct)
+            end
+          end
+          v.items[#v.items + 1] = it
+          if it.pct and it.pct > 0.03 and (not v.best or it.pct > v.best.pct) then v.best = it end
+        end
+      end
+    end
+    scan('choice', safeNum(pc(GetNumQuestLogChoices, qid, true)) or safeNum(pc(GetNumQuestLogChoices, qid)) or 0)
+    scan('reward', safeNum(pc(GetNumQuestLogRewards, qid)) or 0)
+  end
+  local maxXP = safeNum(pc(UnitXPMax, 'player'))
+  v.pctLvl = (v.xp and maxXP and maxXP > 0) and (v.xp / maxXP * 100) or nil
+  vcache[qid] = v
+  return v
+end
+-- kratky text hodnoty do radku
+function R.valueText(v)
+  local p = {}
+  if v.xp and v.xp > 0 then
+    local col = (v.pctLvl and v.pctLvl >= 5) and '|cff40ff60' or ((v.pctLvl and v.pctLvl < 1) and '|cff888888' or '|cffffd200')
+    p[#p + 1] = ('%s%s%d XP%s|r'):format(col, v.est and '~' or '+', v.xp, v.pctLvl and (' (%d %%)'):format(math.floor(v.pctLvl + 0.5)) or '')
+  end
+  if v.best then
+    p[#p + 1] = ('%s|cff40ff60%s +%d %%|r'):format(UP, (v.best.link:match('%[(.-)%]') or '?'), math.floor(v.best.pct * 100 + 0.5))
+  end
+  return table.concat(p, ' ')
+end
+-- tooltip: vsechny odmeny
+function R.valueTip(v)
+  local t = {}
+  if v.xp then t[#t + 1] = ('XP: %d%s'):format(v.xp, v.pctLvl and (' (%d %% levelu)'):format(math.floor(v.pctLvl + 0.5)) or '') end
+  if v.money and v.money > 0 then t[#t + 1] = 'Penize: ' .. (GetCoinTextureString and GetCoinTextureString(v.money) or v.money) end
+  for _, it in ipairs(v.items) do
+    t[#t + 1] = ('%s %s%s'):format(it.kind == 'choice' and 'na vyber:' or 'odmena:', it.link,
+      it.pct and (it.pct > 0.03 and (' |cff40ff60+%d %%|r'):format(math.floor(it.pct * 100 + 0.5))
+        or (' |cff888888%d %%|r'):format(math.floor(it.pct * 100 - 0.5))) or '')
+  end
+  return table.concat(t, '\n')
+end
+
+------------------------------------------------------------------------------------------
 -- Questy v logu -> zastavky
 ------------------------------------------------------------------------------------------
 local function logQuests()
@@ -211,7 +287,7 @@ function R.plan()
       local nxt = type(x) == 'table' and x[7]
       if nxt and DB.quest[nxt] and not done(nxt) then
         local op = objective(nxt, bp.w)
-        s.next = { id = nxt, title = DB.quest[nxt][1], where = op and mapName(op.map) or nil,
+        s.next = { id = nxt, title = DB.quest[nxt][1], where = op and mapName(op.map) or nil, v = R.value(nxt, false),
           far = op and dist(bp.w, op.w) or nil }
       end
     end
@@ -260,7 +336,7 @@ function R.pickups(route)
               local near = d0 < 250
               if not near then for i = 2, #pts do if dist(pts[i], s.w) < 150 then near = true break end end end
               if near then
-                out[#out + 1] = { id = qid, title = info[1], lvl = info[2], npc = npcName(k), p = s, d = d0 }
+                out[#out + 1] = { id = qid, title = info[1], lvl = info[2], npc = npcName(k), p = s, d = d0, v = R.value(qid, false) }
                 break
               end
             end
@@ -270,7 +346,9 @@ function R.pickups(route)
       end
     end
   end
-  table.sort(out, function(a, b) return a.d < b.d end)
+  -- vyhodnost: XP za cestu (bliz a vic XP = driv)
+  local function score(q) return ((q.v and q.v.xp) or 0) / (q.d + 150) end
+  table.sort(out, function(a, b) return score(a) > score(b) end)
   while #out > 6 do table.remove(out) end
   pickCache, pickAt = out, GetTime()
   return out
@@ -348,23 +426,26 @@ function R.refresh()
       for i, s in ipairs(route) do
         local where = s.p and mapName(s.p.map) or '?'
         if s.kind == 'turnin' then
-          add(('%d. |cff40ff60Odevzdat|r %s |cff9aa6b8- %s, %s|r'):format(i, s.q.title, s.npc and npcName(s.npc) or where, yd(s.d)),
-            s.p, s.q.title, ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where))
+          local v = R.value(s.q.id, true)
+          add(('%d. |cff40ff60Odevzdat|r %s %s |cff9aa6b8- %s, %s|r'):format(i, s.q.title, R.valueText(v), s.npc and npcName(s.npc) or where, yd(s.d)),
+            s.p, s.q.title, ('Odevzdat u %s (%s)\n%s'):format(s.npc and npcName(s.npc) or '?', where, R.valueTip(v)))
           if s.next then
             local far = s.next.far and s.next.far > 400
-            add(('     |cffffd200-> navazuje:|r %s%s'):format(s.next.title,
+            add(('     |cffffd200-> navazuje:|r %s %s%s'):format(s.next.title, R.valueText(s.next.v),
               s.next.where and (' |cff9aa6b8(' .. s.next.where .. (far and ', daleko' or ', blizko') .. ')|r') or ''))
           end
         else
-          add(('%d. |cffffd200Splnit|r %s |cff9aa6b8- %s, %s|r'):format(i, s.q.title, where, yd(s.d)), s.p, s.q.title, 'Misto plneni: ' .. where)
+          local v = R.value(s.q.id, true)
+          add(('%d. |cffffd200Splnit|r %s %s |cff9aa6b8- %s, %s|r'):format(i, s.q.title, R.valueText(v), where, yd(s.d)), s.p, s.q.title,
+            'Misto plneni: ' .. where .. '\n' .. R.valueTip(v))
         end
       end
       local pick = R.pickups(route)
       if #pick > 0 then
         add('|cff66ccffPo ceste muzes vzit:|r')
         for _, q in ipairs(pick) do
-          add(('   [%d] %s |cff9aa6b8- %s, %s|r'):format(q.lvl or 0, q.title, q.npc, yd(q.d)), q.p, q.title,
-            ('Quest dava %s (%s)'):format(q.npc, mapName(q.p.map)))
+          add(('   [%d] %s %s |cff9aa6b8- %s, %s|r'):format(q.lvl or 0, q.title, R.valueText(q.v), q.npc, yd(q.d)), q.p, q.title,
+            ('Quest dava %s (%s)\n%s'):format(q.npc, mapName(q.p.map), R.valueTip(q.v)))
         end
       end
     end
