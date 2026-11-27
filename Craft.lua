@@ -617,7 +617,7 @@ end
 -- Okno vedle profese
 ------------------------------------------------------------------------------------------
 local f, state
-local place
+local place, offOf
 local WHITE = 'Interface\\Buttons\\WHITE8X8'
 -- chytre umisteni panelu vedle okna: vpravo / vlevo / pod / nad - prvni misto, ktere je na obrazovce
 -- a neprekryva jine otevrene okno (profese, aukce, vendor, tasky, nase panely)
@@ -676,9 +676,7 @@ local function build()
   f:SetScript('OnDragStop', function(self)
     self:StopMovingOrSizing()
     local h = host()
-    if h and ns.db then
-      ns.db.craftOff = { self:GetLeft() - h:GetRight(), self:GetTop() - h:GetTop() }
-    end
+    if h and ns.db then ns.db.craftOff = offOf(self, h) end
     place()
   end)
   local grip = CreateFrame('Button', nil, f)
@@ -691,7 +689,7 @@ local function build()
     f:StopMovingOrSizing() f.sizing = false
     if ns.db then ns.db.craftW, ns.db.craftH = math.floor(f:GetWidth() + 0.5), math.floor(f:GetHeight() + 0.5) end
     local h = host()
-    if h and ns.db then ns.db.craftOff = { f:GetLeft() - h:GetRight(), f:GetTop() - h:GetTop() } end
+    if h and ns.db then ns.db.craftOff = offOf(f, h) end
     C.refresh()
   end)
   grip:SetScript('OnDoubleClick', function()
@@ -818,8 +816,30 @@ local function build()
   f:Hide()
 end
 
+-- posun panelu vuci oknu profese (GW2_UI apod. okno profese zmensuje: prepocet meritek)
+function offOf(fr, h)
+  local fs, hs = fr:GetEffectiveScale() or 1, h:GetEffectiveScale() or 1
+  local l, t, hr, ht = fr:GetLeft(), fr:GetTop(), h:GetRight(), h:GetTop()
+  if not (l and t and hr and ht) then return nil end
+  return { (l * fs - hr * hs) / fs, (t * fs - ht * hs) / fs }
+end
+local STRATA = { BACKGROUND = 1, LOW = 2, MEDIUM = 3, HIGH = 4, DIALOG = 5, FULLSCREEN = 6, FULLSCREEN_DIALOG = 7, TOOLTIP = 8 }
+-- panel vzdy nad oknem profese (jinak po presunu zapadne za nej a nejde chytit)
+local function raise(h)
+  local hs = h and h.GetFrameStrata and h:GetFrameStrata()
+  if hs and (STRATA[hs] or 0) >= STRATA.HIGH then
+    f:SetFrameStrata(hs == 'TOOLTIP' and 'FULLSCREEN_DIALOG' or hs)
+    f:SetFrameLevel(math.min(9000, (h:GetFrameLevel() or 1) + 30))
+  else
+    f:SetFrameStrata('HIGH')
+  end
+  if f.SetToplevel then f:SetToplevel(true) end
+end
 function place()
   local h = host()
+  if h then raise(h) end
+  -- stara ulozena poloha (bez prepoctu meritka) mohla byt mimo: zahodit jednou
+  if ns.db and ns.db.craftOffV ~= 2 then ns.db.craftOff, ns.db.craftOffV = nil, 2 end
   local off = ns.db and ns.db.craftOff
   f:SetWidth((ns.db and ns.db.craftW) or 300)
   -- hrac si panel posunul: drzet jeho misto; jinak chytre (vpravo za svislymi tlacitky profesi, nebo jinde)
