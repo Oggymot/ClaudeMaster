@@ -7,7 +7,7 @@
 -- Kazdou vyrobu spousti klik hrace (Blizzard nedovoli vyrabet bez kliknuti).
 local ADDON, ns = ...
 if not ns.enabled then return end
-local pc, safe, safeNum = ns.pc, ns.safe, ns.safeNum
+local pc, safe, safeNum, safeBool = ns.pc, ns.safe, ns.safeNum, ns.safeBool
 
 local C = {}
 ns.Craft = C
@@ -88,12 +88,28 @@ local function scanModern()
     if type(info) == 'table' and info.learned == false and safe(info.name) then
       -- neznamy recept (trener / recept z dropu): jen pro radu, co se naucit
       local kind = diffOf(info)
+      -- odkud se uci (trener / vendor / drop) a zda splnujes pozadavky (skill)
+      local src = T.GetRecipeSourceText and safe(pc(T.GetRecipeSourceText, id))
+      src = type(src) == 'string' and src:gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''):gsub('|n', ' ') or nil
+      local reqOk, reqSkill = true, nil
+      local req = T.GetRecipeRequirements and pc(T.GetRecipeRequirements, id)
+      for _, q in ipairs(type(req) == 'table' and req or {}) do
+        if type(q) == 'table' then
+          if q.met == false then reqOk = false end
+          local nm = safe(q.name)
+          local sk = type(nm) == 'string' and tonumber(nm:match('%((%d+)%)'))
+          if sk then reqSkill = sk end
+        end
+      end
+      if not reqSkill and src then reqSkill = tonumber(src:match('%((%d+)%)')) end
       out.unlearned = out.unlearned or {}
-      out.unlearned[#out.unlearned + 1] = { i = id, name = safe(info.name), kind = kind or '?', icon = safe(info.icon),
+      out.unlearned[#out.unlearned + 1] = { i = id, name = safe(info.name), kind = kind or '?', icon = safe(info.icon), src = src,
+        reqOk = reqOk, reqSkill = reqSkill, trainer = src and (src:find('[Tt]rainer') or src:find('[Tt]rener')) and true or false,
         link = T.GetRecipeItemLink and safe(pc(T.GetRecipeItemLink, id)) }
     elseif type(info) == 'table' and info.learned ~= false and safe(info.name) then
       local kind = diffOf(info)
-      local r = { i = id, name = safe(info.name), kind = kind or 'trivial', avail = safeNum(info.numAvailable) or 0, reag = {},
+      local r = { i = id, name = safe(info.name), kind = kind or 'trivial', avail = safeNum(info.numAvailable), reag = {},
+        ups = safeNum(info.numSkillUps),
         icon = safe(info.icon), link = (T.GetRecipeItemLink and safe(pc(T.GetRecipeItemLink, id))) or safe(info.hyperlink) }
       if T.GetRecipeNumReagents and T.GetRecipeReagentInfo then
         for j = 1, safeNum(pc(T.GetRecipeNumReagents, id)) or 0 do
@@ -110,6 +126,13 @@ local function scanModern()
             r.reag[#r.reag + 1] = { name = itemName(iid), need = safeNum(slot.quantityRequired) or 1, have = itemCount(iid), link = 'item:' .. iid }
           end
         end
+      end
+      -- kolik kusu vyrobis: hra (GetCraftableCount), jinak z materialu v taskach
+      if not r.avail and T.GetCraftableCount then r.avail = safeNum(pc(T.GetCraftableCount, id)) end
+      if not r.avail then
+        local m
+        for _, a in ipairs(r.reag) do local k = math.floor(a.have / math.max(1, a.need)) m = m and math.min(m, k) or k end
+        r.avail = m or 0
       end
       out.list[#out.list + 1] = r
     end
@@ -158,12 +181,18 @@ function C.plan(s)
     return a.name < b.name
   end
   table.sort(can, better)
-  -- co nejde: nejlepsi barva a nejmin chybejiciho materialu na par kusu (vendor = skoro nic)
+  -- co nejde: nejlepsi barva a nejmin chybejiciho materialu na par kusu (vendor / vlastni polotovar = skoro nic)
+  local byName0 = {}
+  for _, r in ipairs(s.list) do byName0[r.name] = r end
   for _, r in ipairs(cant) do
     local miss, t = missing(r, 5)
-    r.missTotal = t
     r.vendorOnly = #miss > 0
-    for _, m in ipairs(miss) do if not m.vendor then r.vendorOnly = false end end
+    for _, m in ipairs(miss) do
+      local own = byName0[m.name]
+      if own and own.avail > 0 and not m.vendor then t = t - m.n * 9.5 m.own = true end
+      if not m.vendor and not m.own then r.vendorOnly = false end
+    end
+    r.missTotal = t
   end
   table.sort(cant, function(a, b)
     if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end
@@ -297,7 +326,8 @@ function C.refresh()
     local tex = best.icon or (api('GetTradeSkillIcon') and safe(pc(api('GetTradeSkillIcon'), best.i)))
     b.icon:SetTexture(tex or 'Interface\\Icons\\INV_Misc_QuestionMark')
     b.text:SetText(('Vyrob %dx |c%s%s|r'):format(n, COLOR[best.kind] or 'ffffffff', best.name))
-    b.sub:SetText(('|cff9aa6b8%s, materialu na %d ks|r'):format(LABEL[best.kind] or best.kind, best.avail))
+    b.sub:SetText(('|cff9aa6b8%s, materialu na %d ks%s|r'):format(LABEL[best.kind] or best.kind, best.avail,
+      (best.ups and best.ups > 1) and (', +%d skill/kus'):format(best.ups) or ''))
     b:Enable() b:SetAlpha(1)
   else
     b.icon:SetTexture('Interface\\Icons\\INV_Misc_Bag_10')
@@ -309,7 +339,8 @@ function C.refresh()
     elseif buy then
       local m = missing(buy, 5)
       local parts = {}
-      for _, x in ipairs(m) do parts[#parts + 1] = x.n .. 'x ' .. x.name end
+      for _, x in ipairs(m) do if x.vendor then parts[#parts + 1] = x.n .. 'x ' .. x.name end end
+      for _, x in ipairs(m) do if not x.vendor then parts[#parts + 1] = '|cff40c040vyrob ' .. x.n .. 'x ' .. x.name .. '|r' end end
       b.text:SetText(('Kup u vendora -> 5x |c%s%s|r'):format(COLOR[buy.kind] or 'ffffffff', buy.name))
       b.sub:SetText('|cff9aa6b8kupit: ' .. table.concat(parts, ', ') .. '|r')
     elseif useful == 0 then
@@ -334,15 +365,25 @@ function C.refresh()
       { tip = 'Recepty, ktere znas, uz skoro nedavaji skill. Nove (oranzove) se uci u trenera nebo z receptu (drop, vendor).' })
   end
   -- recepty, ktere jeste neumis (hra je zna): co se naucit (oranzove / zlute)
-  local un = {}
-  for _, r in ipairs(s.unlearned or {}) do if RANK[r.kind] and RANK[r.kind] >= 3 then un[#un + 1] = r end end
-  table.sort(un, function(a, b) if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end return a.name < b.name end)
-  if un[1] and #un <= 25 then
-    row(('|cffffcc00Naucit (trener / recept):|r %d uzitecnych'):format(#un), { tip = 'Recepty, ktere jeste neumis a daly by ti skill.' })
-    for i, r in ipairs(un) do
-      if i > 3 then break end
-      row(('   |c%s%s|r'):format(COLOR[r.kind] or 'ffffffff', r.name), { link = r.link })
+  -- u trenera: recepty, na ktere uz mas skill (pozadavky splnene); nejvyssi pozadavek = nejvic skillu
+  local un, soon = {}, 0
+  for _, r in ipairs(s.unlearned or {}) do
+    if r.trainer and r.reqOk ~= false then
+      if not r.reqSkill or r.reqSkill <= s.rank then
+        if not r.reqSkill or r.reqSkill >= s.rank - 40 then un[#un + 1] = r end
+      elseif r.reqSkill <= s.rank + 15 then soon = soon + 1 end
     end
+  end
+  table.sort(un, function(a, b) if (a.reqSkill or 0) ~= (b.reqSkill or 0) then return (a.reqSkill or 0) > (b.reqSkill or 0) end return a.name < b.name end)
+  if un[1] then
+    row(('|cffffcc00U trenera ted naucis:|r %d recept%s'):format(#un, #un == 1 and '' or (#un < 5 and 'y' or 'u')),
+      { tip = 'Recepty od trenera, na ktere uz mas skill. Nove recepty davaji skill (oranzove).' })
+    for i, r in ipairs(un) do
+      if i > 4 then break end
+      row(('   |cffff8040%s|r%s'):format(r.name, r.reqSkill and (' |cff9aa6b8(%d)|r'):format(r.reqSkill) or ''), { link = r.link, tip = r.src })
+    end
+  elseif soon > 0 then
+    row(('|cff9aa6b8U trenera: dalsich %d receptu do +15 skillu.|r'):format(soon))
   end
   local nextC = {}
   for _, r in ipairs(can) do if r ~= best and #nextC < 2 then nextC[#nextC + 1] = r end end
@@ -377,7 +418,139 @@ function C.refresh()
   end
   f:SetHeight(-y + 8)
   f:Show()
+  C.saveShop(s, cant)
 end
+
+------------------------------------------------------------------------------------------
+-- Nakupni seznam (material od vendora) a nakup jednim klikem u obchodnika
+------------------------------------------------------------------------------------------
+-- ulozi: co koupit na 5x nejlepsich receptu, na ktere chybi jen vendor material
+function C.saveShop(s, cant)
+  if not ns.db then return end
+  local items, n = {}, 0
+  for _, r in ipairs(cant or {}) do
+    if n >= 3 or RANK[r.kind] < 3 then break end
+    if r.vendorOnly then
+      n = n + 1
+      for _, a in ipairs(r.reag) do
+        local id = itemId(a.link)
+        if id and ns.MobDB and ns.MobDB.isVendor and ns.MobDB.isVendor(id) then
+          local want = a.need * 5
+          local e = items[id]
+          if not e then items[id] = { name = a.name, want = want, for_ = r.name } else e.want = e.want + want end
+        end
+      end
+    end
+  end
+  ns.db.craftShop = next(items) and { prof = s.name, items = items } or nil
+end
+
+local mf
+local function moneyStr(c) return ns.coin and ns.coin(c) or tostring(c) end
+local function merchantList()
+  local shop = ns.db and ns.db.craftShop
+  if not (shop and shop.items) then return {} end
+  local out = {}
+  local NI, IL, II = api('GetMerchantNumItems'), api('GetMerchantItemLink'), api('GetMerchantItemInfo')
+  if not (NI and IL) then return out end
+  for i = 1, safeNum(pc(NI)) or 0 do
+    local id = itemId(safe(pc(IL, i)))
+    local e = id and shop.items[id]
+    if e then
+      local have = itemCount(id)
+      local need = e.want - have
+      if need > 0 then
+        local price, bundle = 0, 1
+        if II then
+          local _, _, p, q = pc(II, i)
+          price, bundle = safeNum(p) or 0, math.max(1, safeNum(q) or 1)
+        elseif C_MerchantFrame and C_MerchantFrame.GetItemInfo then
+          local t = pc(C_MerchantFrame.GetItemInfo, i)
+          if type(t) == 'table' then price, bundle = safeNum(t.price) or 0, math.max(1, safeNum(t.stackCount) or 1) end
+        end
+        local buys = math.ceil(need / bundle)
+        out[#out + 1] = { i = i, id = id, name = e.name, need = need, bundle = bundle, buys = buys, cost = buys * price, for_ = e.for_ }
+      end
+    end
+  end
+  return out
+end
+local function buildMerchant()
+  local T = ns.THEME
+  mf = CreateFrame('Frame', 'ClaudeMasterCraftShop', UIParent, 'BackdropTemplate')
+  mf:SetSize(260, 80)
+  mf:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+  mf:SetBackdropColor(T.bg[1], T.bg[2], T.bg[3], 0.94) mf:SetBackdropBorderColor(unpack(T.border))
+  mf:SetFrameStrata('HIGH')
+  mf.title = mf:CreateFontString(nil, 'OVERLAY', 'GameFontNormal') mf.title:SetPoint('TOPLEFT', 10, -8)
+  mf.title:SetTextColor(unpack(T.title))
+  mf.text = mf:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') mf.text:SetPoint('TOPLEFT', 10, -26) mf.text:SetPoint('RIGHT', -10, 0)
+  mf.text:SetJustifyH('LEFT')
+  local b = CreateFrame('Button', nil, mf, 'BackdropTemplate')
+  b:SetHeight(24) b:SetPoint('BOTTOMLEFT', 8, 8) b:SetPoint('BOTTOMRIGHT', -8, 8)
+  b:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+  b:SetBackdropColor(0.2, 0.45, 0.2, 0.55) b:SetBackdropBorderColor(0.35, 0.8, 0.35, 0.9)
+  b.t = b:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight') b.t:SetPoint('CENTER')
+  b:SetHighlightTexture(WHITE, 'ADD') b:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.08)
+  b:SetScript('OnClick', function() C.buyAll() end)
+  mf.btn = b
+  mf:Hide()
+end
+function C.merchant()
+  if not (_G.MerchantFrame and _G.MerchantFrame:IsShown()) then if mf then mf:Hide() end return end
+  local list = merchantList()
+  if not list[1] then if mf then mf:Hide() end return end
+  if not mf then buildMerchant() end
+  local lines, total = {}, 0
+  for _, e in ipairs(list) do
+    lines[#lines + 1] = ('%dx %s  %s'):format(e.buys * e.bundle, e.name, moneyStr(e.cost))
+    total = total + e.cost
+  end
+  mf.title:SetText('Material na profese')
+  mf.text:SetText(table.concat(lines, '\n'))
+  mf.btn.t:SetText('Koupit vse  ' .. moneyStr(total))
+  local money = safeNum(pc(GetMoney)) or 0
+  mf.btn:SetAlpha(money >= total and 1 or 0.5)
+  mf:SetHeight(26 + mf.text:GetStringHeight() + 42)
+  mf:ClearAllPoints()
+  local host = _G.MerchantFrame
+  if host and host:IsShown() then mf:SetPoint('TOPLEFT', host, 'TOPRIGHT', 4, -30) else mf:SetPoint('CENTER') end
+  mf:Show()
+end
+-- nakup (klik hrace): po davkach podle velikosti stacku
+function C.buyAll()
+  local BUY = api('BuyMerchantItem')
+  if not BUY then return end
+  local money = safeNum(pc(GetMoney)) or 0
+  for _, e in ipairs(merchantList()) do
+    if e.cost <= money then
+      if e.bundle > 1 then
+        for _ = 1, e.buys do pcall(BUY, e.i) end
+      else
+        local max = api('GetMerchantItemMaxStack') and safeNum(pc(api('GetMerchantItemMaxStack'), e.i)) or 20
+        local left = e.need
+        while left > 0 do
+          local q = math.min(left, math.max(1, max))
+          pcall(BUY, e.i, q)
+          left = left - q
+        end
+      end
+      money = money - e.cost
+      ns.say(('Koupeno %dx %s (na %s)'):format(e.buys * e.bundle, e.name, e.for_ or 'profese'))
+    else
+      ns.say(('Na %s nemas dost penez.'):format(e.name))
+    end
+  end
+  if C_Timer then C_Timer.After(0.6, function() pcall(C.merchant) end) end
+end
+local mev = CreateFrame('Frame')
+for _, e in ipairs({ 'MERCHANT_SHOW', 'MERCHANT_UPDATE', 'MERCHANT_CLOSED', 'BAG_UPDATE_DELAYED' }) do pcall(mev.RegisterEvent, mev, e) end
+mev:SetScript('OnEvent', function(_, e)
+  if e == 'MERCHANT_CLOSED' then if mf then mf:Hide() end return end
+  if ns.db and ns.db.craftHelp == false then return end
+  if e == 'BAG_UPDATE_DELAYED' and not (mf and mf:IsShown()) then return end
+  if C_Timer then C_Timer.After(0.15, function() pcall(C.merchant) end) else pcall(C.merchant) end
+end)
 
 -- vyroba davky (klik hrace = hardware udalost)
 function C.craft()
@@ -397,6 +570,8 @@ end
 local function check()
   local a = C.active
   if not a then return end
+  local T = C_TradeSkillUI
+  if T and T.IsRecipeRepeating and GetTime() - (a.at or 0) > 2 and safeBool(pc(T.IsRecipeRepeating)) == false then C.active = nil return end
   local s = C.scan()
   if not s then return end
   local cur, best

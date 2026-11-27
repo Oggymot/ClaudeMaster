@@ -68,7 +68,9 @@ U okna profese (Tailoring, Blacksmithing, Alchemy...) se ukaze panel ClaudeMaste
   Kdyz recept behem davky zezelena a mas lepsi, vyroba se zastavi.
 - **Pak** - dalsi recepty v poradi.
 - **Chybi** - co chybi na nejlepsi recepty; klik na material = kde ho sehnat (Pruzkumnik, ForeverDB).
-- **Trener** - upozorneni u stropu ranku.
+- **Trener** - upozorneni u stropu ranku a recepty, ktere se u trenera ted muzes naucit (podle pozadavku na skill).
+- **Nakup u vendora** - material od vendora na nejlepsi recepty se ulozi; u obchodnika, ktery ho prodava, se ukaze
+  tlacitko "Koupit vse" (jednim klikem koupi chybejici mnozstvi).
 
 Kazdou davku spousti klik hrace (bez kliknuti vyrabet nejde). `/cm profese` vypise, co hra v okne profese vraci.
 
