@@ -465,10 +465,18 @@ function place()
 end
 
 -- kde sehnat material: Pruzkumnik (ForeverDB) - detail itemu
-local function ppt(r)
+-- kratka cena: nad 1g "1g 20s", nad 1s jen stribro, jinak copper (s ikonami minci)
+local function shortCoin(c)
+  c = math.floor(c + 0.5)
+  if not ns.coin then return c .. 'c' end
+  if c >= 10000 then return ns.coin(math.floor(c / 100) * 100) end
+  if c >= 100 then return ns.coin(math.floor(c / 100 + 0.5) * 100) end
+  return ns.coin(c)
+end
+local function ppt(r, plain)
   if not (r and r.ppt) then return '' end
-  if r.ppt < 1 then return ' |cff9aa6b8~zdarma/bod|r' end
-  return ' |cff9aa6b8~' .. (ns.coin and ns.coin(r.ppt) or math.floor(r.ppt) .. 'c') .. '/bod|r'
+  local t = r.ppt < 1 and 'zdarma' or ('~' .. shortCoin(r.ppt))
+  return plain and (t .. '/bod') or (' |cff9aa6b8' .. t .. '/bod|r')
 end
 local function findItem(link, name)
   local id = itemId(link)
@@ -506,8 +514,8 @@ function C.refresh()
     local tex = best.icon or (api('GetTradeSkillIcon') and safe(pc(api('GetTradeSkillIcon'), best.i)))
     b.icon:SetTexture(tex or 'Interface\\Icons\\INV_Misc_QuestionMark')
     b.text:SetText(('Vyrob %dx |c%s%s|r'):format(n, COLOR[best.kind] or 'ffffffff', best.name))
-    b.sub:SetText(('|cff9aa6b8%s, materialu na %d ks%s|r%s'):format(LABEL[best.kind] or best.kind, best.avail,
-      (best.ups and best.ups > 1) and (', +%d skill/kus'):format(best.ups) or '', ppt(best)))
+    b.sub:SetText(('|cff9aa6b8%s, mas na %d%s  -  %s|r'):format(best.kind == 'optimal' and 'oranzovy' or (best.kind == 'medium' and 'zluty' or 'zeleny'),
+      best.avail, (best.ups and best.ups > 1) and (', +%d/kus'):format(best.ups) or '', ppt(best, true)))
     b:Enable() b:SetAlpha(1)
   else
     b.icon:SetTexture('Interface\\Icons\\INV_Misc_Bag_10')
@@ -521,8 +529,8 @@ function C.refresh()
       local parts = {}
       for _, x in ipairs(m) do if x.vendor then parts[#parts + 1] = x.n .. 'x ' .. x.name end end
       for _, x in ipairs(m) do if not x.vendor then parts[#parts + 1] = '|cff40c040vyrob ' .. x.n .. 'x ' .. x.name .. '|r' end end
-      b.text:SetText(('Kup u vendora -> 5x |c%s%s|r%s'):format(COLOR[buy.kind] or 'ffffffff', buy.name, ppt(buy)))
-      b.sub:SetText('|cff9aa6b8kupit: ' .. table.concat(parts, ', ') .. '|r')
+      b.text:SetText(('5x |c%s%s|r'):format(COLOR[buy.kind] or 'ffffffff', buy.name))
+      b.sub:SetText('|cffffd200kup u vendora:|r |cff9aa6b8' .. table.concat(parts, ', ') .. '  -  ' .. ppt(buy, true) .. '|r')
     elseif useful == 0 then
       b.text:SetText('|cffffcc00Zadny oranzovy / zluty recept|r') b.sub:SetText('|cff9aa6b8nove recepty u trenera|r')
     else
@@ -578,7 +586,7 @@ function C.refresh()
     if shown >= ((ns.db and ns.db.craftH and ns.db.craftH > 260) and 5 or 2) or RANK[r.kind] < 3 then break end
     shown = shown + 1
     local miss = missing(r, 5)
-    row(('|cffff8855Chybi na 5x|r |c%s%s|r:%s'):format(COLOR[r.kind] or 'ffffffff', r.name, ppt(r)), { link = r.link })
+    row(('|cffff8855Chybi na 5x|r |c%s%s|r%s'):format(COLOR[r.kind] or 'ffffffff', r.name, ppt(r)), { link = r.link })
     for _, m in ipairs(miss) do
       local own
       for _, x in ipairs(s.list) do if x.name == m.name then own = x end end
