@@ -21,7 +21,7 @@ local function api(n) return _G[n] end
 local function itemId(link) return type(link) == 'string' and tonumber(link:match('item:(%d+)')) or nil end
 
 -- precte okno profese: { name, rank, max, list = { {i, name, kind, avail, reag = { {name, need, have, link} }, link} } }
-function C.scan()
+local function scanOld()
   local GL, GN, GI = api('GetTradeSkillLine'), api('GetNumTradeSkills'), api('GetTradeSkillInfo')
   if not (GL and GN and GI) then return nil end
   local name, rank, max = pc(GL)
@@ -42,6 +42,78 @@ function C.scan()
     end
   end
   return out
+end
+
+-- novejsi rozhrani (Forever): C_TradeSkillUI, recepty podle ID
+local DIFF = { [0] = 'optimal', [1] = 'medium', [2] = 'easy', [3] = 'trivial' }
+local function itemCount(id)
+  local f = (C_Item and C_Item.GetItemCount) or GetItemCount
+  return f and safeNum(pc(f, id)) or 0
+end
+local function itemName(id)
+  local f = (C_Item and C_Item.GetItemNameByID) or (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  return f and safe(pc(f, id)) or ('item ' .. id)
+end
+local function scanModern()
+  local T = C_TradeSkillUI
+  if not T then return nil end
+  local name, rank, max
+  if T.GetTradeSkillLine then
+    local _, n, r, m = pc(T.GetTradeSkillLine)
+    name, rank, max = safe(n), safeNum(r), safeNum(m)
+  end
+  if (not name or name == '') then
+    for _, fn in ipairs({ 'GetChildProfessionInfo', 'GetBaseProfessionInfo' }) do
+      local i = T[fn] and pc(T[fn])
+      if type(i) == 'table' and safe(i.professionName) and safe(i.professionName) ~= '' then
+        name, rank, max = safe(i.professionName), safeNum(i.skillLevel), safeNum(i.maxSkillLevel)
+        break
+      end
+    end
+  end
+  if not name or name == '' or name == 'UNKNOWN' then return nil end
+  local ids = (T.GetAllRecipeIDs and pc(T.GetAllRecipeIDs)) or (T.GetFilteredRecipeIDs and pc(T.GetFilteredRecipeIDs))
+  if type(ids) ~= 'table' then return nil end
+  local out = { name = name, rank = rank or 0, max = max or 0, list = {}, modern = true }
+  for _, id in ipairs(ids) do
+    local info = T.GetRecipeInfo and pc(T.GetRecipeInfo, id)
+    if type(info) == 'table' and info.learned ~= false and safe(info.name) then
+      local kind = safe(info.difficulty)
+      if type(kind) ~= 'string' then kind = DIFF[safeNum(info.relativeDifficulty) or -1] end
+      local r = { i = id, name = safe(info.name), kind = kind or 'trivial', avail = safeNum(info.numAvailable) or 0, reag = {},
+        icon = safe(info.icon), link = (T.GetRecipeItemLink and safe(pc(T.GetRecipeItemLink, id))) or safe(info.hyperlink) }
+      if T.GetRecipeNumReagents and T.GetRecipeReagentInfo then
+        for j = 1, safeNum(pc(T.GetRecipeNumReagents, id)) or 0 do
+          local an, _, need, have = pc(T.GetRecipeReagentInfo, id, j)
+          r.reag[#r.reag + 1] = { name = safe(an) or '?', need = safeNum(need) or 1, have = safeNum(have) or 0,
+            link = T.GetRecipeReagentItemLink and safe(pc(T.GetRecipeReagentItemLink, id, j)) }
+        end
+      elseif T.GetRecipeSchematic then
+        local sch = pc(T.GetRecipeSchematic, id, false)
+        for _, slot in ipairs(type(sch) == 'table' and type(sch.reagentSlotSchematics) == 'table' and sch.reagentSlotSchematics or {}) do
+          local rg = type(slot.reagents) == 'table' and slot.reagents[1]
+          local iid = rg and safeNum(rg.itemID)
+          if iid and (slot.reagentType == nil or slot.reagentType == 1 or (Enum and Enum.CraftingReagentType and slot.reagentType == Enum.CraftingReagentType.Basic)) then
+            r.reag[#r.reag + 1] = { name = itemName(iid), need = safeNum(slot.quantityRequired) or 1, have = itemCount(iid), link = 'item:' .. iid }
+          end
+        end
+      end
+      out.list[#out.list + 1] = r
+    end
+  end
+  return out
+end
+function C.scan()
+  local s = scanOld()
+  if s and #s.list > 0 then return s end
+  return scanModern() or s
+end
+-- okno profese (stare TradeSkillFrame / nove ProfessionsFrame)
+local function host()
+  for _, n in ipairs({ 'TradeSkillFrame', 'ProfessionsFrame' }) do
+    local fr = _G[n]
+    if fr and fr.IsShown and fr:IsShown() then return fr end
+  end
 end
 
 -- kolik materialu chybi na n kusu receptu
@@ -158,9 +230,9 @@ local function build()
 end
 
 local function place()
-  local host = _G.TradeSkillFrame
+  local h = host()
   f:ClearAllPoints()
-  if host and host:IsShown() then f:SetPoint('TOPLEFT', host, 'TOPRIGHT', host.GetRight and -30 or 0, -14)
+  if h then f:SetPoint('TOPLEFT', h, 'TOPRIGHT', 4, -14)
   else f:SetPoint('RIGHT', UIParent, 'RIGHT', -300, 100) end
 end
 
@@ -179,7 +251,7 @@ end
 function C.refresh()
   if not f then build() end
   local s = C.scan()
-  if not s or not (_G.TradeSkillFrame and _G.TradeSkillFrame:IsShown()) then f:Hide() return end
+  if not s or not (C.open or host()) then f:Hide() return end
   local best, can, cant = C.plan(s)
   state = { s = s, best = best }
   local prep = s.prep
@@ -189,7 +261,7 @@ function C.refresh()
   local b = f.btn
   if prep then
     state.best, state.n = prep.recipe, prep.n
-    local tex = api('GetTradeSkillIcon') and safe(pc(api('GetTradeSkillIcon'), prep.recipe.i))
+    local tex = prep.recipe.icon or (api('GetTradeSkillIcon') and safe(pc(api('GetTradeSkillIcon'), prep.recipe.i)))
     b.icon:SetTexture(tex or 'Interface\\Icons\\INV_Misc_QuestionMark')
     b.text:SetText(('Vyrob %dx |cffffffff%s|r'):format(prep.n, prep.recipe.name))
     b.sub:SetText(('|cff9aa6b8polotovar na |c%s%s|r|cff9aa6b8 (%s)|r'):format(COLOR[prep.target.kind] or 'ffffffff', prep.target.name, LABEL[prep.target.kind] or ''))
@@ -197,7 +269,7 @@ function C.refresh()
   elseif best then
     local n = math.min(best.avail, BATCH[best.kind] or 1)
     state.n = n
-    local tex = api('GetTradeSkillIcon') and safe(pc(api('GetTradeSkillIcon'), best.i))
+    local tex = best.icon or (api('GetTradeSkillIcon') and safe(pc(api('GetTradeSkillIcon'), best.i)))
     b.icon:SetTexture(tex or 'Interface\\Icons\\INV_Misc_QuestionMark')
     b.text:SetText(('Vyrob %dx |c%s%s|r'):format(n, COLOR[best.kind] or 'ffffffff', best.name))
     b.sub:SetText(('|cff9aa6b8%s, materialu na %d ks|r'):format(LABEL[best.kind] or best.kind, best.avail))
@@ -253,9 +325,11 @@ end
 function C.craft()
   if not (state and state.best and state.n and state.n > 0) then return end
   if InCombatLockdown() then ns.say('V boji vyrabet nejde.') return end
-  local DT = api('DoTradeSkill')
-  if not DT then return end
   local r = state.best
+  local T = C_TradeSkillUI
+  local DT
+  if state.s and state.s.modern and T and T.CraftRecipe then DT = T.CraftRecipe else DT = api('DoTradeSkill') end
+  if not DT then ns.say('Hra nema funkci na vyrobu.') return end
   C.active = { name = r.name, kind = r.kind, at = GetTime() }
   local ok, err = pcall(DT, r.i, state.n)
   if not ok then ns.say('Vyroba se nepodarila: ' .. tostring(err)) C.active = nil end
@@ -271,7 +345,7 @@ local function check()
   for _, r in ipairs(s.list) do if r.name == a.name then cur = r end end
   best = C.plan(s)
   if cur and RANK[cur.kind] < RANK[a.kind] and best and best.name ~= cur.name and RANK[best.kind] > RANK[cur.kind] then
-    local stop = api('StopTradeSkillRepeat')
+    local stop = api('StopTradeSkillRepeat') or (C_TradeSkillUI and C_TradeSkillUI.StopRecipeRepeat)
     if stop then pcall(stop) end
     ns.say(('|cffffd200%s|r uz je %s - prepinam na |cffffd200%s|r (klikni znovu).'):format(cur.name, cur.kind == 'easy' and 'zeleny' or 'sedy', best.name))
     C.active = nil
@@ -279,19 +353,21 @@ local function check()
 end
 
 local ev = CreateFrame('Frame')
-for _, e in ipairs({ 'TRADE_SKILL_SHOW', 'TRADE_SKILL_UPDATE', 'TRADE_SKILL_CLOSE', 'BAG_UPDATE_DELAYED', 'CHAT_MSG_SKILL' }) do
+for _, e in ipairs({ 'TRADE_SKILL_SHOW', 'TRADE_SKILL_UPDATE', 'TRADE_SKILL_LIST_UPDATE', 'TRADE_SKILL_DATA_SOURCE_CHANGED', 'TRADE_SKILL_CLOSE',
+  'BAG_UPDATE_DELAYED', 'CHAT_MSG_SKILL', 'SKILL_LINES_CHANGED' }) do
   pcall(ev.RegisterEvent, ev, e)
 end
 local pending
 ev:SetScript('OnEvent', function(_, e)
   if ns.db and ns.db.craftHelp == false then if f then f:Hide() end return end
-  if e == 'TRADE_SKILL_CLOSE' then if f then f:Hide() end C.active = nil return end
+  if e == 'TRADE_SKILL_CLOSE' then if f then f:Hide() end C.active, C.open = nil, false return end
+  if e == 'TRADE_SKILL_SHOW' then C.open = true end
   if pending then return end
   pending = true
   C_Timer.After(0.15, function()
     pending = false
-    if _G.TradeSkillFrame and _G.TradeSkillFrame:IsShown() then
-      if e == 'TRADE_SKILL_UPDATE' then pcall(check) end
+    if C.open or host() then
+      if e == 'TRADE_SKILL_UPDATE' or e == 'TRADE_SKILL_LIST_UPDATE' or e == 'SKILL_LINES_CHANGED' then pcall(check) end
       pcall(C.refresh)
     end
   end)
@@ -300,9 +376,23 @@ end)
 -- /cm profese: vypis, co hra v okne profese vraci (ladeni na Foreveru)
 function C.dump()
   local s = C.scan()
-  if not s then ns.say('Otevri okno profese (napr. Tailoring) a zadej /cm profese znovu.') return end
-  ns.say(('Profese: %s %d/%d, receptu: %d, API: DoTradeSkill %s, StopTradeSkillRepeat %s'):format(s.name, s.rank, s.max, #s.list,
-    api('DoTradeSkill') and 'ano' or 'NE', api('StopTradeSkillRepeat') and 'ano' or 'ne'))
+  if not s then
+    local T = C_TradeSkillUI
+    local fns = {}
+    if T then for k, v in pairs(T) do if type(v) == 'function' and (k:find('Recipe') or k:find('Profession') or k:find('Line') or k:find('Craft')) then fns[#fns + 1] = k end end end
+    table.sort(fns)
+    ns.say(('Okno profese nenacteno. Ramce: TradeSkillFrame %s, ProfessionsFrame %s. Stare API: GetTradeSkillLine %s, GetNumTradeSkills %s.'):format(
+      tostring(_G.TradeSkillFrame ~= nil), tostring(_G.ProfessionsFrame ~= nil), tostring(api('GetTradeSkillLine') ~= nil), tostring(api('GetNumTradeSkills') ~= nil)))
+    ns.say('C_TradeSkillUI: ' .. (T and table.concat(fns, ', ') or 'NEEXISTUJE'))
+    if T and T.GetTradeSkillLine then ns.say('GetTradeSkillLine: ' .. tostring(select(2, pc(T.GetTradeSkillLine)))) end
+    if T and T.GetAllRecipeIDs then local ids = pc(T.GetAllRecipeIDs) ns.say('GetAllRecipeIDs: ' .. (type(ids) == 'table' and #ids or tostring(ids))) end
+    return
+  end
+  local T = C_TradeSkillUI
+  ns.say(('Profese: %s %d/%d, receptu: %d, rozhrani: %s, vyroba: %s, stop: %s'):format(s.name, s.rank, s.max, #s.list,
+    s.modern and 'nove (C_TradeSkillUI)' or 'stare',
+    (s.modern and T and T.CraftRecipe or api('DoTradeSkill')) and 'ano' or 'NE',
+    (api('StopTradeSkillRepeat') or (T and T.StopRecipeRepeat)) and 'ano' or 'ne'))
   local best = C.plan(s)
   for i, r in ipairs(s.list) do
     if i > 12 then break end
