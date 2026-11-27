@@ -27,6 +27,7 @@ Plates.lua
 Assist.lua
 Gear.lua
 Camp.lua
+Craft.lua
 UI.lua
 Options.lua
 Quests.lua

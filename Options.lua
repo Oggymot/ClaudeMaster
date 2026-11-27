@@ -564,6 +564,9 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
   p.add(checkbox(p.c, 'Varovat pred odletem', 'Pri otevreni mapy letu napise, ktere questy v teto oblasti jeste zbyva odevzdat '
     .. 'nebo dokoncit (potrebuje addon ForeverDB).',
     function() return db.routeWarn ~= false end, function(v) db.routeWarn = (not v) and false or nil end))
+  p.add(checkbox(p.c, 'Pomocnik pro levelovani profesi', 'U okna profese tlacitko, ktere vybere recept s nejlepsim skillupem a jednim klikem vyrobi davku; '
+    .. 'k tomu co vyrabet pak a co chybi (klik = kde sehnat). /cm profese = vypis.',
+    function() return db.craftHelp ~= false end, function(v) db.craftHelp = (not v) and false or nil end))
   p.row(button(p.c, 'Trasa questu', 130, function() if ns.Route then ns.Route.toggle() end end,
     'Poradi zastavek s nejkratsi cestou, navazujici questy a questy po ceste (/cm trasa). Potrebuje addon ForeverDB.'))
   p.row(button(p.c, 'Zobrazit / skryt questy', 170, function() if ns.Quests then ns.Quests.toggle('') end end, '/cm questy'),

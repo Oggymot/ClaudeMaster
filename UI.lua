@@ -1012,6 +1012,7 @@ local HELP = {
   '/cm config [panel|combat|party|build|items|memory] - okno s nastavenim (taky tlacitko u minimapy)',
   '/cm summary - ukazat posledni shrnuti boje',
   '/cm trasa - plan trasy questu (potrebuje addon ForeverDB)',
+  '/cm profese - vypis okna profese (pri otevrene profesi)',
   '/cm duo - stav vymeny dat s partakem (mag + warlock)',
   '/cm zmeny - co hra zmenila na kouzlech (patch) od minule',
   '/cm questy [zona|razeni|info] - questy pod minimapou: jen z aktualni oblasti, razeni podle vzdalenosti',
@@ -1068,6 +1069,8 @@ SlashCmdList.CLAUDEMASTER = function(msg)
     if ns.apiProbe then ns.apiProbe() end
   elseif cmd == 'test' then
     if ns.Plates and ns.Plates.test then ns.Plates.test() end
+  elseif cmd == 'profese' or cmd == 'craft' then
+    if ns.Craft then ns.Craft.dump() end
   elseif cmd == 'trasa' or cmd == 'route' then
     if ns.Route then ns.Route.toggle() end
   elseif cmd == 'questy' or cmd == 'quests' then

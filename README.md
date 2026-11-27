@@ -59,6 +59,19 @@ a v Pruzkumniku jde rozkliknout moba/NPC (boj, naucene imunity, penize, kde se s
 
 Bez ForeverDB funguje zbytek addonu normalne, tyto funkce jen napisou, ze ForeverDB chybi.
 
+## Levelovani profesi
+
+U okna profese (Tailoring, Blacksmithing, Alchemy...) se ukaze panel ClaudeMasteru:
+
+- **tlacitko Vyrob** - vybere recept, ktery ted nejlip zvedne skill (oranzovy > zluty > zeleny, z tech nejlevnejsi),
+  a jednim klikem vyrobi davku. Kdyz lepsi recept blokuje jen polotovar (napr. Bolt of Linen Cloth), vyrobi nejdriv ten.
+  Kdyz recept behem davky zezelena a mas lepsi, vyroba se zastavi.
+- **Pak** - dalsi recepty v poradi.
+- **Chybi** - co chybi na nejlepsi recepty; klik na material = kde ho sehnat (Pruzkumnik, ForeverDB).
+- **Trener** - upozorneni u stropu ranku.
+
+Kazdou davku spousti klik hrace (bez kliknuti vyrabet nejde). `/cm profese` vypise, co hra v okne profese vraci.
+
 ## Data o mobech
 
 `MobData.lua` je vygenerovany z [vmangos](https://github.com/vmangos/core) world databaze (GPL-2.0)
