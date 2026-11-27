@@ -1091,7 +1091,21 @@ local function questMark(btn, on)
     -- quest uz hotovy: sedy vykricnik (bylo to na quest, ted uz neni potreba)
     local done = type(on) == 'table' and on.done
     if btn.cmQuest.SetDesaturated then btn.cmQuest:SetDesaturated(done and true or false) end
-    btn.cmQuest:SetAlpha(done and 0.65 or 1)
+    btn.cmQuest:SetAlpha(1)
+    if done then btn.cmQuest:SetVertexColor(0.95, 0.95, 0.95) else btn.cmQuest:SetVertexColor(1, 1, 1) end
+    -- hotovo: tmavy podklad (at je sedy vykricnik videt i na svetle ikone) + mala zelena fajfka
+    if done and not btn.cmQuestBg then
+      local bg = btn:CreateTexture(nil, 'OVERLAY', nil, 6)
+      bg:SetTexture('Interface\\Buttons\\WHITE8X8') bg:SetVertexColor(0, 0, 0, 0.7)
+      bg:SetPoint('TOPLEFT', btn.cmQuest, 'TOPLEFT', 2, -1) bg:SetPoint('BOTTOMRIGHT', btn.cmQuest, 'BOTTOMRIGHT', -2, 1)
+      btn.cmQuestBg = bg
+      local ck = btn:CreateTexture(nil, 'OVERLAY', nil, 7)
+      ck:SetTexture('Interface\\RaidFrame\\ReadyCheck-Ready') ck:SetSize(11, 11)
+      ck:SetPoint('BOTTOMLEFT', btn.cmQuest, 'BOTTOMRIGHT', -5, -2)
+      btn.cmQuestOk = ck
+    end
+    if btn.cmQuestBg then btn.cmQuestBg:SetShown(on and done and true or false) end
+    if btn.cmQuestOk then btn.cmQuestOk:SetShown(on and done and true or false) end
   end
 end
 -- tlacitka itemu z batohu jinych addonu: jednou za cas projit vsechny framy (EnumerateFrames)
