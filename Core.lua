@@ -10,6 +10,8 @@ ns.enabled = (playerClass == 'MAGE' or playerClass == 'WARLOCK' or playerClass =
   or playerClass == 'SHAMAN' or playerClass == 'HUNTER')
 
 local issecret = issecretvalue or function() return false end
+-- puvodni API z doby nacteni (jiny addon - napr. UI balik - muze globalni funkci prepsat a pak by sonda HP lhala)
+local UnitHealthPercent, UnitPowerPercent = UnitHealthPercent, UnitPowerPercent
 ns.issecret = issecret
 
 -- pcall, ktery vraci jen vysledky (nebo nil pri chybe)
@@ -1023,10 +1025,11 @@ function ns.hpProbeInfo()
   for i = 1, #P.lines do bits[i] = P.fired[i] and '1' or '0' end
   local hp, mx = pc(UnitHealth, 'player'), pc(UnitHealthMax, 'player')
   local raw = pc(UnitHealthPercent, 'player')
+  local ovr = (_G.UnitHealthPercent ~= UnitHealthPercent) and ' PREPSANO-JINYM-ADDONEM' or ''
   return ('sc=%s ok=%s valid=%s age=%.1f bits=%s x15=%s ctrl=%s bad2=%s fix=%s/%s hiMax=%s raw=%s hp=%s/%s'):format(tostring(ns.db and ns.db.hpScale),
     tostring(P.ok), tostring(P.valid), GetTime() - (P.at or 0), table.concat(bits), tostring(P.fired[#P.lines + 1] == true),
     tostring(P.fired[#P.lines + 2] == true), tostring(P.bad2), tostring(ns.hpScaleFix), tostring(ns.hpResets), tostring(P.hiMax),
-    issecret(raw) and 'secret' or tostring(raw), issecret(hp) and 'secret' or tostring(hp), issecret(mx) and 'secret' or tostring(mx))
+    issecret(raw) and 'secret' or tostring(raw), issecret(hp) and 'secret' or tostring(hp), issecret(mx) and 'secret' or tostring(mx)) .. ovr
 end
 -- reset sondy HP (prikaz /cm hp)
 function ns.hpProbeReset()
