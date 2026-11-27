@@ -440,7 +440,18 @@ function R.recvLog(name, msg)
       if pr and pr ~= '' then prog[tonumber(id)] = pr end
     end
   end
+  local old = R.peerLogs[name]
+  local changed = not old
+  if old then
+    for id, v in pairs(q) do if old.q[id] ~= v or (old.prog or {})[id] ~= prog[id] then changed = true break end end
+    if not changed then for id in pairs(old.q) do if q[id] == nil then changed = true break end end end
+  end
   R.peerLogs[name] = { q = q, prog = prog, at = GetTime() }
+  -- partak postoupil: prekreslit trasu hned (v boji jen bez questovych tlacitek)
+  local fr = _G.ClaudeMasterRoute
+  if changed and fr and fr:IsShown() and not (R.itemCombatLock and R.itemCombatLock()) and C_Timer then
+    C_Timer.After(0.3, function() pcall(R.refresh) end)
+  end
 end
 -- cile questu v mem logu: { {text, done, have, need}, ... }
 local function objectives(qid)
@@ -484,7 +495,7 @@ local lastLog, lastLogAt = nil, -99
 local function sendLog()
   local D = ns.Duo
   if not (D and D.rawSend and D.ok and IsInGroup and IsInGroup()) or not QL.GetNumQuestLogEntries then return end
-  if InCombatLockdown and InCombatLockdown() then return end
+  -- posila se i v boji (addon zpravy boj neomezuje): partak hned vidi, kdyz neco zabijes / seberes
   -- zprava ma max. 255 znaku: log se posila po castech "RL^k/N^..." (driv se zbytek useknul)
   local all = {}
   for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
@@ -997,7 +1008,11 @@ local function build()
   f:SetMovable(true) f:EnableMouse(true) f:RegisterForDrag('LeftButton') f:SetClampedToScreen(true)
   if f.SetResizeBounds then f:SetResizeBounds(300, 80, 900, 1000) elseif f.SetMinResize then f:SetMinResize(300, 80) f:SetMaxResize(900, 1000) end
   f:SetResizable(true)
-  f:SetScript('OnDragStart', f.StartMoving)
+  f:SetScript('OnDragStart', function(self)
+    if R.itemCombatLock and R.itemCombatLock() then return end   -- zabezpecena tlacitka: v boji okno nehybat
+    self:StartMoving()
+  end)
+  f:HookScript('OnHide', function() if R.hideItems then R.hideItems() end end)
   f:SetScript('OnDragStop', function(self)
     self:StopMovingOrSizing()
     local p, _, rp, x, y = self:GetPoint()
@@ -1031,7 +1046,10 @@ local function build()
     return b
   end
   local x = CreateFrame('Button', nil, f, 'UIPanelCloseButton') x:SetSize(20, 20) x:SetPoint('TOPRIGHT', 2, 2)
-  x:SetScript('OnClick', function() cfg().routeOpen, cfg().routeMin = nil, nil f:Hide() end)
+  x:SetScript('OnClick', function()
+    if R.itemCombatLock and R.itemCombatLock() then ns.say('Trasu s questovymi tlacitky zavres az po boji.') return end
+    cfg().routeOpen, cfg().routeMin = nil, nil f:Hide()
+  end)
   f.btns = {}
   f.btns.m = hb('_', 'Minimalizovat', 'Schova okno do ikony. Najeti na ikonu ukaze trasu, klik ji zase otevre.', function() R.minimize(true) end)
   f.btns.m:SetPoint('RIGHT', x, 'LEFT', -2, 0)
@@ -1320,8 +1338,79 @@ local function collect()
   return lines, sum, steps
 end
 
+-- tlacitka questovych itemu (jako v quest trackeru hry): zabezpecena tlacitka, v boji se s nimi nesmi hybat,
+-- proto se rozlozeni trasy meni jen mimo boj; tlacitka jsou na UIParent, ukotvena k radkum
+local itemBtns, itemShown = {}, false
+local function questItem(qid)
+  local idx = QL.GetLogIndexForQuestID and safeNum(pc(QL.GetLogIndexForQuestID, qid))
+  if not idx or idx == 0 or not GetQuestLogSpecialItemInfo then return nil end
+  local link, icon, charges, showDone = pc(GetQuestLogSpecialItemInfo, idx)
+  link = safe(link)
+  if type(link) ~= 'string' then return nil end
+  local comp = QL.IsComplete and safeBool(pc(QL.IsComplete, qid))
+  if comp and not safeBool(showDone) then return nil end
+  return { link = link, icon = safe(icon), charges = safeNum(charges), idx = idx, id = tonumber(link:match('item:(%d+)')) }
+end
+local function itemBtn(i)
+  if itemBtns[i] then return itemBtns[i] end
+  local b = CreateFrame('Button', 'ClaudeMasterRouteItem' .. i, UIParent, 'SecureActionButtonTemplate, BackdropTemplate')
+  b:SetSize(18, 18) b:SetFrameStrata('MEDIUM')
+  b:SetBackdrop({ edgeFile = 'Interface\\Buttons\\WHITE8X8', edgeSize = 1 })
+  b:SetBackdropBorderColor(0, 0, 0, 0.9)
+  b.icon = b:CreateTexture(nil, 'ARTWORK') b.icon:SetPoint('TOPLEFT', 1, -1) b.icon:SetPoint('BOTTOMRIGHT', -1, 1)
+  b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  b.count = b:CreateFontString(nil, 'OVERLAY', 'NumberFontNormalSmall') b.count:SetPoint('BOTTOMRIGHT', 1, -1)
+  b.cd = CreateFrame('Cooldown', nil, b, 'CooldownFrameTemplate') b.cd:SetAllPoints(b.icon)
+  b:SetHighlightTexture('Interface\\Buttons\\ButtonHilight-Square', 'ADD')
+  b:RegisterForClicks('AnyUp', 'AnyDown')
+  b:SetAttribute('type', 'item')
+  b:SetScript('OnEnter', function(self)
+    if not self.link then return end
+    GameTooltip:SetOwner(self, 'ANCHOR_LEFT')
+    pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
+    GameTooltip:AddLine('Klik = pouzit (questovy item)', 0.55, 0.85, 1)
+    GameTooltip:Show()
+  end)
+  b:SetScript('OnLeave', function() GameTooltip:Hide() end)
+  b:Hide()
+  itemBtns[i] = b
+  return b
+end
+local function hideItems()
+  if InCombatLockdown() then return false end
+  for _, b in ipairs(itemBtns) do b:Hide() b:ClearAllPoints() end
+  itemShown = false
+  return true
+end
+local function itemCooldowns()
+  for _, b in ipairs(itemBtns) do
+    if b:IsShown() and b.idx and GetQuestLogSpecialItemCooldown then
+      local st, du, en = pc(GetQuestLogSpecialItemCooldown, b.idx)
+      st, du = safeNum(st), safeNum(du)
+      if st and du and du > 1.5 then pcall(b.cd.SetCooldown, b.cd, st, du) else pcall(b.cd.Clear, b.cd) end
+    end
+  end
+end
+R.itemCooldowns = itemCooldowns
+R.itemCombatLock = function() return itemShown and InCombatLockdown() end
+R.hideItems = hideItems
+do
+  local ef = CreateFrame('Frame')
+  pcall(ef.RegisterEvent, ef, 'PLAYER_REGEN_ENABLED')
+  pcall(ef.RegisterEvent, ef, 'BAG_UPDATE_COOLDOWN')
+  ef:SetScript('OnEvent', function(_, e)
+    if e == 'BAG_UPDATE_COOLDOWN' then itemCooldowns() return end
+    -- po boji: okno mezitim zavrene -> tlacitka pryc; jinak prekreslit
+    if not (frame and frame:IsShown()) then hideItems() elseif C_Timer then C_Timer.After(0.2, function() pcall(R.refresh) end) end
+  end)
+end
+-- cooldowny tlacitek (i v boji - to je jen vzhled)
+
+
 function R.refresh()
   if not frame or not frame:IsShown() or frame.sizing then return end
+  -- v boji s questovymi tlacitky se nesmi menit rozlozeni (zabezpecena tlacitka)
+  if itemShown and InCombatLockdown() then return end
   local lines, sum = collect()
   local compact, tr = cfg().routeCompact, cfg().routeAlpha
   local w = W()
@@ -1341,6 +1430,9 @@ function R.refresh()
   end
   local sup = ns.Quests and ns.Quests.superId and ns.Quests.superId()
   local shown = 0
+  -- questova tlacitka: nejdriv vsechna schovat, pak priradit radkum
+  local nItem = 0
+  hideItems()
   for i, r in ipairs(frame.rows) do
     local l = lines[i + start]
     local h = l and ((l.small or l.msg) and (compact and 15 or 16) or (l.head and (compact and 18 or 22) or rh))
@@ -1394,9 +1486,28 @@ function R.refresh()
         r.text:SetText(compact and l.ctext or l.text) r.text:SetWidth(w - 24 - left - rw - 8)
         r.sub:ClearAllPoints() r.sub:SetPoint('BOTTOMLEFT', left, 3) r.sub:SetWidth(w - 24 - left - rw - 8)
       end
+      -- questovy item: male tlacitko vlevo od XP
+      local qi = l.qid and not l.head and not l.obj and not l.detailFirst and l.tt and questItem(l.qid)
+      if qi and not InCombatLockdown() then
+        nItem = nItem + 1
+        local b = itemBtn(nItem)
+        local sz = l.small and 14 or (compact and 15 or 19)
+        local rw = math.max(r.right:GetStringWidth() or 0, (compact or l.small) and 0 or (r.right2:GetStringWidth() or 0))
+        b:SetSize(sz, sz) b:SetFrameLevel(frame:GetFrameLevel() + 30)
+        b:ClearAllPoints() b:SetPoint('RIGHT', r, 'RIGHT', -(rw + 12), 0)
+        b.link, b.idx = qi.link, qi.idx
+        b:SetAttribute('item', qi.id and ('item:' .. qi.id) or qi.link)
+        b.icon:SetTexture(qi.icon or 'Interface\\Icons\\INV_Misc_QuestionMark')
+        b.count:SetText(qi.charges and qi.charges > 1 and qi.charges or '')
+        b:SetAlpha(r.text:GetAlpha() < 1 and 0.7 or 1)
+        b:Show()
+        r.text:SetWidth(math.max(40, (r.text:GetWidth() or 100) - sz - 4))
+      end
       r:Show()
     end
   end
+  itemShown = nItem > 0
+  itemCooldowns()
   local more = #lines - start - shown
   frame.sum:SetText(sum .. ((start > 0 or more > 0) and ('  |cff888888(%s%s)|r'):format(start > 0 and ('^' .. start .. ' ') or '', more > 0 and ('v' .. more) or '') or ''))
   frame:SetHeight(maxH or (-y + 8))
@@ -1458,6 +1569,7 @@ local function buildIcon()
 end
 function R.minimize(on)
   if not frame then frame = build() end
+  if on and R.itemCombatLock() then ns.say('Trasu s questovymi tlacitky minimalizujes az po boji.') return end
   if on then
     cfg().routeMin, cfg().routeOpen = true, true
     frame:Hide()
@@ -1475,7 +1587,10 @@ end
 
 function R.toggle()
   if not frame then frame = build() end
-  if frame:IsShown() then cfg().routeOpen = nil frame:Hide() return end
+  if frame:IsShown() then
+    if R.itemCombatLock() then ns.say('Trasu s questovymi tlacitky zavres az po boji.') return end
+    cfg().routeOpen = nil frame:Hide() return
+  end
   if icon and icon:IsShown() then R.minimize(false) return end
   if not DB then
     if not R.available() then
@@ -1535,8 +1650,14 @@ function R.recvFocus(name, msg)
   pc(C_SuperTrack.SetSuperTrackedQuestID, id)
   if C_Timer then C_Timer.After(0.5, function() applying = false end) else applying = false end
 end
+local sendPend = false
 qev:SetScript('OnEvent', function(_, e)
   logDirty = true
+  -- zmena postupu: poslat parte do 1 s (davka zmen najednou)
+  if e == 'QUEST_LOG_UPDATE' and not sendPend and C_Timer then
+    sendPend = true
+    C_Timer.After(1, function() sendPend = false pcall(sendLog) end)
+  end
   if e == 'SUPER_TRACKING_CHANGED' and not applying and ns.db and ns.db.partyFocus ~= false then
     local id = curSuper()
     local D = ns.Duo
@@ -1562,7 +1683,8 @@ tick:SetScript('OnUpdate', function(_, el)
   end
   sendAcc = (sendAcc or 0) + 1
   if sendAcc >= 4 then sendAcc = 0 pcall(sendLog) end
-  if frame and frame:IsShown() and not InCombatLockdown() then
+  -- v boji jen pri zmene questu (postup) a bez questovych tlacitek
+  if frame and frame:IsShown() and not (InCombatLockdown() and (itemShown or not logDirty)) then
     -- prepocet jen pri pohybu (25+ yd), zmene logu nebo jednou za 15 s
     local me = playerPos()
     local now = GetTime()

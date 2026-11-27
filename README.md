@@ -57,7 +57,10 @@ moby k zabiti a moby, ze kterych potrebny item pada (se sanci).
 Filtr *Suroviny* v Pruzkumniku: byliny a rudy pobliz podle tveho skillu Herbalism / Mining (barvy jako u receptu)
 a kde farmit materialy, ktere chybi do planu profese. Detail itemu ma i sekci *Kde farmit (tvuj level)*.
 
-V parte si addony posilaji quest log, takze trasa je spolecna: zahrne i questy, ktere ma jen partak,
+Questy s pouzitelnym itemem maji v trase male tlacitko (jako v seznamu questu hry) - klik = pouzit. Kvuli pravidlum
+hry se s trasou s takovym tlacitkem v boji neda hybat ani ji zavrit (po boji zase jde).
+
+V parte si addony posilaji quest log (pri zmene postupu do 1 s, i v boji), takze trasa je spolecna: zahrne i questy, ktere ma jen partak,
 a u zastavky napise, kdo tam co odevzda nebo splni navic.
 
 Kdyz je ForeverDB nainstalovana, addon si z ni udela malou cache (jen pri nove verzi ForeverDB; cela databaze
