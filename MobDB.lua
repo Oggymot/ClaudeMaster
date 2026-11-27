@@ -51,7 +51,7 @@ end
 function MD.cacheFresh()
   local c = C(true)
   local v = fdbVersion()
-  return c ~= nil and c.schema == 3 and (v == nil or c.ver == v)
+  return c ~= nil and c.schema == 4 and (v == nil or c.ver == v)
 end
 -- sestavi cache z nactene databaze
 function MD.buildCache()
@@ -179,7 +179,10 @@ function MD.buildCache()
       end
     end
   end
-  ns.db.fdbc = { schema = 3, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
+  -- itemy, ktere prodavaji vendori (pro nakupni seznam profesi)
+  local vend = {}
+  for it in pairs(D.vend or {}) do vend[it] = 1 end
+  ns.db.fdbc = { schema = 4, vend = vend, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
   MD.reset()
   return true
 end
@@ -276,6 +279,10 @@ function MD.questFor(item)
     end
   end
   return best
+end
+function MD.isVendor(item)
+  local c = C(true)
+  return c and c.vend and item and c.vend[item] == 1 or false
 end
 -- item zacina quest: { qid, minLvl, lvl, title }
 function MD.startsQuest(item)

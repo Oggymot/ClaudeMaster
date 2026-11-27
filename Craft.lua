@@ -134,7 +134,13 @@ local function missing(r, n)
   local miss, total = {}, 0
   for _, a in ipairs(r.reag) do
     local m = a.need * n - a.have
-    if m > 0 then miss[#miss + 1] = { name = a.name, n = m, have = a.have, link = a.link } total = total + m end
+    if m > 0 then
+      local id = itemId(a.link)
+      local v = id and ns.MobDB and ns.MobDB.isVendor and ns.MobDB.isVendor(id)
+      miss[#miss + 1] = { name = a.name, n = m, have = a.have, link = a.link, vendor = v }
+      -- material od vendora je snadny (jen koupit), ostatni (farmit / AH) tezky
+      total = total + (v and m * 0.1 or m * 10)
+    end
   end
   return miss, total
 end
@@ -152,15 +158,20 @@ function C.plan(s)
     return a.name < b.name
   end
   table.sort(can, better)
-  -- co nejde: nejlepsi barva a nejmin chybejiciho materialu na par kusu
-  for _, r in ipairs(cant) do local _, t = missing(r, 3) r.missTotal = t end
+  -- co nejde: nejlepsi barva a nejmin chybejiciho materialu na par kusu (vendor = skoro nic)
+  for _, r in ipairs(cant) do
+    local miss, t = missing(r, 5)
+    r.missTotal = t
+    r.vendorOnly = #miss > 0
+    for _, m in ipairs(miss) do if not m.vendor then r.vendorOnly = false end end
+  end
   table.sort(cant, function(a, b)
     if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end
     return a.missTotal < b.missTotal
   end)
   local best = can[1]
   -- zeleny recept nema smysl, kdyz chybi jen par veci na oranzovy / zluty
-  if best and best.kind == 'easy' and cant[1] and RANK[cant[1].kind] > 2 and cant[1].missTotal <= 6 then best = nil end
+  if best and best.kind == 'easy' and cant[1] and RANK[cant[1].kind] > 2 and (cant[1].missTotal <= 6 or cant[1].vendorOnly) then best = nil end
   -- lepsi recept blokuje jen polotovar, ktery umis vyrobit (napr. Bolt of Linen Cloth): nejdriv polotovar
   local byName = {}
   for _, r in ipairs(s.list) do byName[r.name] = r end
@@ -291,9 +302,20 @@ function C.refresh()
     b.icon:SetTexture('Interface\\Icons\\INV_Misc_Bag_10')
     local useful = 0
     for _, r in ipairs(s.list) do if RANK[r.kind] >= 3 then useful = useful + 1 end end
-    b.text:SetText(s.rank >= s.max and s.max > 0 and '|cffffcc00Strop ranku - jdi k trenerovi|r'
-      or (useful == 0 and '|cffffcc00Zadny oranzovy / zluty recept - jdi k trenerovi|r' or '|cffff8855Nemas material na zadny uzitecny recept|r'))
-    b.sub:SetText('|cff9aa6b8viz nakupni seznam nize|r')
+    local buy = cant[1] and RANK[cant[1].kind] >= 3 and cant[1].vendorOnly and cant[1]
+    if s.rank >= s.max and s.max > 0 then
+      b.text:SetText('|cffffcc00Strop ranku - jdi k trenerovi|r') b.sub:SetText('')
+    elseif buy then
+      local m = missing(buy, 5)
+      local parts = {}
+      for _, x in ipairs(m) do parts[#parts + 1] = x.n .. 'x ' .. x.name end
+      b.text:SetText(('Kup u vendora -> 5x |c%s%s|r'):format(COLOR[buy.kind] or 'ffffffff', buy.name))
+      b.sub:SetText('|cff9aa6b8kupit: ' .. table.concat(parts, ', ') .. '|r')
+    elseif useful == 0 then
+      b.text:SetText('|cffffcc00Zadny oranzovy / zluty recept|r') b.sub:SetText('|cff9aa6b8nove recepty u trenera|r')
+    else
+      b.text:SetText('|cffff8855Chybi material|r') b.sub:SetText('|cff9aa6b8co sehnat - viz nize|r')
+    end
     b:Disable() b:SetAlpha(0.7)
   end
   -- radky
@@ -314,7 +336,7 @@ function C.refresh()
   local un = {}
   for _, r in ipairs(s.unlearned or {}) do if RANK[r.kind] and RANK[r.kind] >= 3 then un[#un + 1] = r end end
   table.sort(un, function(a, b) if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end return a.name < b.name end)
-  if un[1] then
+  if un[1] and #un <= 25 then
     row(('|cffffcc00Naucit (trener / recept):|r %d uzitecnych'):format(#un), { tip = 'Recepty, ktere jeste neumis a daly by ti skill.' })
     for i, r in ipairs(un) do
       if i > 3 then break end
@@ -337,7 +359,8 @@ function C.refresh()
     for _, m in ipairs(miss) do
       local own
       for _, x in ipairs(s.list) do if x.name == m.name then own = x end end
-      row(('   %dx %s |cff9aa6b8(mas %d)|r%s'):format(m.n, m.name, m.have, own and ' |cff40c040- vyrobis sam|r' or ''),
+      row(('   %dx %s |cff9aa6b8(mas %d)|r%s'):format(m.n, m.name, m.have,
+        own and ' |cff40c040- vyrobis sam|r' or (m.vendor and ' |cffffd200- vendor|r' or '')),
         { link = m.link, tip = 'Klik = kde sehnat (Pruzkumnik: vendori, dropy)', onClick = function() findItem(m.link, m.name) end })
     end
   end
