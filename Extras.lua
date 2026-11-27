@@ -337,7 +337,7 @@ dev:SetScript('OnEvent', function(_, _, prefix, msg, _, sender)
   end
   -- questy partaka (QL^ = zabil moba s mym questovym lootem)
   if msg:sub(1, 3) == 'RF^' then if ns.Route and ns.Route.recvFocus then pcall(ns.Route.recvFocus, name, msg) end return end
-  if msg:sub(1, 3) == 'RL^' or msg:sub(1, 3) == 'RU^' then if ns.Route and ns.Route.recvLog then pcall(ns.Route.recvLog, name, msg) end return end
+  if msg:sub(1, 3) == 'RL^' or msg:sub(1, 3) == 'RU^' or msg:sub(1, 3) == 'RQ^' then if ns.Route and ns.Route.recvLog then pcall(ns.Route.recvLog, name, msg) end return end
   if msg:sub(1, 3) == 'QL^' then if ns.Quests and ns.Quests.recvLoot then ns.Quests.recvLoot(name, msg) end return end
   -- sdileni questu (QI^ = moje questy, QW^ = ktere chci)
   if msg:sub(1, 3) == 'QI^' or msg:sub(1, 3) == 'QW^' then

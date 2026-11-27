@@ -417,9 +417,18 @@ function R.recvLog(name, msg)
   local q, prog = {}, {}
   local merge = false
   -- RU^ = jen zmenene questy: doplnit do posledniho logu
+  -- RQ^ = partak nema nas log: poslat cely
+  if msg:sub(1, 3) == 'RQ^' then R.sendFullSoon() return end
+  -- prvni kontakt s partakem: poslat mu hned i nas log
+  if not R.peerLogs[name] then R.sendFullSoon() end
   if msg:sub(1, 3) == 'RU^' then
     local old = R.peerLogs[name]
-    if not old then return end
+    if not old then
+      -- zmeny bez zakladu: vyzadat si cely log
+      local D = ns.Duo
+      if D and D.rawSend then D.rawSend('RQ^') end
+      return
+    end
     q, prog, merge = {}, {}, true
     for id, v in pairs(old.q) do q[id] = v end
     for id, v in pairs(old.prog or {}) do prog[id] = v end
@@ -507,6 +516,15 @@ local function parseProg(s)
 end
 local lastSent, lastFullAt = {}, -99
 local sendLog
+-- novy partak / partak nas nezna: cely log hned (ne az za 90 s)
+local fullPend = false
+function R.sendFullSoon()
+  if fullPend then return end
+  fullPend = true
+  lastFullAt = -99
+  local function go() fullPend = false pcall(sendLog) end
+  if C_Timer then C_Timer.After(0.5 + math.random() * 0.5, go) else go() end
+end
 local function retrySoon()
   if C_Timer then C_Timer.After(1.5, function() pcall(sendLog) end) end
 end
@@ -559,6 +577,17 @@ function sendLog()
   end
 end
 R.sendLog = sendLog
+-- nekdo se pridal do party (nebo jsi se pridal ty): cely log hned
+do
+  local rf, lastN = CreateFrame('Frame'), 0
+  pcall(rf.RegisterEvent, rf, 'GROUP_ROSTER_UPDATE')
+  pcall(rf.RegisterEvent, rf, 'PLAYER_ENTERING_WORLD')
+  rf:SetScript('OnEvent', function()
+    local n = safeNum(pc(GetNumGroupMembers)) or 0
+    if n > lastN and n > 1 then R.sendFullSoon() end
+    lastN = n
+  end)
+end
 -- aktivni partaci s addonem (posledni log mladsi nez 2 min a jsou v parte)
 local function peers()
   local out = {}
