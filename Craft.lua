@@ -554,25 +554,24 @@ function C.refresh()
       { tip = 'Recepty, ktere znas, uz skoro nedavaji skill. Nove (oranzove) se uci u trenera nebo z receptu (drop, vendor).' })
   end
   -- recepty, ktere jeste neumis (hra je zna): co se naucit (oranzove / zlute)
-  -- u trenera: recepty, na ktere uz mas skill (pozadavky splnene); nejvyssi pozadavek = nejvic skillu
-  local un, soon = {}, 0
+  -- nove recepty: ty, ktere neumis a pro tvuj skill by byly oranzove (zezloutnou az o kus vys) = ted se daji naucit
+  -- (Forever u neznamych receptu neposila zdroj ani pozadavek skillu; hranice barev ma ForeverDB)
+  local un = {}
+  local MD = ns.MobDB
   for _, r in ipairs(s.unlearned or {}) do
-    if r.trainer and r.reqOk ~= false then
-      if not r.reqSkill or r.reqSkill <= s.rank then
-        if not r.reqSkill or r.reqSkill >= s.rank - 40 then un[#un + 1] = r end
-      elseif r.reqSkill <= s.rank + 15 then soon = soon + 1 end
-    end
+    local y, g
+    if MD and MD.skillRange and type(r.i) == 'number' then y, g = MD.skillRange(r.i) end
+    if y and g and y > s.rank and y <= s.rank + 30 and g > s.rank then r.yellowAt = y un[#un + 1] = r end
   end
-  table.sort(un, function(a, b) if (a.reqSkill or 0) ~= (b.reqSkill or 0) then return (a.reqSkill or 0) > (b.reqSkill or 0) end return a.name < b.name end)
+  table.sort(un, function(a, b) if a.yellowAt ~= b.yellowAt then return a.yellowAt > b.yellowAt end return a.name < b.name end)
   if un[1] then
-    row(('|cffffcc00U trenera ted naucis:|r %d recept%s'):format(#un, #un == 1 and '' or (#un < 5 and 'y' or 'u')),
-      { tip = 'Recepty od trenera, na ktere uz mas skill. Nove recepty davaji skill (oranzove).' })
+    row(('|cffffcc00Nove recepty pro tvuj skill:|r %d'):format(#un),
+      { tip = 'Recepty, ktere neumis a byly by pro tebe oranzove. Uci se u trenera, nebo z receptu (vendor / drop) - over u trenera.' })
+    local lim = (ns.db and ns.db.craftH and ns.db.craftH > 260) and 8 or 4
     for i, r in ipairs(un) do
-      if i > ((ns.db and ns.db.craftH and ns.db.craftH > 260) and 8 or 4) then break end
-      row(('   |cffff8040%s|r%s'):format(r.name, r.reqSkill and (' |cff9aa6b8(%d)|r'):format(r.reqSkill) or ''), { link = r.link, tip = r.src })
+      if i > lim then break end
+      row(('   |cffff8040%s|r |cff9aa6b8(oranzovy do %d)|r'):format(r.name, r.yellowAt), { link = r.link })
     end
-  elseif soon > 0 then
-    row(('|cff9aa6b8U trenera: dalsich %d receptu do +15 skillu.|r'):format(soon))
   end
   local nextC = {}
   for _, r in ipairs(can) do if r ~= best and #nextC < 2 then nextC[#nextC + 1] = r end end
