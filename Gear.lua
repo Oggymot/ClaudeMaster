@@ -873,7 +873,12 @@ function G.partyStatus()
       local nm = safe(pc(UnitName, u))
       if type(nm) == 'string' then
         local p = G.peers[nm]
-        out[#out + 1] = { name = nm, cls = select(2, pc(UnitClass, u)), data = p and now - p.at < 900 or false }
+        local fresh = p and now - p.at < 900 or false
+        out[#out + 1] = { name = nm, cls = select(2, pc(UnitClass, u)), data = fresh, age = p and (now - p.at) or nil }
+        if not fresh and ns.Duo and ns.Duo.rawSend and now - (G.askAt or -99) > 30 then
+          G.askAt = now
+          pcall(ns.Duo.rawSend, 'G^?')
+        end
       end
     end
   end
@@ -912,6 +917,8 @@ end
 function G.recv(name, msg)
   local f = {}
   for v in (msg .. '^'):gmatch('([^%^]*)%^') do f[#f + 1] = v end
+  -- partak nema nase data: poslat znovu
+  if f[2] == '?' then G.shareSoon(1) return end
   if f[2] == 'P' then
     local set = {}
     for pr in (f[3] or ''):gmatch('[^,]+') do
@@ -956,7 +963,15 @@ function G.share()
   local mh = eq[16]
   local msg = ('G^%s^%s^%d^%s^%s'):format(ns.class or '?', s, lvl, (mh and mh.loc == 'INVTYPE_2HWEAPON') and '1' or '0',
     table.concat(parts, ','))
-  pcall(ns.Duo.rawSend, msg:sub(1, 250))
+  local okS, sent = pcall(ns.Duo.rawSend, msg:sub(1, 250))
+  G.shareOk = okS and sent and GetTime() or G.shareOk
+  -- neodeslano (napr. omezeni rychlosti zprav): zkusit znovu za chvili
+  if not (okS and sent) and C_Timer then
+    G.shareRetry = (G.shareRetry or 0) + 1
+    if G.shareRetry <= 6 then C_Timer.After(3 * G.shareRetry, function() pcall(G.share) end) end
+    return
+  end
+  G.shareRetry = 0
   -- profese (pro materialy / recepty)
   local pr = myProfs()
   if pr then

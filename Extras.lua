@@ -446,6 +446,13 @@ function Duo.status()
       age < 15 and ' |cff66ee77OK|r' or ' |cffff5555stara data|r'))
   end
   if not any then ns.say('  Od nikoho zatim nic neprislo (ma partak novou verzi addonu?).') end
+  local G = ns.Gear
+  if G and G.peers then
+    for nm, p in pairs(G.peers) do
+      ns.say(('  vybaveni od %s (%s, lvl %d): pred %.0f s'):format(nm, p.cls or '?', p.lvl or 0, GetTime() - p.at))
+    end
+    ns.say(G.shareOk and ('  moje vybaveni odeslano pred %.0f s'):format(GetTime() - G.shareOk) or '  moje vybaveni zatim neodeslano')
+  end
 end
 
 ------------------------------------------------------------------------------------------

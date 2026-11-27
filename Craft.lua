@@ -1092,8 +1092,12 @@ function C.refresh()
         parts[#parts + 1] = '|cff66ccff' .. p2.name .. '|r ' .. (not p2.data and '|cffff8855bez dat addonu|r'
           or (found[p2.name] and '|cff40ff60ma upgrady|r' or G .. 'nic lepsiho|r'))
       end
-      row(G .. 'Parta:|r ' .. table.concat(parts, ', '), { tip = 'Porovnani pro partaky jde jen s jejich ClaudeMasterem (posila vybaveni kazdych 5 min). '
-        .. '"nic lepsiho" = zadny vyrobek neni lepsi nez to, co ma na sobe, nebo ho jeho trida nemuze nosit.' })
+      local D = ns.Duo or {}
+      row(G .. 'Parta:|r ' .. table.concat(parts, ', '), { tip = 'Porovnani pro partaky jde jen s jejich ClaudeMasterem (posila vybaveni kazdych 5 min, '
+        .. 'chybejici data si addon od partaka sam vyzada). "nic lepsiho" = zadny vyrobek neni lepsi nez to, co ma na sobe, nebo ho jeho trida nemuze nosit.'
+        .. ('\nTvoje odeslani: %d ok, %d chyb%s.'):format(D.sent or 0, D.fail or 0, D.failWhy and (' (' .. D.failWhy .. ')') or '')
+        .. (ns.Gear.shareOk and (' Vybaveni naposledy odeslano pred %d s.'):format(GetTime() - ns.Gear.shareOk) or ' Vybaveni zatim neodeslano.')
+        .. '\nKdyz "bez dat" nezmizi, at partak napise /cm duo (ukaze chyby odesilani).' })
     end
   end
   local function profitRows(lim)
