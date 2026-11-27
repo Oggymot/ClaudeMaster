@@ -149,6 +149,7 @@ function E.context()
   c.barrierUp = ns.cdm('player', 'Ice Barrier') or (ns.playerAura('Ice Barrier') and true) or GetTime() < ns.barrierUntil
   c.armor = hasBuff(ARMORS, ns.armorUntil)
   c.ai = hasBuff({ 'Arcane Intellect', 'Arcane Brilliance' }, ns.aiUntil)
+  if not c.ai and ns.hasIntBuff and ns.hasIntBuff('player') then c.ai = true end
   c.drinking = (ns.playerAura('Drink') or ns.playerAura('Refreshment')) and true or false
   c.eating = (ns.playerAura('Food') or ns.playerAura('Refreshment')) and true or false
   c.instance = IsInInstance and select(1, IsInInstance()) or false

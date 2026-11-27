@@ -643,6 +643,45 @@ function ns.playerAura(name)
   if not a then return ns.inCombat() and nil or false end   -- v boji 'false' taky nic neznamena
   return a
 end
+-- Silnejsi buff na Intellect (scroll "Intellect", Brilliance, cizi / serverovy buff...): hra AI nedovoli
+-- -> true = nejaky buff na Int ma, nebo hra AI na nej nedavno odmitla ("more powerful")
+ns.intBlocked = {}
+function ns.hasIntBuff(unit)
+  local nm = safe(pc(UnitName, unit))
+  if nm and (ns.intBlocked[nm] or 0) > GetTime() then return true end
+  if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return false end
+  for i = 1, 40 do
+    local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, 'HELPFUL')
+    if not ok or a == nil then break end
+    local n = type(a) == 'table' and safe(a.name)
+    if type(n) == 'string' and (n:find('Intellect') or n:find('Brilliance')) then return true end
+  end
+  return false
+end
+do
+  local sentTo, sentAt = nil, -99
+  local f = CreateFrame('Frame')
+  pcall(f.RegisterEvent, f, 'UNIT_SPELLCAST_SENT')
+  pcall(f.RegisterEvent, f, 'UI_ERROR_MESSAGE')
+  f:SetScript('OnEvent', function(_, e, a1, a2, _, a4)
+    if e == 'UNIT_SPELLCAST_SENT' then
+      if safe(a1) ~= 'player' then return end
+      local sid = safeNum(a4)
+      local sn = sid and ((C_Spell and C_Spell.GetSpellName and safe(pc(C_Spell.GetSpellName, sid))) or safe(pc(GetSpellInfo, sid)))
+      if sn == 'Arcane Intellect' or sn == 'Arcane Brilliance' then
+        local t = safe(a2)
+        sentTo, sentAt = (type(t) == 'string' and t ~= '') and t or safe(pc(UnitName, 'player')), GetTime()
+      end
+    else
+      local msg = safe(a2)
+      if sentTo and GetTime() - sentAt < 1.5 and type(msg) == 'string'
+        and (msg == SPELL_FAILED_AURA_BOUNCED or msg:find('more powerful')) then
+        ns.intBlocked[(sentTo:match('^([^%-]+)') or sentTo)] = GetTime() + 1800
+        sentTo = nil
+      end
+    end
+  end)
+end
 -- Pozitivni detekce debuffu na cili (v boji muze lhat "neni", takze jen true/nil)
 function ns.targetDebuff(name, mine)
   if not (C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName) then return nil end

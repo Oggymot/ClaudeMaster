@@ -792,7 +792,8 @@ function R.questTag(qid)
   end
   return t
 end
-local TAGICON = { elite = '|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_8:13:13|t', dungeon = '|cffff9933[D]|r', raid = '|cffff5555[R]|r' }
+local SKULL = '|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_8:13:13|t'
+local TAGICON = { elite = SKULL, dungeon = SKULL, raid = SKULL .. '|cffff5555R|r' }
 R.TAGICON = TAGICON
 
 -- lety: nejblizsi letecky bod tve frakce (ForeverDB taxi: {jmeno, kontinent, x, y, z, ?, aliance, horda})
@@ -1196,7 +1197,7 @@ local function collect()
             or '|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t |cffffd200Splnit|r - misto plneni' }
         local ci = R.classIcon(s.q.id)
         tt.qid = s.q.id
-        -- elitni / dungeon: lebka / [D]
+        -- elitni / dungeon: lebka
         local qtag = R.questTag(s.q.id)
         tt.tag = qtag
         if qtag then ci = (ci ~= '' and (ci .. ' ') or '') .. TAGICON[qtag] end

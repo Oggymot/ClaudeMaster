@@ -48,7 +48,7 @@ tveho levelu, ktere jsou vylepsenim) a *Blizko* (questy a rare moby pobliz). Kli
 Klik na oblast = seznam questu v ni, klik na quest = detail (zadavatel, misto plneni, odevzdani, odmeny,
 reputace, cile, co je predtim, co quest odemkne a cely retez dal se souctem XP). Filtr *Moje questy* = quest log, klik na item = odkud pada, z jakeho questu je a kdo ho prodava. Pravy klik = sipka.
 
-V trase jsou kroky bez cisel (s mezerou mezi kroky). Elitni / skupinove questy maji lebku, dungeonove `[D]`;
+V trase jsou kroky bez cisel (s mezerou mezi kroky). Elitni, skupinove a dungeonove questy maji lebku;
 kdyz jsi sam, zaradi se az na konec. Pod souctem XP je "do levelu": kolik XP chybi a kterym odevzdanim das level
 (`^lvl` u kroku). U vzdalenych kroku v jine zone tooltip doporuci let (nejblizsi letiste u cile, upozorni na neobjevene -
 addon si objevena letiste pamatuje pri otevreni mapy letu). U kroku "Splnit" tooltip ukaze, kde cil ziskat: nejblizsi

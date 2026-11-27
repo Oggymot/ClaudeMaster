@@ -176,7 +176,8 @@ function P.scan(c)
         -- Arcane Intellect (jen mimo boj, v boji auray nejdou cist)
         if not inCombat and m.mana and ns.known('Arcane Intellect') and not r.needAI then
           local has = auraByName(u, 'Arcane Intellect')
-          if has == false and auraByName(u, 'Arcane Brilliance') == false and inRange('Arcane Intellect', u) then
+          if has == false and auraByName(u, 'Arcane Brilliance') == false and not (ns.hasIntBuff and ns.hasIntBuff(u))
+            and inRange('Arcane Intellect', u) then
             r.needAI = m
           end
         end
