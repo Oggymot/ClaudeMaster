@@ -197,6 +197,14 @@ end
 function C.pointCost(r, byName)
   local c = 0
   for _, a in ipairs(r.reag) do c = c + a.need * unitCost(a, byName, 0) end
+  -- vyrobek jde prodat vendorovi: odecist (muze vyjit i zisk)
+  local out = itemId(r.link)
+  r.mat, r.sell = c, (out and sellPrice(out)) or 0
+  -- polotovary (Bolt...) se neprodavaji, pouziji se dal
+  if byName and r.link and r.sell > 0 then
+    for _, x in ipairs(byName.__reagNames or {}) do if x == r.name then r.sell = 0 break end end
+  end
+  c = c - r.sell
   r.cc = c
   local exp = (CHANCE[r.kind] or 0) * (r.ups or 1)
   if exp <= 0 then return nil end
@@ -206,6 +214,10 @@ function C.plan(s)
   priceCache = {}
   local byNameP = {}
   for _, r in ipairs(s.list) do byNameP[r.name] = r end
+  local used = {}
+  for _, r in ipairs(s.list) do for _, a in ipairs(r.reag) do if byNameP[a.name] then used[a.name] = true end end end
+  byNameP.__reagNames = {}
+  for nm in pairs(used) do table.insert(byNameP.__reagNames, nm) end
   for _, r in ipairs(s.list) do r.ppt = C.pointCost(r, byNameP) end
   local can, cant = {}, {}
   for _, r in ipairs(s.list) do
@@ -214,7 +226,7 @@ function C.plan(s)
   local function better(a, b)
     -- nejlevnejsi bod skillu (cena materialu / sance na bod); zeleny jen kdyz nic jineho
     if (a.kind == 'easy') ~= (b.kind == 'easy') then return b.kind == 'easy' end
-    local pa, pb = math.floor(a.ppt or 1e9), math.floor(b.ppt or 1e9)
+    local pa, pb = math.floor(math.max(0, a.ppt or 1e9)), math.floor(math.max(0, b.ppt or 1e9))
     if pa ~= pb then return pa < pb end
     if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end
     local ca, cb = cost(a), cost(b)
@@ -239,7 +251,7 @@ function C.plan(s)
     if (RANK[a.kind] >= 3) ~= (RANK[b.kind] >= 3) then return RANK[a.kind] >= 3 end
     if a.vendorOnly ~= b.vendorOnly then return a.vendorOnly end
     if a.vendorOnly then
-      local pa, pb = math.floor(a.ppt or 1e9), math.floor(b.ppt or 1e9)
+      local pa, pb = math.floor(math.max(0, a.ppt or 1e9)), math.floor(math.max(0, b.ppt or 1e9))
       if pa ~= pb then return pa < pb end
     end
     if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end
@@ -323,20 +335,23 @@ function C.simulate(s)
     for _, r in ipairs(sel) do
       local p = chanceAt(r, sk, s.rank) * math.max(1, r.ups or 1)
       if p > 0 then
-        local c = (r.cc or 0) / p
-        if not bc or c < bc then best, bc, bp = r, c, p end
+        -- zisk = cena 0 (jinak by vyhravaly zelene recepty jen kvuli vic kusum); pri shode vyssi sance
+        -- + "cena za cas" na kazdy kus (5s + 20 % materialu), at plan nejede zelene recepty jen proto, ze na nich vydelas
+        local c = (math.max(0, r.cc or 0) + 500 + 0.2 * (r.mat or 0)) / p
+        if not bc or c < bc - 0.01 or (math.abs(c - bc) <= 0.01 and p > bp) then best, bc, bp = r, c, p end
       end
     end
     if not best then break end
     local seg = segs[#segs]
-    if seg and seg.r == best then seg.to = sk + 1 seg.n = seg.n + 1 / bp seg.cost = seg.cost + bc
-    else segs[#segs + 1] = { r = best, from = sk, to = sk + 1, n = 1 / bp, cost = bc } end
+    if seg and seg.r == best then seg.to = sk + 1 seg.n = seg.n + 1 / bp
+    else segs[#segs + 1] = { r = best, from = sk, to = sk + 1, n = 1 / bp } end
     per[best] = (per[best] or 0) + 1 / bp
   end
   -- material: soucet za vsechny kusy (cele kusy nahoru)
-  local total = 0
+  local total, matT, sellT = 0, 0, 0
   for r, n in pairs(per) do
     local k = math.ceil(n)
+    matT, sellT = matT + k * (r.mat or 0), sellT + k * (r.sell or 0)
     for _, a in ipairs(r.reag) do
       local key = a.name
       local e = mats[key] or { name = a.name, need = 0, have = a.have, link = a.link }
@@ -345,7 +360,7 @@ function C.simulate(s)
     end
     total = total + k * (r.cc or 0)
   end
-  return segs, mats, total
+  return segs, mats, total, matT, sellT
 end
 
 ------------------------------------------------------------------------------------------
@@ -475,8 +490,11 @@ local function shortCoin(c)
 end
 local function ppt(r, plain)
   if not (r and r.ppt) then return '' end
-  local t = r.ppt < 1 and 'zdarma' or ('~' .. shortCoin(r.ppt))
-  return plain and (t .. '/bod') or (' |cff9aa6b8' .. t .. '/bod|r')
+  local t
+  if r.ppt <= -1 then t = '|cff40ff60zisk ~' .. shortCoin(-r.ppt) .. '|r'
+  elseif r.ppt < 1 then t = 'zdarma'
+  else t = '~' .. shortCoin(r.ppt) end
+  return plain and (t .. '/bod') or (' |cff9aa6b8' .. t .. '|cff9aa6b8/bod|r')
 end
 local function findItem(link, name)
   local id = itemId(link)
@@ -608,10 +626,13 @@ function C.refresh()
         COLOR[r.kind] or 'ffffffff', r.name, math.floor(rem + 0.5), ppt(r)),
         { link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
     end
-    local segs, mats, total = C.simulate(s)
+    local segs, mats, total, matT, sellT = C.simulate(s)
     row(' ')
     if segs[1] then
-      row(('|cff66ccffPlan:|r %d -> %d, ~%s'):format(segs[1].from, segs[#segs].to, ns.coin and ns.coin(total) or total))
+      row(('|cff66ccffPlan:|r %d -> %d'):format(segs[1].from, segs[#segs].to))
+      row(('   material ~%s, prodej vyrobku ~%s = %s'):format(shortCoin(matT), shortCoin(sellT),
+        total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200cena ~' .. shortCoin(total) .. '|r')),
+        { tip = 'Material: vendor za nakupni cenu, ostatni za prodejni. Vyrobky za cenu, kterou da vendor (aukce muze dat vic). Polotovary se nepocitaji jako prodej.' })
       for _, g in ipairs(segs) do
         row(('   %d-%d: |cffffffff%dx|r |c%s%s|r'):format(g.from, g.to, math.ceil(g.n), COLOR[g.r.kind] or 'ffffffff', g.r.name), { link = g.r.link })
       end
