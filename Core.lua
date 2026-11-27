@@ -925,6 +925,19 @@ local function healthProbe(unit, lines)
       local hi = 100
       for i, line in ipairs(P.lines) do if P.below[i] then hi = math.min(hi, line) end end
       P.hiPrev, P.hiCur = P.hiCur, hi
+      -- vlastni HP "pod vsemi carami" dele nez 8 s: pro jistotu znovu samotest a meritko
+      -- (kdyz je to pravda, nove mereni to hned potvrdi; kdyz se sonda zasekla, srovna se)
+      if unit == 'player' then
+        if hi <= P.lines[1] then
+          P.lowSince = P.lowSince or GetTime()
+          if GetTime() - P.lowSince > 8 then
+            P.lowSince = nil
+            ns.hpResets = (ns.hpResets or 0) + 1
+            if ns.hpProbeReset then ns.hpProbeReset() end
+            return false
+          end
+        else P.lowSince = nil end
+      end
       -- vlastni HP: horni mez = nejvyssi cteni za posledni 0.4 s (nizke HP musi drzet, ne problikout)
       if unit == 'player' then
         local now = GetTime()
@@ -1001,6 +1014,26 @@ function ns.healthPct(unit)
     return (lo + hi) / 2, false, lo, hi
   end
   return nil
+end
+-- stav sondy vlastniho HP (diagnostika): bity carek (1 = nad carou), extra bar, kontrolni bar, meritko
+function ns.hpProbeInfo()
+  local P = ns.playerProbe
+  if not P then return 'zadna sonda' end
+  local bits = {}
+  for i = 1, #P.lines do bits[i] = P.fired[i] and '1' or '0' end
+  local hp, mx = pc(UnitHealth, 'player'), pc(UnitHealthMax, 'player')
+  local raw = pc(UnitHealthPercent, 'player')
+  return ('sc=%s ok=%s valid=%s age=%.1f bits=%s x15=%s ctrl=%s bad2=%s fix=%s/%s hiMax=%s raw=%s hp=%s/%s'):format(tostring(ns.db and ns.db.hpScale),
+    tostring(P.ok), tostring(P.valid), GetTime() - (P.at or 0), table.concat(bits), tostring(P.fired[#P.lines + 1] == true),
+    tostring(P.fired[#P.lines + 2] == true), tostring(P.bad2), tostring(ns.hpScaleFix), tostring(ns.hpResets), tostring(P.hiMax),
+    issecret(raw) and 'secret' or tostring(raw), issecret(hp) and 'secret' or tostring(hp), issecret(mx) and 'secret' or tostring(mx))
+end
+-- reset sondy HP (prikaz /cm hp)
+function ns.hpProbeReset()
+  if ns.db then ns.db.hpScale = nil end
+  local P = ns.playerProbe
+  if P then P.hist, P.hiPrev, P.hiCur, P.hiMax, P.valid, P.phase, P.ok, P.scaleBad = nil, nil, nil, nil, false, 0, nil, 0 end
+  if ns.scaleProbe then ns.scaleProbe.ok = nil ns.scaleProbe.phase = 0 end
 end
 -- jistota pro drahe nouzove spelly (Death Coil, Blink...): presna hodnota, nebo sonda hlasi
 -- nizke HP souvisle aspon 1 s (min. 4 cteni) - jedno / par chybnych cteni nestaci

@@ -153,6 +153,7 @@ function Bug.push(c, plan, util)
     tostring(c.tCastName or (c.tCasting and '?' or '-')), f1(c.tCastPrio),
     a1 and a1.name or '-', a1 and (a1.reason or '') or '', a2 and a2.name or '-',
     util and (util.name .. ':' .. (util.reason or '')) or '-', table.concat(dots, ','))
+  if ns.hpProbeInfo then local ok, inf = pcall(ns.hpProbeInfo) if ok then line = line .. ' | sonda: ' .. inf end end
   Bug.pos = Bug.pos % Bug.size + 1
   Bug.buf[Bug.pos] = line
 end

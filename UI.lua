@@ -1014,6 +1014,7 @@ local HELP = {
   '/cm trasa - plan trasy questu (potrebuje addon ForeverDB)',
   '/cm profese - vypis okna profese (pri otevrene profesi)',
   '/cm uklid - co v batohu prodat / zahodit',
+  '/cm hp - stav mereni vlastniho HP + reset (kdyz addon hlasi spatne HP)',
   '/cm trener - co se muzes naucit u trenera tridy',
   '/cm duo - stav vymeny dat s partakem (mag + warlock)',
   '/cm zmeny - co hra zmenila na kouzlech (patch) od minule',
@@ -1073,6 +1074,10 @@ SlashCmdList.CLAUDEMASTER = function(msg)
     if ns.Plates and ns.Plates.test then ns.Plates.test() end
   elseif cmd == 'profese' or cmd == 'craft' then
     if ns.Craft then ns.Craft.dump() end
+  elseif cmd == 'hp' then
+    if ns.hpProbeInfo then ns.say('HP pred: ' .. ns.hpProbeInfo()) end
+    if ns.hpProbeReset then ns.hpProbeReset() end
+    if C_Timer then C_Timer.After(2, function() if ns.hpProbeInfo then ns.say('HP po resetu: ' .. ns.hpProbeInfo()) end end) end
   elseif cmd == 'uklid' or cmd == 'cleanup' then
     if ns.Gear and ns.Gear.cleanupSay then ns.Gear.cleanupSay() end
   elseif cmd == 'trener' or cmd == 'trainer' then
