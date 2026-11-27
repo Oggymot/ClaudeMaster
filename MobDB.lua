@@ -34,6 +34,7 @@ end
 ------------------------------------------------------------------------------------------
 -- Celou databazi (~40 MB) neni dobre drzet v pameti kvuli tooltipum (zpomaluje GC = trhane FPS).
 -- Proto se z ni jednou vytahne mala cache retezcu (ns.db.fdbc) a ta se pouziva i v dalsich sezenich.
+local CACHE_SCHEMA = 10   -- zvysit pri kazde zmene obsahu cache (kontrola i ulozeni pouzivaji tuto hodnotu)
 local function FDB() return ns.Route and ns.Route.DB and ns.Route.DB() end
 local function fdbVersion()
   local get = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
@@ -51,7 +52,7 @@ end
 function MD.cacheFresh()
   local c = C(true)
   local v = fdbVersion()
-  return c ~= nil and c.schema == 9 and (v == nil or c.ver == v)
+  return c ~= nil and c.schema == CACHE_SCHEMA and (v == nil or c.ver == v)
 end
 -- sestavi cache z nactene databaze
 function MD.buildCache()
@@ -221,7 +222,8 @@ function MD.buildCache()
         table.sort(best, function(a, b) return a[2] > b[2] end)
         for k = 1, math.min(2, #best) do add('d', best[k][1]) end
       end
-      pat[rn] = id .. '|' .. src .. '|' .. table.concat(pts, ',')
+      -- pozadovany skill patternu (item[11]); 0 = nevime
+      pat[rn] = id .. '|' .. src .. '|' .. table.concat(pts, ',') .. '|' .. (tonumber(it[11]) or 0)
     end
   end
   -- treneri vyssich ranku (Expert / Artisan / Master) podle podtitulku: [slovo profese] = "id|jmeno|podtitulek|frakce|mapa;..."
@@ -245,7 +247,7 @@ function MD.buildCache()
       end
     end
   end
-  ns.db.fdbc = { schema = 8, sla = sla, pat = pat, trn = trn, vend = vend, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
+  ns.db.fdbc = { schema = CACHE_SCHEMA, sla = sla, pat = pat, trn = trn, vend = vend, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
   MD.reset()
   return true
 end
@@ -356,12 +358,14 @@ function MD.patternFor(recipeName)
   local c = C(true)
   local s = c and c.pat and recipeName and c.pat[recipeName]
   if not s then return nil end
-  local id, src, pts = s:match('^(%d+)|([^|]*)|?(.*)$')
+  local id, src, pts, req = s:match('^(%d+)|([^|]*)|([^|]*)|(%d+)$')
+  if not id then id, src, pts = s:match('^(%d+)|([^|]*)|?(.*)$') end
   local list = {}
   for kind, npc, map, x, y in (pts or ''):gmatch('(%a):(%d+):(%d+):(%d+):(%d+)') do
     list[#list + 1] = { kind = kind, npc = tonumber(npc), map = tonumber(map), x = tonumber(x), y = tonumber(y) }
   end
-  return tonumber(id), src or '', list
+  req = tonumber(req)
+  return tonumber(id), src or '', list, (req and req > 0) and req or nil
 end
 -- treneri vyssiho ranku pro profesi: { {id, name, sub, fac, map}, ... }
 function MD.trainers(word)

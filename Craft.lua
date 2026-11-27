@@ -1011,9 +1011,9 @@ function C.refresh()
         end
       end
       local tr, pt = 0, 0
-      for _, r in ipairs(un) do if MD and MD.patternFor and MD.patternFor(r.name) then pt = pt + 1 else tr = tr + 1 end end
-      if #un > 0 then
-        row(('Nove oranzove recepty: %d %s(trener %d, pattern %d)|r'):format(#un, G, tr, pt),
+      for _, r in ipairs(un) do if not r.later then if r.pid then pt = pt + 1 else tr = tr + 1 end end end
+      if tr + pt > 0 then
+        row(('Nove oranzove recepty: %d %s(trener %d, pattern %d)|r'):format(tr + pt, G, tr, pt),
           { icon = TRAIN, tip = 'Klik = zalozka Recepty (u kazdeho, odkud se uci).', onClick = function() C.tab = 'new' C.refresh() end })
       end
       rankRows()
@@ -1061,9 +1061,10 @@ function C.refresh()
   local R = ns.Route
   local me = R and R.playerPos and R.playerPos()
   for _, r in ipairs(un) do
-    local pid, src, pts
-    if MD and MD.patternFor then pid, src, pts = MD.patternFor(r.name) end
-    r.pid, r.src, r.near, r.nearD = pid, src or '', nil, nil
+    local pid, src, pts, req
+    if MD and MD.patternFor then pid, src, pts, req = MD.patternFor(r.name) end
+    r.pid, r.src, r.near, r.nearD, r.req = pid, src or '', nil, nil, req
+    r.later = req and req > s.rank or false
     for _, p in ipairs(pts or {}) do
       local w = R and R.world and R.world(p.map, p.x, p.y)
       local d = (w and me and R.dist) and R.dist(me, w) or nil
@@ -1072,6 +1073,9 @@ function C.refresh()
   end
   -- serazeni: nejblizsi zdroj nahore (stejny kontinent), pak ostatni patterny, pak trener
   table.sort(un, function(a, b)
+    -- na ktere jeste nemas skill (pattern od 215 apod.) az na konec
+    if a.later ~= b.later then return not a.later end
+    if a.later then if a.req ~= b.req then return a.req < b.req end return a.name < b.name end
     local da, db = a.nearD or (a.pid and 1e6 or 2e6), b.nearD or (b.pid and 1e6 or 2e6)
     if da ~= db then return da < db end
     return a.yellowAt > b.yellowAt
@@ -1095,7 +1099,12 @@ function C.refresh()
       local nm = '?'
       if r.near and R and R.DB and R.DB() and R.npcName then local ok, x = pcall(R.npcName, 'c' .. r.near.npc) if ok and x then nm = x end end
       local who = r.near and ((r.near.kind == 'v' and 'Prodava ' or 'Pada z ') .. nm .. ', ' .. (R.mapName and R.mapName(r.near.map) or '?')) or nil
-      row(('|cffff8040%s|r'):format(r.name), { icon = r.icon, right = srcOf(r) .. '  ' .. G .. ('do %d|r'):format(r.yellowAt), link = r.link,
+      if r.later and not (un[i - 1] and un[i - 1].later) then
+        rows[#rows + 1] = { head = 'Pozdeji (az budes mit skill)', text = '', tip = 'Pattern jde naucit az od urciteho skillu (u obchodnika je cerveny).' }
+      end
+      local name = r.later and ('|cff808080%s|r'):format(r.name) or ('|cffff8040%s|r'):format(r.name)
+      local rt = r.later and ('|cffff8855od %d|r'):format(r.req) or (srcOf(r) .. '  ' .. G .. ('do %d|r'):format(r.yellowAt))
+      row(name, { icon = r.icon, right = rt, link = r.link,
         tip = r.pid and ((who and (who .. '.\n') or '') .. 'Klik = sipka k nejblizsimu zdroji, pravy klik = pattern v Pruzkumniku (vsichni vendori / dropy).')
           or 'Uci se u trenera (nebo ho tvuj trener nema - pak pattern / vyssi rank).',
         onClick = r.pid and function(_, btn)
@@ -1129,7 +1138,8 @@ function C.refresh()
     upRows(3)
     head('Profit', 'Recepty, na kterych vydelas.', 'profit')
     profitRows(3)
-    head(('Nove recepty (%d)'):format(#un), 'Recepty, ktere neumis a byly by pro tebe oranzove.', 'new')
+    local nowN = 0 for _, r in ipairs(un) do if not r.later then nowN = nowN + 1 end end
+    head(('Nove recepty (%d)'):format(nowN), 'Recepty, ktere neumis, muzes se je ted naucit a byly by pro tebe oranzove.', 'new')
     newRows(3)
   elseif tab == 'up' then
     head('Hodi se tobe / parte', 'Vybaveni: porovnani podle vah gearu buildu. Enchanty, lektvary, jidlo: staty podle vah, leceni kazdemu, mana classam s manou. Partaci podle dat jejich addonu.')
@@ -1138,7 +1148,8 @@ function C.refresh()
     head('Ziskove recepty', 'Prodej (aukce po 5% poplatku, kdyz addon cenu videl, jinak vendor) minus cena materialu.')
     profitRows(nil)
   elseif tab == 'new' then
-    head(('Nove recepty pro tvuj skill (%d)'):format(#un), 'Recepty, ktere neumis a byly by pro tebe oranzove. Uci se u trenera, nebo z receptu (vendor / drop).')
+    local nowN = 0 for _, r in ipairs(un) do if not r.later then nowN = nowN + 1 end end
+    head(('Nove recepty pro tvuj skill (%d)'):format(nowN), 'Recepty, ktere neumis a byly by pro tebe oranzove. Uci se u trenera, nebo z receptu (vendor / drop).')
     newRows(nil)
   elseif tab == 'plan' then
     head('Nastaveni')
