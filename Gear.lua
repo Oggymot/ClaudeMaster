@@ -359,7 +359,18 @@ local function onItemTip(tt, data)
   fl = fl or {}
   if st then pcall(G.myTip, tt, link, st, blocked, req, fl) end
   -- itemy na quest (hra u nich nic nepise)
-  local qn = (G.questByLink and G.questByLink[link]) or (G.questNeed and G.questNeed(link))
+  local qn = (G.questByLink and G.questByLink[link])
+  if not qn then
+    local iid = tonumber(link:match('item:(%d+)'))
+    local MD = ns.MobDB
+    if iid and MD and MD.questItemDone and MD.questItemDone(iid) then
+      local names = {}
+      for _, qq in ipairs(MD.itemQuests(iid) or {}) do names[#names + 1] = MD.questTitle(qq) or ('#' .. qq) end
+      qn = { title = table.concat(names, ', '), done = true }
+    else
+      qn = G.questNeed and G.questNeed(link)
+    end
+  end
   if qn and qn.done then
     tt:AddLine('|T' .. QUEST_TEX .. ':14:14:0:0:64:64:0:64:0:64:140:140:140|t |cff9aa6b8Bylo na quest:|r |cffbbbbbb' .. (qn.title or '?') .. '|r |cff40ff60(hotovo)|r |cff9aa6b8- muzes prodat|r', 1, 1, 1, true)
   elseif qn then
@@ -499,6 +510,31 @@ function G.questByText(name)
 end
 -- quest item podle hry (bag + slot): spolehlivejsi nez jmeno
 local function bagQuest(bag, slot, link)
+  -- ForeverDB vi, na ktere questy item je: rozhoduje ona (odhad podle textu jen u neznamych itemu)
+  local iid = type(link) == 'string' and tonumber(link:match('item:(%d+)'))
+  local MD = ns.MobDB
+  local dbq = iid and MD and MD.itemQuests and MD.itemQuests(iid)
+  if dbq and dbq[1] then
+    if MD.questItemDone(iid) then
+      local names = {}
+      for _, qq in ipairs(dbq) do names[#names + 1] = MD.questTitle(qq) or ('#' .. qq) end
+      return { title = table.concat(names, ', '), done = true }
+    end
+    local q = G.questNeed(link)
+    if q and not (type(q.title) == 'string' and q.title:find('%(asi%)')) then return q end
+    local QLx = C_QuestLog
+    for _, qq in ipairs(dbq) do
+      if QLx and QLx.GetLogIndexForQuestID and (safeNum(pc(QLx.GetLogIndexForQuestID, qq)) or 0) > 0 then
+        return { title = MD.questTitle(qq) or ('#' .. qq) }
+      end
+    end
+    -- quest jeste nemas (ani hotovy): item se bude hodit
+    for _, qq in ipairs(dbq) do
+      if not (QLx and QLx.IsQuestFlaggedCompleted and safeBool(pc(QLx.IsQuestFlaggedCompleted, qq)) == true) then
+        return { title = (MD.questTitle(qq) or ('#' .. qq)) .. ' |cff9aa6b8(quest jeste nemas)|r' }
+      end
+    end
+  end
   local q = G.questNeed(link)
   if q then return q end
   local f = C_Container and C_Container.GetContainerItemQuestInfo
