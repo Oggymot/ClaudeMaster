@@ -77,6 +77,9 @@ U okna profese (Tailoring, Blacksmithing, Alchemy...) se ukaze panel ClaudeMaste
 - **Plan** (tlacitko v hlavicce) - seznam receptu se zaskrtnutim a odhadem "zbyva ~N ks", nez recept zesedne
   (hranice barev z ForeverDB). Ze zaskrtnutych addon spocita nejlevnejsi postup az ke stropu ranku (useky skillu,
   kolik kusu ceho), material celkem a co chybi; vendor material z planu pak nabidne koupit u obchodnika.
+- **Banka** - plan pocita i s tim, co mas v bance (hra si to pamatuje, staci banku jednou otevrit).
+- **Aukce** - pri hledani itemu v aukci si addon zapamatuje nejnizsi cenu za kus (plan ji pak pouzije); u materialu z planu
+  ukaze, kolik chybi a za kolik ho koupis z nejlevnejsich nabidek, u vyrobku porovna aukci (po 5% poplatku) s vendorem.
 - Panel jde presunout (tahem) a zvetsit (roh vpravo dole); dvojklik na roh = puvodni misto a velikost.
 
 Kazdou davku spousti klik hrace (bez kliknuti vyrabet nejde). `/cm profese` vypise, co hra v okne profese vraci.

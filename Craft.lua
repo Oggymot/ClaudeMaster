@@ -50,6 +50,21 @@ local function itemCount(id)
   local f = (C_Item and C_Item.GetItemCount) or GetItemCount
   return f and safeNum(pc(f, id)) or 0
 end
+-- v bance (hra si to pamatuje i po zavreni banky - staci ji jednou otevrit)
+local function bankCount(id)
+  local f = (C_Item and C_Item.GetItemCount) or GetItemCount
+  if not (f and id) then return 0 end
+  local all = safeNum(pc(f, id, true)) or 0
+  return math.max(0, all - itemCount(id))
+end
+C.bankCount = bankCount
+-- cena z aukce (nejnizsi za kus, posledni videna); stara > 3 dny se nebere
+function C.ahPrice(id)
+  local t = id and ns.db and ns.db.ahPrice and ns.db.ahPrice[id]
+  if not t then return nil end
+  if time and t.at and time() - t.at > 3 * 86400 then return nil end
+  return t.p
+end
 local function itemName(id)
   local f = (C_Item and C_Item.GetItemNameByID) or (C_Item and C_Item.GetItemInfo) or GetItemInfo
   return f and safe(pc(f, id)) or ('item ' .. id)
@@ -185,11 +200,14 @@ local function unitCost(a, byName, depth)
   local MD = ns.MobDB
   local v = id and MD and MD.vendorPrice and MD.vendorPrice(id)
   local own = byName[a.name]
+  local ah = id and C.ahPrice(id)
   local c
-  if v then c = v
+  if v then c = ah and math.min(v, ah) or v
   elseif own and depth < 2 then
     c = 0
     for _, x in ipairs(own.reag) do c = c + x.need * (unitCost(x, byName, depth + 1) or 0) end
+    if ah and ah < c then c = ah end   -- polotovar je v aukci levnejsi nez z vlastni suroviny
+  elseif ah then c = ah
   else c = id and sellPrice(id) or nil end
   priceCache[key] = c or 0
   return c or 0
@@ -200,6 +218,7 @@ function C.pointCost(r, byName)
   -- vyrobek jde prodat vendorovi: odecist (muze vyjit i zisk)
   local out = itemId(r.link)
   r.mat, r.sell = c, (out and sellPrice(out)) or 0
+  r.ahSell = out and C.ahPrice(out) and math.floor(C.ahPrice(out) * 0.95) or nil   -- aukce si bere 5 %
   -- polotovary (Bolt...) se neprodavaji, pouziji se dal
   if byName and r.link and r.sell > 0 then
     for _, x in ipairs(byName.__reagNames or {}) do if x == r.name then r.sell = 0 break end end
@@ -219,6 +238,13 @@ function C.plan(s)
   byNameP.__reagNames = {}
   for nm in pairs(used) do table.insert(byNameP.__reagNames, nm) end
   for _, r in ipairs(s.list) do r.ppt = C.pointCost(r, byNameP) end
+  if ns.db then
+    ns.db.craftOut = ns.db.craftOut or {}
+    for _, r in ipairs(s.list) do
+      local out = itemId(r.link)
+      if out and r.kind ~= 'trivial' then ns.db.craftOut[out] = { n = r.name, m = math.floor(r.mat or 0), v = r.sell or 0 } end
+    end
+  end
   local can, cant = {}, {}
   for _, r in ipairs(s.list) do
     if (RANK[r.kind] or 0) >= 2 then table.insert(r.avail > 0 and can or cant, r) end
@@ -646,7 +672,7 @@ function C.refresh()
       row(('|cff66ccffPlan:|r %d -> %d'):format(segs[1].from, segs[#segs].to))
       row(('   material ~%s, prodej vyrobku ~%s = %s'):format(shortCoin(matT), shortCoin(sellT),
         total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200cena ~' .. shortCoin(total) .. '|r')),
-        { tip = 'Material: vendor za nakupni cenu, ostatni za prodejni. Vyrobky za cenu, kterou da vendor (aukce muze dat vic). Polotovary se nepocitaji jako prodej.' })
+        { tip = 'Material: vendor za nakupni cenu, ostatni za cenu z aukce (kdyz ji addon videl), jinak za prodejni. Vyrobky za cenu, kterou da vendor. Polotovary se nepocitaji jako prodej.' })
       for _, g in ipairs(segs) do
         row(('   %d-%d: |cffffffff%dx|r |c%s%s|r'):format(g.from, g.to, math.ceil(g.n), COLOR[g.r.kind] or 'ffffffff', g.r.name), { link = g.r.link })
       end
@@ -654,22 +680,31 @@ function C.refresh()
       local ml = {}
       for _, m in pairs(mats) do ml[#ml + 1] = m end
       table.sort(ml, function(a, b) return a.name < b.name end)
+      local planMats = {}
       for _, m in ipairs(ml) do
-        local miss = m.need - m.have
+        local mid = itemId(m.link)
+        m.bank = bankCount(mid)
+        local miss = m.need - m.have - m.bank
+        if mid then planMats[mid] = { name = m.name, need = m.need } end
+        for _, sb in ipairs(m.sub or {}) do local sid = itemId(sb.link) if sid then planMats[sid] = { name = sb.name, need = sb.need } end end
         local id = itemId(m.link)
         local vend = id and ns.MobDB and ns.MobDB.isVendor and ns.MobDB.isVendor(id)
-        row(('   %dx %s %s%s'):format(m.need, m.name, miss > 0 and ('|cffff8855(chybi %d)|r'):format(miss) or '|cff40c040(mas)|r',
+        row(('   %dx %s %s%s%s'):format(m.need, m.name, miss > 0 and ('|cffff8855(chybi %d)|r'):format(miss) or '|cff40c040(mas)|r',
+          m.bank > 0 and (' |cff66ccff%d v bance|r'):format(m.bank) or '',
           (miss > 0 and vend) and ' |cffffd200- vendor|r' or ''),
           { link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
         -- polotovar: vyrob ho ze suroviny, kterou mas / sezenes
         for _, sb in ipairs(m.sub or {}) do
-          local sm = sb.need - sb.have
+          local sbank = bankCount(itemId(sb.link))
+          local sm = sb.need - sb.have - sbank
           row(('      |cff40c040vyrob %dx|r z %dx %s %s'):format(m.craft, sb.need, sb.name,
-            sm > 0 and ('|cffff8855(mas %d, chybi %d)|r'):format(sb.have, sm) or ('|cff40c040(mas %d)|r'):format(sb.have)),
+            sm > 0 and ('|cffff8855(mas %d%s, chybi %d)|r'):format(sb.have, sbank > 0 and (' + ' .. sbank .. ' v bance') or '', sm)
+              or ('|cff40c040(mas %d%s)|r'):format(sb.have, sbank > 0 and (' + ' .. sbank .. ' v bance') or '')),
             { link = sb.link, tip = 'Klik = kde sehnat', onClick = function() findItem(sb.link, sb.name) end })
         end
       end
       C.planShop = mats
+      if ns.db then ns.db.craftPlanMats = planMats end
     else
       row('|cff9aa6b8Zadny vybrany recept uz nedava skill.|r')
       C.planShop = nil
@@ -950,3 +985,127 @@ function C.dump()
   end
   if #list == 0 then ns.say('  (zadny recept, ktery by dal skill)') end
 end
+
+------------------------------------------------------------------------------------------
+-- Aukce: precte nabidky hledaneho itemu, zapamatuje nejnizsi cenu za kus; u materialu z planu spocita,
+-- kolik bude stat potrebne mnozstvi, u vyrobku porovna aukci s vendorem
+------------------------------------------------------------------------------------------
+local af
+local function remember(id, list)
+  if not (id and list[1] and ns.db) then return end
+  table.sort(list, function(a, b) return a.u < b.u end)
+  ns.db.ahPrice = ns.db.ahPrice or {}
+  ns.db.ahPrice[id] = { p = math.floor(list[1].u), at = time and time() or 0 }
+  C.ahList = { id = id, list = list }
+end
+local function buildAH()
+  local T = ns.THEME
+  af = CreateFrame('Frame', 'ClaudeMasterCraftAH', UIParent, 'BackdropTemplate')
+  af:SetSize(280, 80)
+  af:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+  af:SetBackdropColor(T.bg[1], T.bg[2], T.bg[3], 0.94) af:SetBackdropBorderColor(unpack(T.border))
+  af:SetFrameStrata('HIGH')
+  af.title = af:CreateFontString(nil, 'OVERLAY', 'GameFontNormal') af.title:SetPoint('TOPLEFT', 10, -8) af.title:SetTextColor(unpack(T.title))
+  af.text = af:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') af.text:SetPoint('TOPLEFT', 10, -26) af.text:SetPoint('RIGHT', -10, 0)
+  af.text:SetJustifyH('LEFT')
+  af:Hide()
+end
+function C.ahShow()
+  local cur = C.ahList
+  local host = _G.AuctionHouseFrame or _G.AuctionFrame
+  if not (cur and host and host:IsShown()) then if af then af:Hide() end return end
+  local id, list = cur.id, cur.list
+  local lines = {}
+  local name = (ns.db.craftPlanMats and ns.db.craftPlanMats[id] and ns.db.craftPlanMats[id].name) or itemName(id)
+  local low = list[1].u
+  lines[#lines + 1] = ('Nejlevneji: %s/ks  (%d nabidek)'):format(shortCoin(low), #list)
+  -- material z planu: kolik chybi a za kolik ho koupis z nejlevnejsich nabidek
+  local pm = ns.db.craftPlanMats and ns.db.craftPlanMats[id]
+  if pm then
+    local have = itemCount(id) + bankCount(id)
+    local need = pm.need - have
+    if need > 0 then
+      local left, cost = need, 0
+      for _, e in ipairs(list) do
+        if left <= 0 then break end
+        local q = math.min(left, e.q)
+        cost, left = cost + q * e.u, left - q
+      end
+      lines[#lines + 1] = ('|cffffd200Plan potrebuje %d|r (mas %d): koupit %d ks ~ %s%s'):format(pm.need, have, need - math.max(0, left),
+        shortCoin(cost), left > 0 and (' |cffff8855(v aukci chybi %d)|r'):format(left) or '')
+      local vp = ns.MobDB and ns.MobDB.vendorPrice and ns.MobDB.vendorPrice(id)
+      if vp then
+        lines[#lines + 1] = vp < low and ('|cffff8855U vendora levneji: %s/ks|r'):format(shortCoin(vp)) or ('U vendora: %s/ks'):format(shortCoin(vp))
+      end
+    else
+      lines[#lines + 1] = ('|cff40c040Na plan mas dost (%d / %d)|r'):format(have, pm.need)
+    end
+  end
+  -- vyrobek: aukce vs vendor vs cena materialu
+  local co = ns.db.craftOut and ns.db.craftOut[id]
+  if co then
+    local net = math.floor(low * 0.95)
+    lines[#lines + 1] = ('Vyrobek: aukce ~%s (po poplatku), vendor %s, material %s'):format(shortCoin(net), shortCoin(co.v or 0), shortCoin(co.m or 0))
+    lines[#lines + 1] = net > (co.v or 0) and '|cff40c040Vyplati se prodat v aukci.|r' or '|cffffd200Vyplati se spis vendor.|r'
+  end
+  if not (pm or co) then lines[#lines + 1] = '|cff9aa6b8Cena ulozena - plan profesi ji pouzije.|r' end
+  if not af then buildAH() end
+  af.title:SetText(name or '?')
+  af.text:SetText(table.concat(lines, '\n'))
+  af:SetHeight(32 + af.text:GetStringHeight() + 8)
+  af:ClearAllPoints() af:SetPoint('TOPLEFT', host, 'TOPRIGHT', 4, -30)
+  af:Show()
+end
+-- stare rozhrani aukce (QueryAuctionItems)
+local function oldList()
+  local N, IL, II = api('GetNumAuctionItems'), api('GetAuctionItemLink'), api('GetAuctionItemInfo')
+  if not (N and IL and II) then return end
+  local by = {}
+  for i = 1, safeNum(pc(N, 'list')) or 0 do
+    local id = itemId(safe(pc(IL, 'list', i)))
+    local r = { pc(II, 'list', i) }
+    local count, buyout = safeNum(r[3]), safeNum(r[10])
+    if id and count and count > 0 and buyout and buyout > 0 then
+      by[id] = by[id] or {}
+      table.insert(by[id], { u = buyout / count, q = count })
+    end
+  end
+  local best, bn
+  for id, l in pairs(by) do remember(id, l) if not bn or #l > bn then best, bn = id, #l end end
+  if best then C.ahList = { id = best, list = by[best] } end
+end
+-- nove rozhrani (C_AuctionHouse): komodity a itemy
+local function commodity(id)
+  local A = C_AuctionHouse
+  if not (A and A.GetNumCommoditySearchResults and id) then return end
+  local l = {}
+  for i = 1, safeNum(pc(A.GetNumCommoditySearchResults, id)) or 0 do
+    local r = pc(A.GetCommoditySearchResultInfo, id, i)
+    if type(r) == 'table' and safeNum(r.unitPrice) and safeNum(r.quantity) then l[#l + 1] = { u = r.unitPrice, q = r.quantity } end
+  end
+  remember(id, l)
+end
+local function itemSearch(key)
+  local A = C_AuctionHouse
+  if not (A and A.GetNumItemSearchResults and type(key) == 'table') then return end
+  local id = safeNum(key.itemID)
+  local l = {}
+  for i = 1, safeNum(pc(A.GetNumItemSearchResults, key)) or 0 do
+    local r = pc(A.GetItemSearchResultInfo, key, i)
+    local q = type(r) == 'table' and safeNum(r.quantity) or 1
+    local b = type(r) == 'table' and safeNum(r.buyoutAmount)
+    if b and b > 0 then l[#l + 1] = { u = b / math.max(1, q), q = q } end
+  end
+  remember(id, l)
+end
+local aev = CreateFrame('Frame')
+for _, e in ipairs({ 'AUCTION_ITEM_LIST_UPDATE', 'COMMODITY_SEARCH_RESULTS_UPDATED', 'ITEM_SEARCH_RESULTS_UPDATED',
+  'AUCTION_HOUSE_CLOSED', 'AUCTION_HOUSE_SHOW' }) do pcall(aev.RegisterEvent, aev, e) end
+aev:SetScript('OnEvent', function(_, e, arg)
+  if e == 'AUCTION_HOUSE_CLOSED' then if af then af:Hide() end C.ahList = nil return end
+  if ns.db and ns.db.craftHelp == false then return end
+  if e == 'AUCTION_ITEM_LIST_UPDATE' then pcall(oldList)
+  elseif e == 'COMMODITY_SEARCH_RESULTS_UPDATED' then pcall(commodity, safeNum(arg))
+  elseif e == 'ITEM_SEARCH_RESULTS_UPDATED' then pcall(itemSearch, arg) end
+  pcall(C.ahShow)
+end)
