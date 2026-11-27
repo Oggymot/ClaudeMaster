@@ -61,7 +61,10 @@ Bez ForeverDB funguje zbytek addonu normalne, tyto funkce jen napisou, ze Foreve
 
 ## Levelovani profesi
 
-U okna profese (Tailoring, Blacksmithing, Alchemy...) se ukaze panel ClaudeMasteru:
+U okna profese (Tailoring, Blacksmithing, Alchemy...) se ukaze panel ClaudeMasteru se zalozkami
+**Prehled** (od kazde kategorie to nejdulezitejsi), **Plan** (levelovani), **Upgrady** (co si muzes vyrobit a je lepsi
+nez tvoje vybaveni - i pro partaky s addonem), **Profit** (ziskove recepty: aukce / vendor minus material)
+a **Recepty** (nove recepty pro tvuj skill):
 
 - **tlacitko Vyrob** - vybere recept, ktery ted nejlip zvedne skill (oranzovy > zluty > zeleny, z tech nejlevnejsi),
   a jednim klikem vyrobi davku. Kdyz lepsi recept blokuje jen polotovar (napr. Bolt of Linen Cloth), vyrobi nejdriv ten.

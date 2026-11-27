@@ -329,7 +329,11 @@ dev:SetScript('OnEvent', function(_, _, prefix, msg, _, sender)
   local k2 = msg:sub(1, 2)
   if k2 == 'X^' or k2 == 'P^' then if ns.Plates and ns.Plates.recv then ns.Plates.recv(name, msg) end return end
   -- gear partaka (skore slotu) -> tooltip "Jmeno +12 %"
-  if k2 == 'G^' then if ns.Gear and ns.Gear.recv then pcall(ns.Gear.recv, name, msg) end return end
+  if k2 == 'G^' then
+    if ns.Gear and ns.Gear.recv then pcall(ns.Gear.recv, name, msg) end
+    if ns.Craft and ns.Craft.resetUps then ns.Craft.resetUps() end
+    return
+  end
   -- questy partaka (QL^ = zabil moba s mym questovym lootem)
   if msg:sub(1, 3) == 'RF^' then if ns.Route and ns.Route.recvFocus then pcall(ns.Route.recvFocus, name, msg) end return end
   if msg:sub(1, 3) == 'RL^' then if ns.Route and ns.Route.recvLog then pcall(ns.Route.recvLog, name, msg) end return end

@@ -452,6 +452,73 @@ function C.simulate(s)
 end
 
 ------------------------------------------------------------------------------------------
+-- Upgrady z vyroby (pro me i partaky s addonem) a ziskove recepty
+------------------------------------------------------------------------------------------
+local upCache = {}
+local function upInfo(r)
+  local out = itemId(r.link)
+  if not out then return nil end
+  local c = upCache[out]
+  if c ~= nil then return c or nil end
+  upCache[out] = false
+  local G = ns.Gear
+  if not (G and G.parse and G.compare) then return nil end
+  local inst = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+  local loc = inst and select(4, pc(inst, out))
+  if type(loc) ~= 'string' or loc == '' or loc == 'INVTYPE_BAG' or loc == 'INVTYPE_NON_EQUIP_IGNORE' then return nil end
+  local data = (C_TooltipInfo and C_TooltipInfo.GetHyperlink and pc(C_TooltipInfo.GetHyperlink, r.link))
+    or (C_TooltipInfo and C_TooltipInfo.GetItemByID and pc(C_TooltipInfo.GetItemByID, out))
+  local st, blocked, req, fl = G.parse(data)
+  if not st then return nil end
+  local e = { r = r, req = req }
+  if not blocked then
+    local pct = safeNum(pc(G.compare, r.link, st))
+    if pct and pct > 0.03 then e.me = pct end
+  end
+  if G.peerUps then
+    local ok, l = pcall(G.peerUps, r.link, st, req, fl or {})
+    if ok and type(l) == 'table' and l[1] then e.peers = l end
+  end
+  if not (e.me or e.peers) then return nil end
+  e.score = (e.me or 0) + ((e.peers and e.peers[1] and (e.peers[1].pct or 0.3)) or 0) * 0.8
+  upCache[out] = e
+  return e
+end
+function C.upgrades(s)
+  local out = {}
+  for _, r in ipairs(s.list) do
+    local ok, e = pcall(upInfo, r)
+    if ok and e then e.r = r out[#out + 1] = e end
+  end
+  table.sort(out, function(a, b)
+    if (a.r.avail > 0) ~= (b.r.avail > 0) then return a.r.avail > 0 end
+    return a.score > b.score
+  end)
+  return out
+end
+function C.profits(s)
+  local out = {}
+  local used = {}
+  for _, r in ipairs(s.list) do for _, a in ipairs(r.reag) do used[a.name] = true end end
+  for _, r in ipairs(s.list) do
+    if not used[r.name] and (r.mat or 0) > 0 then
+      local price = r.ahSell or r.sell or 0
+      local profit = price - r.mat
+      if profit > 0 then out[#out + 1] = { r = r, profit = profit, price = price, ah = r.ahSell ~= nil } end
+    end
+  end
+  table.sort(out, function(a, b)
+    if (a.r.avail > 0) ~= (b.r.avail > 0) then return a.r.avail > 0 end
+    return a.profit > b.profit
+  end)
+  return out
+end
+local upEv = CreateFrame('Frame')
+pcall(upEv.RegisterEvent, upEv, 'PLAYER_EQUIPMENT_CHANGED')
+upEv:SetScript('OnEvent', function() upCache = {} end)
+function C.resetUps() upCache = {} end
+
+------------------------------------------------------------------------------------------
 -- Okno vedle profese
 ------------------------------------------------------------------------------------------
 local f, state
@@ -544,19 +611,36 @@ local function build()
   f.sizing = false
   f.title = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal') f.title:SetPoint('TOPLEFT', 10, -8)
   f.title:SetTextColor(unpack(T.title))
-  f.skill = f:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') f.skill:SetPoint('TOPRIGHT', -62, -10)
-  local pb = CreateFrame('Button', nil, f, 'BackdropTemplate')
-  pb:SetSize(48, 16) pb:SetPoint('TOPRIGHT', -8, -7)
-  pb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-  pb.t = pb:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') pb.t:SetPoint('CENTER') pb.t:SetText('Plan')
-  pb:SetScript('OnClick', function() C.planMode = not C.planMode C.refresh() end)
-  pb:SetScript('OnEnter', function(self)
-    GameTooltip:SetOwner(self, 'ANCHOR_TOP') GameTooltip:AddLine('Plan levelovani', 1, 1, 1)
-    GameTooltip:AddLine('Zaskrtni recepty, ktere chces delat; addon spocita nejlevnejsi postup az do stropu ranku, kolik kusu ktereho receptu a material.', 0.8, 0.8, 0.8, true)
-    GameTooltip:Show()
-  end)
-  pb:SetScript('OnLeave', function() GameTooltip:Hide() end)
-  f.planBtn = pb
+  f.skill = f:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') f.skill:SetPoint('TOPRIGHT', -10, -10)
+  -- zalozky: prehled / plan levelovani / upgrady / profit / nove recepty
+  f.tabs = {}
+  local TABS = { { 'over', 'Prehled', 'To nejdulezitejsi ze vsech kategorii.' },
+    { 'plan', 'Plan', 'Plan levelovani: zaskrtnute recepty, barvy, cil, postup a material.' },
+    { 'up', 'Upgrady', 'Co si muzes vyrobit a je lepsi nez tvoje vybaveni (i pro partaky s addonem).' },
+    { 'profit', 'Profit', 'Recepty, na kterych vydelas (aukce, kdyz cenu addon zna, jinak vendor) minus cena materialu.' },
+    { 'new', 'Recepty', 'Nove recepty pro tvuj skill (trener / recept).' } }
+  for i, d in ipairs(TABS) do
+    local tb = CreateFrame('Button', nil, f, 'BackdropTemplate')
+    tb:SetHeight(18)
+    tb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    tb.t = tb:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') tb.t:SetPoint('CENTER') tb.t:SetText(d[2])
+    tb.key = d[1]
+    tb:SetScript('OnClick', function(self) C.tab = self.key C.refresh() end)
+    tb:SetScript('OnEnter', function(self)
+      GameTooltip:SetOwner(self, 'ANCHOR_TOP') GameTooltip:AddLine(d[2], 1, 1, 1) GameTooltip:AddLine(d[3], 0.8, 0.8, 0.8, true) GameTooltip:Show()
+    end)
+    tb:SetScript('OnLeave', function() GameTooltip:Hide() end)
+    f.tabs[i] = tb
+  end
+  f.layoutTabs = function()
+    local w = (f:GetWidth() - 16 - 4 * 3) / #f.tabs
+    for i, tb in ipairs(f.tabs) do
+      tb:ClearAllPoints() tb:SetWidth(w) tb:SetPoint('TOPLEFT', 8 + (i - 1) * (w + 3), -26)
+      local on = (C.tab or 'over') == tb.key
+      tb:SetBackdropColor(accent2(on and 0.45 or 0.1)) tb:SetBackdropBorderColor(accent2(on and 1 or 0.45))
+      tb.t:SetTextColor(on and 1 or 0.75, on and 1 or 0.78, on and 1 or 0.85)
+    end
+  end
   -- tlacitka barev planu (radek "Barvy")
   f.md = {}
   for i, d in ipairs({ { 'all', 'vse' }, { 'oy', 'O+Z' }, { 'o', 'O' } }) do
@@ -592,7 +676,7 @@ local function build()
   end
   -- velke tlacitko "Vyrob"
   local b = CreateFrame('Button', nil, f, 'BackdropTemplate')
-  b:SetPoint('TOPLEFT', 8, -28) b:SetPoint('TOPRIGHT', -8, -28) b:SetHeight(40)
+  b:SetPoint('TOPLEFT', 8, -50) b:SetPoint('TOPRIGHT', -8, -50) b:SetHeight(40)
   b:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
   b:SetBackdropColor(0.2, 0.45, 0.2, 0.55) b:SetBackdropBorderColor(0.35, 0.8, 0.35, 0.9)
   b.icon = b:CreateTexture(nil, 'ARTWORK') b.icon:SetSize(32, 32) b.icon:SetPoint('LEFT', 4, 0) b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
@@ -757,23 +841,20 @@ function C.refresh()
   -- radky
   local rows = {}
   local function row(text, extra) extra = extra or {} extra.text = text rows[#rows + 1] = extra end
-  local function head(t, tip) rows[#rows + 1] = { head = t, text = '', tip = tip } end
+  local function head(t, tip, tab) rows[#rows + 1] = { head = t, text = '', tip = tip, right = tab and '|cff9aa6b8vice >|r' or nil,
+    onClick = tab and function() C.tab = tab C.refresh() end or nil } end
   local function icn(link) local id = itemId(link) local f2 = (C_Item and C_Item.GetItemIconByID) or GetItemIcon return id and f2 and safe(pc(f2, id)) or nil end
   local function col(r, t) return ('|c%s%s|r'):format(COLOR[r.kind] or 'ffffffff', t or r.name) end
   local G = '|cff9aa6b8'
-  f.planBtn:SetBackdropColor(accent2(C.planMode and 0.5 or 0.12)) f.planBtn:SetBackdropBorderColor(accent2(C.planMode and 1 or 0.5))
   local TRAIN = 'Interface\\GossipFrame\\TrainerGossipIcon'
-  if s.max > 0 and s.max - s.rank <= 10 and s.max < 300 then
-    row(('|cffffcc00Dalsi rank u trenera|r'), { icon = TRAIN, right = G .. ('strop %d|r'):format(s.max), tip = 'Bez noveho ranku se skill nad strop nezvedne.' })
-  end
-  -- malo uzitecnych receptu: u trenera budou nove (oranzove)
-  local orange, yellow = 0, 0
-  for _, r in ipairs(s.list) do if r.kind == 'optimal' then orange = orange + 1 elseif r.kind == 'medium' then yellow = yellow + 1 end end
-  if orange == 0 and yellow <= 2 and not (s.max > 0 and s.max - s.rank <= 10) then
-    row('|cffffcc00Nove recepty u trenera|r', { icon = TRAIN, right = G .. ('oranz. 0, zlut. %d|r'):format(yellow),
-      tip = 'Recepty, ktere znas, uz skoro nedavaji skill. Nove (oranzove) se uci u trenera nebo z receptu (drop, vendor).' })
-  end
-  -- nove recepty: ty, ktere neumis a pro tvuj skill by byly oranzove (Forever u neznamych receptu neposila zdroj; hranice barev ma ForeverDB)
+  local tab = C.tab or 'over'
+  C.planMode = tab == 'plan'
+  f.layoutTabs()
+  local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
+  local md = C.mode(s)
+  local segs, mats, total, matT, sellT, crafts = C.simulate(s)
+
+  -- nove recepty pro tvuj skill (neumis, byly by oranzove)
   local un = {}
   local MD = ns.MobDB
   for _, r in ipairs(s.unlearned or {}) do
@@ -782,38 +863,92 @@ function C.refresh()
     if y and g and y > s.rank and y <= s.rank + 30 and g > s.rank then r.yellowAt = y un[#un + 1] = r end
   end
   table.sort(un, function(a, b) if a.yellowAt ~= b.yellowAt then return a.yellowAt > b.yellowAt end return a.name < b.name end)
-  local nextC = {}
-  for _, r in ipairs(can) do if r ~= best and #nextC < 2 then nextC[#nextC + 1] = r end end
-  if nextC[1] then head('Pak') end
-  for _, r in ipairs(nextC) do
-    row(col(r), { icon = r.icon, right = G .. ('mas na %d|r'):format(r.avail) .. ppt(r), link = r.link })
-  end
-  -- nakupni seznam: nejlepsi recepty, na ktere material chybi (oranzove / zlute)
-  local shown = 0
-  for _, r in ipairs(cant) do
-    if shown >= ((ns.db and ns.db.craftH and ns.db.craftH > 260) and 5 or 2) or RANK[r.kind] < 3 then break end
-    if shown == 0 then head('Chybi material (na 5 ks)') end
-    shown = shown + 1
-    local miss = missing(r, 5)
-    row(col(r), { icon = r.icon, right = ppt(r), link = r.link })
-    for _, m in ipairs(miss) do
-      local own
-      for _, x in ipairs(s.list) do if x.name == m.name then own = x end end
-      row(('%dx %s'):format(m.n, m.name), { indent = 14, icon = icn(m.link),
-        right = own and '|cff40c040vyrobis|r' or (m.vendor and '|cffffd200vendor|r' or (G .. 'mas ' .. m.have .. '|r')),
-        link = m.link, tip = 'Klik = kde sehnat (Pruzkumnik: vendori, dropy)', onClick = function() findItem(m.link, m.name) end })
+  -- upgrady (pro me + partaky s addonem) a profit
+  local ups = C.upgrades(s)
+  local profits = C.profits(s)
+
+  local function planSummary()
+    if segs[1] then
+      row(('|cffffffff%d -> %d|r  %s%d vyrob|r'):format(segs[1].from, segs[#segs].to, G, crafts), {
+        right = total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200~' .. shortCoin(total) .. '|r'),
+        tip = ('Material ~%s, prodej vyrobku vendorovi ~%s. Barvy: %s.'):format(shortCoin(matT), shortCoin(sellT),
+          md == 'o' and 'jen oranzove' or (md == 'oy' and 'oranzove + zlute' or 'vse')) })
+      if segs[#segs].to < (C.target(s) or top) then
+        row(('|cffffcc00Od %d uz %s|r'):format(segs[#segs].to, md == 'o' and 'neni oranzovy recept' or (md == 'oy' and 'neni oranz. ani zluty' or 'nic nedava skill')),
+          { icon = TRAIN, tip = 'Nove recepty u trenera nebo z receptu (zalozka Recepty).' })
+      end
+    else
+      row(G .. 'Zadny vybrany recept uz nedava skill.|r', { icon = TRAIN })
     end
   end
-  if un[1] then
-    head(('Nove recepty pro tvuj skill (%d)'):format(#un), 'Recepty, ktere neumis a byly by pro tebe oranzove. Uci se u trenera, nebo z receptu (vendor / drop).')
-    local lim = (ns.db and ns.db.craftH and ns.db.craftH > 260) and 8 or 4
+  local function upRows(lim)
+    for i, u in ipairs(ups) do
+      if lim and i > lim then break end
+      local who = {}
+      if u.me then who[#who + 1] = ('|cff40ff60ty +%d %%|r'):format(math.floor(u.me * 100 + 0.5)) end
+      for k, p2 in ipairs(u.peers or {}) do
+        if k > 2 then break end
+        who[#who + 1] = ('|cff66ccff%s|r %s'):format(p2.name, p2.empty and '|cff40ff60novy slot|r' or ('|cff40ff60+%d %%|r'):format(math.floor(p2.pct * 100 + 0.5)))
+      end
+      row(col(u.r), { icon = u.r.icon or icn(u.r.link), right = table.concat(who, '  '), link = u.r.link,
+        tip = (u.r.avail > 0 and ('Material mas na %d ks.'):format(u.r.avail) or 'Material zatim nemas.') .. (u.req and (' Od levelu %d.'):format(u.req) or '') })
+    end
+    if not ups[1] then row(G .. 'Zadny recept ted nedela upgrade (tobe ani parte).|r') end
+  end
+  local function profitRows(lim)
+    for i, p2 in ipairs(profits) do
+      if lim and i > lim then break end
+      row(col(p2.r), { icon = p2.r.icon or icn(p2.r.link), link = p2.r.link,
+        right = ('|cff40ff60+%s|r %s/ks %s|r'):format(shortCoin(p2.profit), G, p2.ah and '|cffffd200aukce' or 'vendor'),
+        tip = ('Prodej ~%s (%s), material ~%s. Material mas na %d ks.%s'):format(shortCoin(p2.price), p2.ah and 'aukce po 5% poplatku' or 'vendor',
+          shortCoin(p2.r.mat or 0), p2.r.avail, p2.ah and '' or ' Cenu v aukci addon nezna - vyhledej vyrobek v aukci.') })
+    end
+    if not profits[1] then row(G .. 'Zadny recept neni ziskovy (podle znamych cen). Vyhledej vyrobky v aukci.|r') end
+  end
+  local function newRows(lim)
     for i, r in ipairs(un) do
-      if i > lim then break end
+      if lim and i > lim then break end
       row(('|cffff8040%s|r'):format(r.name), { icon = r.icon, right = G .. ('oranz. do %d|r'):format(r.yellowAt), link = r.link })
     end
+    if not un[1] then row(G .. 'Zadne nove recepty pro tvuj skill (nebo je ForeverDB nezna).|r') end
   end
-  if C.planMode then
-    rows = {}
+
+  if s.max > 0 and s.max - s.rank <= 10 and s.max < 300 then
+    row('|cffffcc00Dalsi rank u trenera|r', { icon = TRAIN, right = G .. ('strop %d|r'):format(s.max), tip = 'Bez noveho ranku se skill nad strop nezvedne.' })
+  end
+
+  if tab == 'over' then
+    head('Levelovani', 'Plan levelovani - podrobnosti v zalozce Plan.', 'plan')
+    planSummary()
+    -- dalsi krok + co na nej chybi
+    if segs[1] then
+      local g = segs[1]
+      row(('Dalsi: |cffffffff%dx|r %s'):format(math.ceil(g.n), col(g.r)), { icon = g.r.icon, right = G .. ('%d-%d|r'):format(g.from, g.to), link = g.r.link })
+      local miss = missing(g.r, math.ceil(g.n))
+      for _, m in ipairs(miss) do
+        local own
+        for _, x in ipairs(s.list) do if x.name == m.name then own = x end end
+        row(('%dx %s'):format(m.n, m.name), { indent = 14, icon = icn(m.link),
+          right = own and '|cff40c040vyrobis|r' or (m.vendor and '|cffffd200vendor|r' or '|cffff8855chybi|r'),
+          link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
+      end
+    end
+    head('Upgrady', 'Vyrobky lepsi nez tvoje vybaveni (i pro partaky s addonem).', 'up')
+    upRows(3)
+    head('Profit', 'Recepty, na kterych vydelas.', 'profit')
+    profitRows(3)
+    head(('Nove recepty (%d)'):format(#un), 'Recepty, ktere neumis a byly by pro tebe oranzove.', 'new')
+    newRows(3)
+  elseif tab == 'up' then
+    head('Upgrady z vyroby', 'Porovnani s tvym vybavenim podle vah gearu buildu; partaci podle dat jejich addonu.')
+    upRows(nil)
+  elseif tab == 'profit' then
+    head('Ziskove recepty', 'Prodej (aukce po 5% poplatku, kdyz addon cenu videl, jinak vendor) minus cena materialu.')
+    profitRows(nil)
+  elseif tab == 'new' then
+    head(('Nove recepty pro tvuj skill (%d)'):format(#un), 'Recepty, ktere neumis a byly by pro tebe oranzove. Uci se u trenera, nebo z receptu (vendor / drop).')
+    newRows(nil)
+  elseif tab == 'plan' then
     -- seznam receptu se zaskrtnutim
     local list = {}
     for _, r in ipairs(s.list) do if r.kind ~= 'trivial' then list[#list + 1] = r end end
@@ -821,16 +956,13 @@ function C.refresh()
     head('Recepty v planu', 'Klik na recept = pridat / odebrat z planu.')
     for _, r in ipairs(list) do
       local on = C.selected(s, r)
-      local rem = C.remaining(r, s.rank, C.mode(s))
+      local rem = C.remaining(r, s.rank, md)
       row(on and col(r) or ('|cff808080' .. r.name .. '|r'), { icon = on and 'Interface\\Buttons\\UI-CheckBox-Check' or 'Interface\\Buttons\\UI-CheckBox-Up',
         right = G .. ('~%d ks|r'):format(math.floor(rem + 0.5)) .. ppt(r),
         link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
     end
-    local segs, mats, total, matT, sellT, crafts = C.simulate(s)
     head('Nastaveni')
-    local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
     local tg = C.target(s) or top
-    local md = C.mode(s)
     row(('Barvy  %s'):format(md == 'o' and '|cffff8040oranzove|r' or (md == 'oy' and '|cffff8040oranz.|r + |cffffff00zlute|r' or G .. 'vse|r')),
       { modes = function(m) C.setMode(s, m) C.refresh() end })
     row(('Cil  |cffffffff%d|r %s(+%d)|r'):format(tg, G, tg - s.rank),
@@ -843,15 +975,9 @@ function C.refresh()
           else C.setTarget(s, nil) end
           C.refresh()
         end })
+    head(segs[1] and ('Plan  %d -> %d'):format(segs[1].from, segs[#segs].to) or 'Plan')
+    planSummary()
     if segs[1] then
-      head(('Plan  %d -> %d'):format(segs[1].from, segs[#segs].to))
-      row(('|cffffffff%d vyrob|r'):format(crafts), {
-        right = total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200~' .. shortCoin(total) .. '|r'),
-        tip = ('Material ~%s, prodej vyrobku vendorovi ~%s.\nMaterial: vendor za nakupni cenu, ostatni za cenu z aukce (kdyz ji addon videl), jinak za prodejni. Polotovary se nepocitaji jako prodej.'):format(shortCoin(matT), shortCoin(sellT)) })
-      if segs[#segs].to < (C.target(s) or top) then
-        row(('|cffffcc00Od %d uz %s|r'):format(segs[#segs].to, md == 'o' and 'neni oranzovy recept' or (md == 'oy' and 'neni oranz. ani zluty' or 'nic nedava skill')),
-          { icon = TRAIN, tip = 'Nove recepty u trenera nebo z receptu.' })
-      end
       for _, g in ipairs(segs) do
         row(('|cffffffff%dx|r %s'):format(math.ceil(g.n), col(g.r)), { icon = g.r.icon, right = G .. ('%d-%d|r'):format(g.from, g.to), link = g.r.link })
       end
@@ -873,7 +999,6 @@ function C.refresh()
         if m.bank > 0 then st = ('|cff66ccff%d v bance|r  '):format(m.bank) .. st end
         row(('%dx %s'):format(m.need, m.name), { icon = icn(m.link), right = st,
           link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
-        -- polotovar: vyrob ho ze suroviny, kterou mas / sezenes
         for _, sb in ipairs(m.sub or {}) do
           local sbank = bankCount(itemId(sb.link))
           local sm = sb.need - sb.have - sbank
@@ -885,13 +1010,11 @@ function C.refresh()
       C.planShop = mats
       if ns.db then ns.db.craftPlanMats = planMats end
     else
-      head('Plan')
-      row(G .. 'Zadny vybrany recept uz nedava skill.|r')
       C.planShop = nil
     end
   end
   if #rows == 0 and best then row('|cff9aa6b8Vse potrebne mas - klikej na tlacitko.|r') end
-  local y = -74
+  local y = -96
   local tgShown, mdShown = false, false
   local stripe = 0
   local maxH = ns.db and ns.db.craftH
