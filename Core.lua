@@ -873,9 +873,9 @@ local function healthProbe(unit, lines)
         local now = GetTime()
         P.hist = P.hist or {}
         table.insert(P.hist, { t = now, hi = hi })
-        while P.hist[1] and now - P.hist[1].t > 0.4 do table.remove(P.hist, 1) end
+        while P.hist[1] and now - P.hist[1].t > 1.5 do table.remove(P.hist, 1) end
         local mx = hi
-        for _, h in ipairs(P.hist) do if h.hi > mx then mx = h.hi end end
+        for _, h in ipairs(P.hist) do if now - h.t <= 0.4 and h.hi > mx then mx = h.hi end end
         P.hiMax = mx
       end
       return true
@@ -944,6 +944,20 @@ function ns.healthPct(unit)
     return (lo + hi) / 2, false, lo, hi
   end
   return nil
+end
+-- jistota pro drahe nouzove spelly (Death Coil, Blink...): presna hodnota, nebo sonda hlasi
+-- nizke HP souvisle aspon 1 s (min. 4 cteni) - jedno / par chybnych cteni nestaci
+function ns.hpBelowSure(x)
+  local pct, exact = ns.healthPct('player')
+  if not pct then return false end
+  if exact then return pct < x end
+  local P = ns.playerProbe
+  local h = P and P.hist
+  if not h or #h < 4 then return false end
+  local now = GetTime()
+  if now - h[1].t < 1.0 then return false end
+  for _, e in ipairs(h) do if e.hi > x then return false end end
+  return true
 end
 -- true/false/nil: je unit pod X %?
 function ns.hpBelow(unit, x)

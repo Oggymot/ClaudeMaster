@@ -63,6 +63,8 @@ function E.context()
   c.php = ns.healthPct('player')
   c.hpLow20 = ns.hpBelow('player', 20) == true
   c.hpLow35 = ns.hpBelow('player', 35) == true
+  c.hpSure35 = ns.hpBelowSure and ns.hpBelowSure(35) or false
+  c.hpSure50 = ns.hpBelowSure and ns.hpBelowSure(50) or false
   c.hpLow50 = ns.hpBelow('player', 50) == true
   c.hpLow75 = ns.hpBelow('player', 75) == true
 

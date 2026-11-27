@@ -669,8 +669,9 @@ local function decide(c, s)
     return A(c.castName, ('Nech %s dobehnout (%.1fs)'):format(c.castName, c.castLeft), 'wait', { dur = c.castLeft })
   end
   -- 1) nouze
-  if c.aggro and c.hpLow35 and ready('Death Coil') then
-    return A('Death Coil', 'HP dole: Death Coil (vystrasi moba a vyleci te)', 'spell', { urgent = true })
+  if c.aggro and c.hpSure35 and ready('Death Coil') then
+    local pct = ns.healthPct('player')
+    return A('Death Coil', ('HP dole (%s): Death Coil (vystrasi moba a vyleci te)'):format(pct and (math.floor(pct + 0.5) .. ' %') or '?'), 'spell', { urgent = true })
   end
   if c.aggro and c.hpLow20 and tDying then
     -- mob je skoro mrtvy: Fear by ho jen poslal pro kamarady, radsi ho dorazit
@@ -736,7 +737,7 @@ local function decide(c, s)
   end
   -- 2) parta: strhl jsi aggro
   if s.step == 1 and c.tankUp and c.aggro then
-    if c.hpLow50 and ready('Death Coil') then return A('Death Coil', 'Strhl jsi aggro a HP dole: Death Coil', 'spell', { urgent = true }) end
+    if c.hpSure50 and ready('Death Coil') then return A('Death Coil', 'Strhl jsi aggro a HP dole: Death Coil', 'spell', { urgent = true }) end
     return A(ns.known('Shoot') and 'Shoot' or filler, 'Strhl jsi aggro: uber (wand), jdi k tankovi, at si ho vezme', 'wait', { urgent = true })
   end
   -- 2b) dungeon: na zacatku pullu nech tanka nabrat aggro
