@@ -503,6 +503,9 @@ local function bagQuest(bag, slot, link)
   local qi = f and pc(f, bag, slot)
   if type(qi) == 'table' and (safeBool(qi.isQuestItem) or safeNum(qi.questID)) then
     local id = safeNum(qi.questID)
+    -- hra ho ma za questovy, ale vsechny questy, ktere ho potrebuji, mas hotove (ForeverDB) -> uz neni potreba
+    local iid = type(link) == 'string' and tonumber(link:match('item:(%d+)'))
+    if not id and iid and ns.MobDB and ns.MobDB.questItemDone and ns.MobDB.questItemDone(iid) then return nil end
     local title = id and C_QuestLog and C_QuestLog.GetTitleForQuestID and safe(pc(C_QuestLog.GetTitleForQuestID, id))
     local starts = safeBool(qi.isActive) == false and id
     if starts then return { title = (title or 'novy quest') .. ' |cff9aa6b8(zacina quest)|r' } end

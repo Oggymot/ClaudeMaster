@@ -384,6 +384,27 @@ function MD.vendorPrice(item)
   local v = c and c.vend and item and c.vend[item]
   return (type(v) == 'number' and v > 1) and v or nil
 end
+-- questy, ktere item potrebuji (cil questu, x[10]): { qid, ... } nebo nil = databaze nevi
+function MD.itemQuests(item)
+  local c = C(true)
+  local s = c and c.iq and item and c.iq[item]
+  if not s then return nil end
+  local out = {}
+  for q in s:gmatch('%d+') do out[#out + 1] = tonumber(q) end
+  return out
+end
+-- item uz neni potreba: vsechny questy, ktere ho chteji, mas hotove (a zadny neni v logu)
+function MD.questItemDone(item)
+  local qs = MD.itemQuests(item)
+  if not qs or not qs[1] then return false end
+  local QL = C_QuestLog
+  if not (QL and QL.IsQuestFlaggedCompleted) then return false end
+  for _, q in ipairs(qs) do
+    local inLog = QL.GetLogIndexForQuestID and (safeNum(pc(QL.GetLogIndexForQuestID, q)) or 0) > 0
+    if inLog or safeBool(pc(QL.IsQuestFlaggedCompleted, q)) ~= true then return false end
+  end
+  return true
+end
 -- item zacina quest: { qid, minLvl, lvl, title }
 function MD.startsQuest(item)
   local c = C()

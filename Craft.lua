@@ -787,7 +787,8 @@ local function build()
     l.right = l:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') l.right:SetPoint('RIGHT', -2, 0) l.right:SetJustifyH('RIGHT')
     l.hline = l:CreateTexture(nil, 'ARTWORK') l.hline:SetTexture(WHITE) l.hline:SetHeight(1)
     l.hline:SetPoint('BOTTOMLEFT', 0, 1) l.hline:SetPoint('BOTTOMRIGHT', 0, 1)
-    l:SetScript('OnClick', function(self) if self.onClick then self.onClick(self) end end)
+    l:RegisterForClicks('LeftButtonUp', 'RightButtonUp')
+    l:SetScript('OnClick', function(self, btn) if self.onClick then self.onClick(self, btn) end end)
     l:SetScript('OnEnter', function(self)
       if not (self.link or self.tip) then return end
       GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
@@ -1095,10 +1096,11 @@ function C.refresh()
       if r.near and R and R.DB and R.DB() and R.npcName then local ok, x = pcall(R.npcName, 'c' .. r.near.npc) if ok and x then nm = x end end
       local who = r.near and ((r.near.kind == 'v' and 'Prodava ' or 'Pada z ') .. nm .. ', ' .. (R.mapName and R.mapName(r.near.map) or '?')) or nil
       row(('|cffff8040%s|r'):format(r.name), { icon = r.icon, right = srcOf(r) .. '  ' .. G .. ('do %d|r'):format(r.yellowAt), link = r.link,
-        tip = r.pid and ((who and (who .. '.\n') or '') .. 'Klik = sipka k nejblizsimu zdroji. Detail patternu v Pruzkumniku (vyhledej jeho jmeno).')
+        tip = r.pid and ((who and (who .. '.\n') or '') .. 'Klik = sipka k nejblizsimu zdroji, pravy klik = pattern v Pruzkumniku (vsichni vendori / dropy).')
           or 'Uci se u trenera (nebo ho tvuj trener nema - pak pattern / vyssi rank).',
-        onClick = r.pid and function()
-          if r.near and R and R.waypoint then R.waypoint(r.near, 'Pattern: ' .. r.name) else findItem('item:' .. r.pid, r.name) end
+        onClick = r.pid and function(_, btn)
+          if btn ~= 'RightButton' and r.near and R and R.waypoint then R.waypoint(r.near, 'Pattern: ' .. r.name)
+          else findItem('item:' .. r.pid, r.name) end
         end or nil })
     end
     if not un[1] then row(G .. 'Zadne nove recepty pro tvuj skill (nebo je ForeverDB nezna).|r') end
