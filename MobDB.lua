@@ -51,7 +51,7 @@ end
 function MD.cacheFresh()
   local c = C(true)
   local v = fdbVersion()
-  return c ~= nil and c.schema == 6 and (v == nil or c.ver == v)
+  return c ~= nil and c.schema == 8 and (v == nil or c.ver == v)
 end
 -- sestavi cache z nactene databaze
 function MD.buildCache()
@@ -197,7 +197,39 @@ function MD.buildCache()
     local e = type(l) == 'table' and l[1]
     if type(e) == 'table' and (e[3] or 0) > 0 and (e[4] or 0) > 0 then sla[sp] = e[3] .. ',' .. e[4] end
   end
-  ns.db.fdbc = { schema = 6, sla = sla, vend = vend, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
+  -- recepty jako item (Pattern / Recipe / Formula / Plans / Schematic / Manual): [jmeno receptu] = "itemId|zdroj" (v vendor, d drop, q quest)
+  local pat = {}
+  for id, it in pairs(D.item) do
+    local nm = it[1] or ''
+    local rn = nm:match('^Pattern: (.+)$') or nm:match('^Recipe: (.+)$') or nm:match('^Formula: (.+)$') or nm:match('^Plans: (.+)$')
+      or nm:match('^Schematic: (.+)$') or nm:match('^Manual: (.+)$')
+    if rn then
+      local src = (D.vend and D.vend[id] and 'v' or '') .. (D.drop[id] and 'd' or '') .. (D.rew and D.rew[id] and 'q' or '')
+      pat[rn] = id .. '|' .. src
+    end
+  end
+  -- treneri vyssich ranku (Expert / Artisan / Master) podle podtitulku: [slovo profese] = "id|jmeno|podtitulek|frakce|mapa;..."
+  local WORDS = { 'Tailor', 'Blacksmith', 'Leatherworker', 'Alchemist', 'Enchanter', 'Engineer', 'Cook', 'Chef', 'Herbalist', 'Miner',
+    'Skinner', 'Fisherman', 'First Aid', 'Jewelcrafter', 'Clothier', 'Armorsmith', 'Weapon Crafter', 'Leather Goods' }
+  local trn = {}
+  for id, n in pairs(D.npc) do
+    local sub = n[2]
+    if type(sub) == 'string' and (sub:find('Artisan') or sub:find('Expert') or sub:find('Master')) then
+      for _, w in ipairs(WORDS) do
+        if sub:find(w, 1, true) then
+          local map = 0
+          if spotsOf then
+            local ok, sp = pcall(spotsOf, 'c' .. id)
+            if ok and type(sp) == 'table' and sp[1] and sp[1].map then map = sp[1].map end
+          end
+          local e = ('%d|%s|%s|%s|%d'):format(id, (n[1] or '?'):gsub('[|;]', ''), sub:gsub('[|;]', ''), (D.nfac and D.nfac[id]) or 'AH', map)
+          trn[w] = trn[w] and (trn[w] .. ';' .. e) or e
+          break
+        end
+      end
+    end
+  end
+  ns.db.fdbc = { schema = 8, sla = sla, pat = pat, trn = trn, vend = vend, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
   MD.reset()
   return true
 end
@@ -302,6 +334,25 @@ function MD.skillRange(spell)
   if not s then return nil end
   local y, g = s:match('(%d+),(%d+)')
   return tonumber(y), tonumber(g)
+end
+-- recept se uci z itemu (patternu)? -> itemId, zdroj ('v' vendor, 'd' drop, 'q' quest; muze byt vic)
+function MD.patternFor(recipeName)
+  local c = C(true)
+  local s = c and c.pat and recipeName and c.pat[recipeName]
+  if not s then return nil end
+  local id, src = s:match('^(%d+)|(.*)$')
+  return tonumber(id), src or ''
+end
+-- treneri vyssiho ranku pro profesi: { {id, name, sub, fac, map}, ... }
+function MD.trainers(word)
+  local c = C(true)
+  local s = c and c.trn and word and c.trn[word]
+  local out = {}
+  for e in (s or ''):gmatch('[^;]+') do
+    local id, nm, sub, fac, map = e:match('^(%d+)|([^|]*)|([^|]*)|([^|]*)|(%d+)$')
+    if id then out[#out + 1] = { id = tonumber(id), name = nm, sub = sub, fac = fac, map = tonumber(map) } end
+  end
+  return out
 end
 function MD.isVendor(item)
   local c = C(true)

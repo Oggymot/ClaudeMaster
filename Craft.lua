@@ -347,7 +347,13 @@ end
 -- sance s ohledem na zvolene barvy (zluta = do pulky mezi zlutou a sedou)
 local function chanceMode(r, sk, rank, mode)
   local p = chanceAt(r, sk, rank)
-  if mode == 'all' or p <= 0 then return p end
+  if mode == 'all' then return p end
+  -- na dnesnim skillu plati barva ze hry (hranice z databaze se muzou o par bodu lisit)
+  if sk == rank then
+    if mode == 'o' then return r.kind == 'optimal' and math.max(p, 1) or 0 end
+    return (r.kind == 'optimal' or r.kind == 'medium') and math.max(p, CHANCE[r.kind] or 0.6) or 0
+  end
+  if p <= 0 then return p end
   local MD = ns.MobDB
   local y, g
   if MD and MD.skillRange and type(r.i) == 'number' and r.i > 1000 then y, g = MD.skillRange(r.i) end
@@ -940,6 +946,42 @@ function C.refresh()
   local ups = C.upgrades(s)
   local profits = C.profits(s)
 
+  -- dalsi rank (Journeyman / Expert / Artisan): od kdy a u koho (Expert / Artisan trener z ForeverDB)
+  local PWORD = { Tailoring = 'Tailor', Blacksmithing = 'Blacksmith', Leatherworking = 'Leatherworker', Alchemy = 'Alchemist',
+    Enchanting = 'Enchanter', Engineering = 'Engineer', Cooking = 'Cook', ['First Aid'] = 'First Aid', Fishing = 'Fisherman',
+    Herbalism = 'Herbalist', Mining = 'Miner', Skinning = 'Skinner', Jewelcrafting = 'Jewelcrafter' }
+  local RANKS = { [75] = { 'Journeyman', 50, 10 }, [150] = { 'Expert', 125, 20 }, [225] = { 'Artisan', 200, 35 } }
+  local rankShown = false
+  local function rankRows()
+    local rk = RANKS[s.max]
+    if rankShown or not rk or s.rank < rk[2] then return end
+    rankShown = true
+    local lvl = safeNum(pc(UnitLevel, 'player')) or 1
+    row(('|cff40ff60Muzes se naucit %s|r %s(strop %d)|r'):format(rk[1], G, s.max + 75), { icon = TRAIN,
+      right = lvl >= rk[3] and '' or ('|cffff8855od lvl %d|r'):format(rk[3]),
+      tip = ('%s se uci od skillu %d a levelu %d. Novy rank zvedne strop skillu a trener pak nabidne nove recepty.'):format(rk[1], rk[2], rk[3]) })
+    if rk[1] == 'Journeyman' then return end
+    local word = PWORD[s.name]
+    local myF = safe(pc(UnitFactionGroup, 'player')) == 'Horde' and 'H' or 'A'
+    local n = 0
+    for _, t in ipairs((MD and MD.trainers and word) and MD.trainers(word) or {}) do
+      if t.sub:find(rk[1]) and (t.fac:find(myF) or t.fac == 'AH') then
+        n = n + 1
+        if n > 3 then break end
+        local zone = t.map and t.map > 0 and C_Map and C_Map.GetMapInfo and pc(C_Map.GetMapInfo, t.map)
+        zone = type(zone) == 'table' and safe(zone.name) or nil
+        row(('%s %s<%s>|r'):format(t.name, G, t.sub), { indent = 14, icon = 'Interface\\Icons\\INV_Misc_Head_Human_01', right = zone and (G .. zone .. '|r') or '',
+          tip = 'Klik = detail trenera a sipka na mape (Pruzkumnik).',
+          onClick = function()
+            if ns.Route and not ns.Route.DB() and ns.Route.available and ns.Route.available() then ns.Route.load() end
+            if ns.Explore and ns.Options and ns.Options.toggle then
+              ns.Options.toggle('explore')
+              if ns.Options.exploreShow then ns.Options.exploreShow(ns.Explore.npc(t.id)) end
+            end
+          end })
+      end
+    end
+  end
   local function planSummary()
     if segs[1] then
       row(('|cffffffff%d -> %d|r  %s%d vyrob|r'):format(segs[1].from, segs[#segs].to, G, crafts), {
@@ -948,6 +990,25 @@ function C.refresh()
           md == 'o' and 'jen oranzove' or (md == 'oy' and 'oranzove + zlute' or 'vse')) })
     else
       row(G .. 'Zadny vybrany recept uz nedava skill.|r', { icon = TRAIN })
+      -- co dal: zlute recepty / nove recepty (trener vs pattern) / dalsi rank
+      if md ~= 'all' then
+        local yel, rem = 0, 0
+        for _, r in ipairs(s.list) do
+          if (md == 'o' and r.kind == 'medium') or (md == 'oy' and r.kind == 'easy') then yel = yel + 1 rem = rem + C.remaining(r, s.rank, md == 'o' and 'oy' or 'all') end
+        end
+        if yel > 0 then
+          row(('Prepnout na %s: %d receptu (%s%d ks)'):format(md == 'o' and '|cffffff00O+Z|r' or 'vse', yel, '\226\137\136', math.floor(rem + 0.5)),
+            { icon = 'Interface\\Buttons\\UI-GuildButton-PublicNote-Up', tip = 'Klik = zmenit barvy planu.',
+              onClick = function() C.setMode(s, md == 'o' and 'oy' or 'all') C.refresh() end })
+        end
+      end
+      local tr, pt = 0, 0
+      for _, r in ipairs(un) do if MD and MD.patternFor and MD.patternFor(r.name) then pt = pt + 1 else tr = tr + 1 end end
+      if #un > 0 then
+        row(('Nove oranzove recepty: %d %s(trener %d, pattern %d)|r'):format(#un, G, tr, pt),
+          { icon = TRAIN, tip = 'Klik = zalozka Recepty (u kazdeho, odkud se uci).', onClick = function() C.tab = 'new' C.refresh() end })
+      end
+      rankRows()
     end
   end
   -- upozorneni, kde zvolene barvy dojdou (az za krokem planu)
@@ -988,20 +1049,32 @@ function C.refresh()
     end
     if not profits[1] then row(G .. 'Zadny recept neni ziskovy (podle znamych cen). Vyhledej vyrobky v aukci.|r') end
   end
+  local function srcOf(r)
+    local pid, src
+    if MD and MD.patternFor then pid, src = MD.patternFor(r.name) end
+    src = src or ''
+    if not pid then return '|cff66ccfftrener|r', nil end
+    local w = {}
+    if src:find('v') then w[#w + 1] = 'vendor' end
+    if src:find('d') then w[#w + 1] = 'drop' end
+    if src:find('q') then w[#w + 1] = 'quest' end
+    return '|cffffd200pattern|r ' .. G .. (w[1] and table.concat(w, '/') or '?') .. '|r', pid
+  end
   local function newRows(lim)
     for i, r in ipairs(un) do
       if lim and i > lim then break end
-      row(('|cffff8040%s|r'):format(r.name), { icon = r.icon, right = G .. ('oranz. do %d|r'):format(r.yellowAt), link = r.link })
+      local srcTxt, pid = srcOf(r)
+      row(('|cffff8040%s|r'):format(r.name), { icon = r.icon, right = srcTxt .. '  ' .. G .. ('do %d|r'):format(r.yellowAt), link = r.link,
+        tip = pid and 'Uci se z patternu - klik = kde ho sehnat (vendor / drop / quest).' or 'Uci se u trenera (nebo ho tvuj trener nema - pak pattern / vyssi rank).',
+        onClick = pid and function() findItem('item:' .. pid, r.name) end or nil })
     end
     if not un[1] then row(G .. 'Zadne nove recepty pro tvuj skill (nebo je ForeverDB nezna).|r') end
   end
 
-  if s.max > 0 and s.max - s.rank <= 10 and s.max < 300 then
-    row('|cffffcc00Dalsi rank u trenera|r', { icon = TRAIN, right = G .. ('strop %d|r'):format(s.max), tip = 'Bez noveho ranku se skill nad strop nezvedne.' })
-  end
 
   if tab == 'over' then
     head('Levelovani', 'Plan levelovani - podrobnosti v zalozce Plan.', 'plan')
+    rankRows()
     planSummary()
     -- dalsi krok + co na nej chybi
     if segs[1] then
