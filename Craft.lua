@@ -616,8 +616,14 @@ local function build()
   f.lines = {}
   for i = 1, 40 do
     local l = CreateFrame('Button', nil, f)
-    l:SetHeight(15) l:SetPoint('LEFT', 10, 0) l:SetPoint('RIGHT', -10, 0)
-    l.text = l:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') l.text:SetAllPoints() l.text:SetJustifyH('LEFT') l.text:SetWordWrap(false)
+    l:SetHeight(16) l:SetPoint('LEFT', 10, 0) l:SetPoint('RIGHT', -10, 0)
+    l.bg = l:CreateTexture(nil, 'BACKGROUND') l.bg:SetAllPoints() l.bg:SetColorTexture(1, 1, 1, 0)
+    l.hl = l:CreateTexture(nil, 'HIGHLIGHT') l.hl:SetAllPoints() l.hl:SetColorTexture(1, 1, 1, 0.07)
+    l.icon = l:CreateTexture(nil, 'ARTWORK') l.icon:SetSize(14, 14) l.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    l.text = l:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') l.text:SetJustifyH('LEFT') l.text:SetWordWrap(false)
+    l.right = l:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') l.right:SetPoint('RIGHT', -2, 0) l.right:SetJustifyH('RIGHT')
+    l.hline = l:CreateTexture(nil, 'ARTWORK') l.hline:SetTexture(WHITE) l.hline:SetHeight(1)
+    l.hline:SetPoint('BOTTOMLEFT', 0, 1) l.hline:SetPoint('BOTTOMRIGHT', 0, 1)
     l:SetScript('OnClick', function(self) if self.onClick then self.onClick(self) end end)
     l:SetScript('OnEnter', function(self)
       if not (self.link or self.tip) then return end
@@ -751,21 +757,23 @@ function C.refresh()
   -- radky
   local rows = {}
   local function row(text, extra) extra = extra or {} extra.text = text rows[#rows + 1] = extra end
+  local function head(t, tip) rows[#rows + 1] = { head = t, text = '', tip = tip } end
+  local function icn(link) local id = itemId(link) local f2 = (C_Item and C_Item.GetItemIconByID) or GetItemIcon return id and f2 and safe(pc(f2, id)) or nil end
+  local function col(r, t) return ('|c%s%s|r'):format(COLOR[r.kind] or 'ffffffff', t or r.name) end
+  local G = '|cff9aa6b8'
   f.planBtn:SetBackdropColor(accent2(C.planMode and 0.5 or 0.12)) f.planBtn:SetBackdropBorderColor(accent2(C.planMode and 1 or 0.5))
+  local TRAIN = 'Interface\\GossipFrame\\TrainerGossipIcon'
   if s.max > 0 and s.max - s.rank <= 10 and s.max < 300 then
-    row(('|cffffcc00Trener:|r skill %d/%d - dalsi rank (do %d) se uci u trenera.'):format(s.rank, s.max, s.max + 75),
-      { tip = 'Bez noveho ranku se skill nad strop nezvedne.' })
+    row(('|cffffcc00Dalsi rank u trenera|r'), { icon = TRAIN, right = G .. ('strop %d|r'):format(s.max), tip = 'Bez noveho ranku se skill nad strop nezvedne.' })
   end
   -- malo uzitecnych receptu: u trenera budou nove (oranzove)
   local orange, yellow = 0, 0
   for _, r in ipairs(s.list) do if r.kind == 'optimal' then orange = orange + 1 elseif r.kind == 'medium' then yellow = yellow + 1 end end
   if orange == 0 and yellow <= 2 and not (s.max > 0 and s.max - s.rank <= 10) then
-    row(('|cffffcc00Trener:|r oranzovych receptu 0, zlutych %d - u trenera %s budou nove recepty.'):format(yellow, s.name),
-      { tip = 'Recepty, ktere znas, uz skoro nedavaji skill. Nove (oranzove) se uci u trenera nebo z receptu (drop, vendor).' })
+    row('|cffffcc00Nove recepty u trenera|r', { icon = TRAIN, right = G .. ('oranz. 0, zlut. %d|r'):format(yellow),
+      tip = 'Recepty, ktere znas, uz skoro nedavaji skill. Nove (oranzove) se uci u trenera nebo z receptu (drop, vendor).' })
   end
-  -- recepty, ktere jeste neumis (hra je zna): co se naucit (oranzove / zlute)
-  -- nove recepty: ty, ktere neumis a pro tvuj skill by byly oranzove (zezloutnou az o kus vys) = ted se daji naucit
-  -- (Forever u neznamych receptu neposila zdroj ani pozadavek skillu; hranice barev ma ForeverDB)
+  -- nove recepty: ty, ktere neumis a pro tvuj skill by byly oranzove (Forever u neznamych receptu neposila zdroj; hranice barev ma ForeverDB)
   local un = {}
   local MD = ns.MobDB
   for _, r in ipairs(s.unlearned or {}) do
@@ -774,34 +782,34 @@ function C.refresh()
     if y and g and y > s.rank and y <= s.rank + 30 and g > s.rank then r.yellowAt = y un[#un + 1] = r end
   end
   table.sort(un, function(a, b) if a.yellowAt ~= b.yellowAt then return a.yellowAt > b.yellowAt end return a.name < b.name end)
-  if un[1] then
-    row(('|cffffcc00Nove recepty pro tvuj skill:|r %d'):format(#un),
-      { tip = 'Recepty, ktere neumis a byly by pro tebe oranzove. Uci se u trenera, nebo z receptu (vendor / drop) - over u trenera.' })
-    local lim = (ns.db and ns.db.craftH and ns.db.craftH > 260) and 8 or 4
-    for i, r in ipairs(un) do
-      if i > lim then break end
-      row(('   |cffff8040%s|r |cff9aa6b8(oranzovy do %d)|r'):format(r.name, r.yellowAt), { link = r.link })
-    end
-  end
   local nextC = {}
   for _, r in ipairs(can) do if r ~= best and #nextC < 2 then nextC[#nextC + 1] = r end end
-  if nextC[1] then row('|cff66ccffPak:|r') end
+  if nextC[1] then head('Pak') end
   for _, r in ipairs(nextC) do
-    row(('   |c%s%s|r |cff9aa6b8(mas na %d)|r%s'):format(COLOR[r.kind] or 'ffffffff', r.name, r.avail, ppt(r)), { link = r.link })
+    row(col(r), { icon = r.icon, right = G .. ('mas na %d|r'):format(r.avail) .. ppt(r), link = r.link })
   end
   -- nakupni seznam: nejlepsi recepty, na ktere material chybi (oranzove / zlute)
   local shown = 0
   for _, r in ipairs(cant) do
     if shown >= ((ns.db and ns.db.craftH and ns.db.craftH > 260) and 5 or 2) or RANK[r.kind] < 3 then break end
+    if shown == 0 then head('Chybi material (na 5 ks)') end
     shown = shown + 1
     local miss = missing(r, 5)
-    row(('|cffff8855Chybi na 5x|r |c%s%s|r%s'):format(COLOR[r.kind] or 'ffffffff', r.name, ppt(r)), { link = r.link })
+    row(col(r), { icon = r.icon, right = ppt(r), link = r.link })
     for _, m in ipairs(miss) do
       local own
       for _, x in ipairs(s.list) do if x.name == m.name then own = x end end
-      row(('   %dx %s |cff9aa6b8(mas %d)|r%s'):format(m.n, m.name, m.have,
-        own and ' |cff40c040- vyrobis sam|r' or (m.vendor and ' |cffffd200- vendor|r' or '')),
-        { link = m.link, tip = 'Klik = kde sehnat (Pruzkumnik: vendori, dropy)', onClick = function() findItem(m.link, m.name) end })
+      row(('%dx %s'):format(m.n, m.name), { indent = 14, icon = icn(m.link),
+        right = own and '|cff40c040vyrobis|r' or (m.vendor and '|cffffd200vendor|r' or (G .. 'mas ' .. m.have .. '|r')),
+        link = m.link, tip = 'Klik = kde sehnat (Pruzkumnik: vendori, dropy)', onClick = function() findItem(m.link, m.name) end })
+    end
+  end
+  if un[1] then
+    head(('Nove recepty pro tvuj skill (%d)'):format(#un), 'Recepty, ktere neumis a byly by pro tebe oranzove. Uci se u trenera, nebo z receptu (vendor / drop).')
+    local lim = (ns.db and ns.db.craftH and ns.db.craftH > 260) and 8 or 4
+    for i, r in ipairs(un) do
+      if i > lim then break end
+      row(('|cffff8040%s|r'):format(r.name), { icon = r.icon, right = G .. ('oranz. do %d|r'):format(r.yellowAt), link = r.link })
     end
   end
   if C.planMode then
@@ -810,23 +818,22 @@ function C.refresh()
     local list = {}
     for _, r in ipairs(s.list) do if r.kind ~= 'trivial' then list[#list + 1] = r end end
     table.sort(list, function(a, b) if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end return a.name < b.name end)
-    row('|cff66ccffRecepty (klik = zaskrtnout):|r')
+    head('Recepty v planu', 'Klik na recept = pridat / odebrat z planu.')
     for _, r in ipairs(list) do
       local on = C.selected(s, r)
       local rem = C.remaining(r, s.rank, C.mode(s))
-      row(('%s |c%s%s|r |cff9aa6b8zbyva ~%d ks|r%s'):format(on and '|TInterface\\Buttons\\UI-CheckBox-Check:14:14|t' or '|TInterface\\Buttons\\UI-CheckBox-Up:14:14|t',
-        COLOR[r.kind] or 'ffffffff', r.name, math.floor(rem + 0.5), ppt(r)),
-        { link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
+      row(on and col(r) or ('|cff808080' .. r.name .. '|r'), { icon = on and 'Interface\\Buttons\\UI-CheckBox-Check' or 'Interface\\Buttons\\UI-CheckBox-Up',
+        right = G .. ('~%d ks|r'):format(math.floor(rem + 0.5)) .. ppt(r),
+        link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
     end
     local segs, mats, total, matT, sellT, crafts = C.simulate(s)
-    row(' ')
-    -- cil: kolik skillu chces udelat (klik na -5 / +5 / +1 level / max)
+    head('Nastaveni')
     local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
     local tg = C.target(s) or top
     local md = C.mode(s)
-    row(('|cff66ccffBarvy:|r %s'):format(md == 'o' and '|cffff8040jen oranzove|r' or (md == 'oy' and '|cffff8040oranzove|r + |cffffff00zlute|r' or 'vse (i zelene)')),
+    row(('Barvy  %s'):format(md == 'o' and '|cffff8040oranzove|r' or (md == 'oy' and '|cffff8040oranz.|r + |cffffff00zlute|r' or G .. 'vse|r')),
       { modes = function(m) C.setMode(s, m) C.refresh() end })
-    row(('|cff66ccffCil skillu:|r |cffffffff%d|r |cff9aa6b8(+%d)|r'):format(tg, tg - s.rank),
+    row(('Cil  |cffffffff%d|r %s(+%d)|r'):format(tg, G, tg - s.rank),
       { controls = function(btn)
           local cur = C.target(s) or top
           if btn == 'm5' then C.setTarget(s, math.max(s.rank + 1, cur - 5))
@@ -837,18 +844,18 @@ function C.refresh()
           C.refresh()
         end })
     if segs[1] then
-      row(('|cff66ccffPlan:|r %d -> %d, |cffffffff%d vyrob|r'):format(segs[1].from, segs[#segs].to, crafts))
+      head(('Plan  %d -> %d'):format(segs[1].from, segs[#segs].to))
+      row(('|cffffffff%d vyrob|r'):format(crafts), {
+        right = total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200~' .. shortCoin(total) .. '|r'),
+        tip = ('Material ~%s, prodej vyrobku vendorovi ~%s.\nMaterial: vendor za nakupni cenu, ostatni za cenu z aukce (kdyz ji addon videl), jinak za prodejni. Polotovary se nepocitaji jako prodej.'):format(shortCoin(matT), shortCoin(sellT)) })
       if segs[#segs].to < (C.target(s) or top) then
-        row(('   |cffffcc00Od %d uz zadny vybrany recept %s - nove recepty u trenera.|r'):format(segs[#segs].to,
-          md == 'o' and 'neni oranzovy' or (md == 'oy' and 'neni oranzovy ani zluty' or 'nedava skill')))
+        row(('|cffffcc00Od %d uz %s|r'):format(segs[#segs].to, md == 'o' and 'neni oranzovy recept' or (md == 'oy' and 'neni oranz. ani zluty' or 'nic nedava skill')),
+          { icon = TRAIN, tip = 'Nove recepty u trenera nebo z receptu.' })
       end
-      row(('   material ~%s, prodej vyrobku ~%s = %s'):format(shortCoin(matT), shortCoin(sellT),
-        total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200cena ~' .. shortCoin(total) .. '|r')),
-        { tip = 'Material: vendor za nakupni cenu, ostatni za cenu z aukce (kdyz ji addon videl), jinak za prodejni. Vyrobky za cenu, kterou da vendor. Polotovary se nepocitaji jako prodej.' })
       for _, g in ipairs(segs) do
-        row(('   %d-%d: |cffffffff%dx|r |c%s%s|r'):format(g.from, g.to, math.ceil(g.n), COLOR[g.r.kind] or 'ffffffff', g.r.name), { link = g.r.link })
+        row(('|cffffffff%dx|r %s'):format(math.ceil(g.n), col(g.r)), { icon = g.r.icon, right = G .. ('%d-%d|r'):format(g.from, g.to), link = g.r.link })
       end
-      row('|cff66ccffMaterial celkem:|r')
+      head('Material')
       local ml = {}
       for _, m in pairs(mats) do ml[#ml + 1] = m end
       table.sort(ml, function(a, b) return a.name < b.name end)
@@ -859,39 +866,60 @@ function C.refresh()
         local miss = m.need - m.have - m.bank
         if mid then planMats[mid] = { name = m.name, need = m.need } end
         for _, sb in ipairs(m.sub or {}) do local sid = itemId(sb.link) if sid then planMats[sid] = { name = sb.name, need = sb.need } end end
-        local id = itemId(m.link)
-        local vend = id and ns.MobDB and ns.MobDB.isVendor and ns.MobDB.isVendor(id)
-        row(('   %dx %s %s%s%s'):format(m.need, m.name, miss > 0 and ('|cffff8855(chybi %d)|r'):format(miss) or '|cff40c040(mas)|r',
-          m.bank > 0 and (' |cff66ccff%d v bance|r'):format(m.bank) or '',
-          (miss > 0 and vend) and ' |cffffd200- vendor|r' or ''),
-          { link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
+        local vend = mid and ns.MobDB and ns.MobDB.isVendor and ns.MobDB.isVendor(mid)
+        local st
+        if miss > 0 then st = ('|cffff8855chybi %d|r'):format(miss) .. (vend and ' |cffffd200vendor|r' or '')
+        else st = '|cff40c040mas|r' end
+        if m.bank > 0 then st = ('|cff66ccff%d v bance|r  '):format(m.bank) .. st end
+        row(('%dx %s'):format(m.need, m.name), { icon = icn(m.link), right = st,
+          link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
         -- polotovar: vyrob ho ze suroviny, kterou mas / sezenes
         for _, sb in ipairs(m.sub or {}) do
           local sbank = bankCount(itemId(sb.link))
           local sm = sb.need - sb.have - sbank
-          row(('      |cff40c040vyrob %dx|r z %dx %s %s'):format(m.craft, sb.need, sb.name,
-            sm > 0 and ('|cffff8855(mas %d%s, chybi %d)|r'):format(sb.have, sbank > 0 and (' + ' .. sbank .. ' v bance') or '', sm)
-              or ('|cff40c040(mas %d%s)|r'):format(sb.have, sbank > 0 and (' + ' .. sbank .. ' v bance') or '')),
-            { link = sb.link, tip = 'Klik = kde sehnat', onClick = function() findItem(sb.link, sb.name) end })
+          row(('|cff40c040vyrob %dx|r z %dx %s'):format(m.craft, sb.need, sb.name), { indent = 14, icon = icn(sb.link),
+            right = (sbank > 0 and ('|cff66ccff%d v bance|r  '):format(sbank) or '') .. (sm > 0 and ('|cffff8855chybi %d|r'):format(sm) or '|cff40c040mas|r'),
+            link = sb.link, tip = 'Klik = kde sehnat', onClick = function() findItem(sb.link, sb.name) end })
         end
       end
       C.planShop = mats
       if ns.db then ns.db.craftPlanMats = planMats end
     else
-      row('|cff9aa6b8Zadny vybrany recept uz nedava skill.|r')
+      head('Plan')
+      row(G .. 'Zadny vybrany recept uz nedava skill.|r')
       C.planShop = nil
     end
   end
   if #rows == 0 and best then row('|cff9aa6b8Vse potrebne mas - klikej na tlacitko.|r') end
   local y = -74
   local tgShown, mdShown = false, false
+  local stripe = 0
   local maxH = ns.db and ns.db.craftH
   for i, l in ipairs(f.lines) do
     local r = rows[i]
-    if r and maxH and -y + 15 + 8 > maxH then r = nil end
+    local hgt = r and (r.head and 22 or (r.text == ' ' and 6 or 16)) or 16
+    if r and maxH and -y + hgt + 8 > maxH then r = nil end
     if r then
-      l:ClearAllPoints() l:SetPoint('TOPLEFT', 10, y) l:SetPoint('TOPRIGHT', -10, y) y = y - 15
-      l.text:SetText(r.text) l.link, l.tip, l.onClick = r.link, r.tip, r.onClick
+      l:SetHeight(hgt)
+      l:ClearAllPoints() l:SetPoint('TOPLEFT', 8, y) l:SetPoint('TOPRIGHT', -8, y) y = y - hgt
+      local ind = r.indent or 0
+      l.icon:ClearAllPoints()
+      if r.icon then l.icon:SetTexture(r.icon) l.icon:SetPoint('LEFT', 2 + ind, 0) l.icon:Show() else l.icon:Hide() end
+      l.text:ClearAllPoints()
+      l.text:SetPoint('LEFT', (r.icon and 20 or 2) + ind, r.head and -2 or 0)
+      l.right:SetText(r.right or '')
+      l.text:SetPoint('RIGHT', l.right, 'LEFT', -6, 0)
+      if r.head then
+        l.text:SetText(r.head) l.text:SetTextColor(accent2()) l.text:SetFontObject('GameFontNormalSmall')
+        l.hline:SetVertexColor(accent2(0.3)) l.hline:Show() l.bg:SetColorTexture(1, 1, 1, 0) stripe = 0
+      else
+        l.text:SetText(r.text) l.text:SetTextColor(1, 1, 1) l.text:SetFontObject('GameFontHighlightSmall')
+        l.hline:Hide()
+        stripe = stripe + 1
+        l.bg:SetColorTexture(1, 1, 1, (r.text ~= ' ' and stripe % 2 == 0) and 0.03 or 0)
+      end
+      if r.text == ' ' then l.hl:Hide() else l.hl:Show() end
+      l.link, l.tip, l.onClick = r.link, r.tip, r.onClick
       l:Show()
       if r.modes then
         f.mdFn = r.modes
