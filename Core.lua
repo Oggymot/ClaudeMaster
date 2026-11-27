@@ -767,7 +767,12 @@ end
 -- Zdravi v pasmech (trik se StatusBarem: hra vykresli skrytou hodnotu, my vidime jen,
 -- jestli se zmenila velikost vyplne -> nad/pod carou)
 ------------------------------------------------------------------------------------------
+-- meritko UI nesmi sondu ovlivnit: UI baliky (GW2_UI "Pixel Perfect") zmensuji UIParent napr. na 0.53
+-- a 1bodove proudky pak mely pul pixelu -> hra je neprekreslovala a sonda hlasila "HP pod vsemi carami"
+local PROBE_H = 3
 local probeRoot = CreateFrame('Frame', nil, UIParent)
+if probeRoot.SetIgnoreParentScale then probeRoot:SetIgnoreParentScale(true) end
+probeRoot:SetScale(1)
 probeRoot:SetSize(64, 64) probeRoot:SetPoint('BOTTOMLEFT', UIParent, 'BOTTOMLEFT', 0, 0)
 probeRoot:SetAlpha(0) probeRoot:EnableMouse(false)
 local probeRow = 0
@@ -797,7 +802,7 @@ local function newProbe(n, def)
   local CTRL = n + 1
   for i = 1, n + 1 do
     local b = CreateFrame('StatusBar', nil, probeRoot)
-    b:SetSize(64, 1) b:SetPoint('BOTTOMLEFT', probeRoot, 'BOTTOMLEFT', 0, probeRow) probeRow = probeRow + 1
+    b:SetSize(64, PROBE_H) b:SetPoint('BOTTOMLEFT', probeRoot, 'BOTTOMLEFT', 0, probeRow) probeRow = probeRow + PROBE_H
     b:SetStatusBarTexture('Interface\\Buttons\\WHITE8X8') b:SetMinMaxValues(0, 2) b:SetValue(1)
     local clip = CreateFrame('Frame', nil, b)
     clip:SetPoint('TOPLEFT', b, 'TOPLEFT') clip:SetPoint('BOTTOMRIGHT', b:GetStatusBarTexture(), 'BOTTOMRIGHT')
