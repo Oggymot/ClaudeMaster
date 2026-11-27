@@ -165,10 +165,10 @@ local function addMobLines(tt, unit)
     if rec.immStun then put('Imunni', 'stun') end
     for sc in pairs(rec.res) do if not rec.immSchool[sc] then put('Odolny', CZ[sc]) end end
   end
-  if m and m.nb and m.nb > 0 and m.ttd then put('Zabiti', ('cca %d s'):format(math.floor(m.ttd + 0.5))) end
+  if m and m.nb and m.nb > 0 and m.ttd then put('Zabiti', ('\226\137\136%d s'):format(math.floor(m.ttd + 0.5))) end
   local money = rec and rec.id and ns.MobDB.money and ns.MobDB.money(rec.id)
   if money and money.avg > 0 then
-    put('Penize', ('cca %s |cff888888(%s - %s)|r'):format(ns.MobDB.coin(money.avg), ns.MobDB.coin(money.min), ns.MobDB.coin(money.max)))
+    put('Penize', ('\226\137\136%s |cff888888(%s - %s)|r'):format(ns.MobDB.coin(money.avg), ns.MobDB.coin(money.min), ns.MobDB.coin(money.max)))
   end
   local lv = safeNum(pc(UnitLevel, unit))
   local drops, off = nil, nil

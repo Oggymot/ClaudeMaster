@@ -362,7 +362,7 @@ function R.valueText(v, noPct)
   local p = {}
   if v.xp and v.xp > 0 then
     local col = (v.pctLvl and v.pctLvl >= 5) and '|cff40ff60' or ((v.pctLvl and v.pctLvl < 1) and '|cff888888' or '|cffffd200')
-    p[#p + 1] = ('%s%s%d XP%s|r'):format(col, v.est and 'cca ' or '+', v.xp, (v.pctLvl and not noPct) and (' (%d %%)'):format(math.floor(v.pctLvl + 0.5)) or '')
+    p[#p + 1] = ('%s%s%d XP%s|r'):format(col, v.est and '\226\137\136' or '+', v.xp, (v.pctLvl and not noPct) and (' (%d %%)'):format(math.floor(v.pctLvl + 0.5)) or '')
   end
   if v.best then
     -- v trase (uzky radek) jen zelena sipka; item a procenta jsou v tooltipu
@@ -768,7 +768,7 @@ local function richTip(tt)
   if v and (v.xp or (v.money and v.money > 0) or (v.items and v.items[1])) then
     G:AddLine(' ')
     if v.xp and v.xp > 0 then
-      G:AddDoubleLine('XP', ('%s%d|r%s'):format(v.est and '|cffffd200cca ' or '|cffffd200', v.xp,
+      G:AddDoubleLine('XP', ('%s%d|r%s'):format(v.est and '|cffffd200\226\137\136' or '|cffffd200', v.xp,
         v.pctLvl and ('  |cff888888(%d %% levelu)|r'):format(math.floor(v.pctLvl + 0.5)) or ''), 0.55, 0.6, 0.7, 1, 1, 1)
     end
     if v.money and v.money > 0 then
