@@ -360,6 +360,20 @@ function C.simulate(s)
     end
     total = total + k * (r.cc or 0)
   end
+  -- chybejici polotovar, ktery si vyrobis (Bolt of Mageweave z Mageweave Cloth): rozepsat na surovinu
+  local byName = {}
+  for _, r in ipairs(s.list) do byName[r.name] = r end
+  for _, m in pairs(mats) do
+    local miss = m.need - m.have
+    local own = byName[m.name]
+    if miss > 0 and own and #own.reag > 0 then
+      m.craft = miss
+      m.sub = {}
+      for _, a in ipairs(own.reag) do
+        m.sub[#m.sub + 1] = { name = a.name, need = a.need * miss, have = a.have, link = a.link }
+      end
+    end
+  end
   return segs, mats, total, matT, sellT
 end
 
@@ -647,6 +661,13 @@ function C.refresh()
         row(('   %dx %s %s%s'):format(m.need, m.name, miss > 0 and ('|cffff8855(chybi %d)|r'):format(miss) or '|cff40c040(mas)|r',
           (miss > 0 and vend) and ' |cffffd200- vendor|r' or ''),
           { link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
+        -- polotovar: vyrob ho ze suroviny, kterou mas / sezenes
+        for _, sb in ipairs(m.sub or {}) do
+          local sm = sb.need - sb.have
+          row(('      |cff40c040vyrob %dx|r z %dx %s %s'):format(m.craft, sb.need, sb.name,
+            sm > 0 and ('|cffff8855(mas %d, chybi %d)|r'):format(sb.have, sm) or ('|cff40c040(mas %d)|r'):format(sb.have)),
+            { link = sb.link, tip = 'Klik = kde sehnat', onClick = function() findItem(sb.link, sb.name) end })
+        end
       end
       C.planShop = mats
     else
