@@ -459,8 +459,11 @@ function R.recvLog(name, msg)
   for e in msg:sub(4):gmatch('[^,]+') do
     local id, c, pr = e:match('^(%d+):(%d):?(.*)$')
     if id then
-      q[tonumber(id)] = c == '1'
-      if pr and pr ~= '' then prog[tonumber(id)] = pr else prog[tonumber(id)] = nil end
+      if c == '2' then q[tonumber(id)], prog[tonumber(id)] = nil, nil   -- odevzdany / zruseny
+      else
+        q[tonumber(id)] = c == '1'
+        if pr and pr ~= '' then prog[tonumber(id)] = pr else prog[tonumber(id)] = nil end
+      end
     end
   end
   local old = R.peerLogs[name]
@@ -544,15 +547,16 @@ function sendLog()
     end
   end
   -- co se zmenilo proti tomu, co partak zna
-  local changed, structural = {}, false
+  -- vzaty / zmeneny quest = jeho zaznam, odevzdany / zruseny = "id:2"
+  local changed = {}
   for id, e in pairs(map) do
-    if lastSent[id] == nil then structural = true elseif lastSent[id] ~= e then changed[#changed + 1] = e end
+    if lastSent[id] ~= e then changed[#changed + 1] = e end
   end
-  for id in pairs(lastSent) do if map[id] == nil then structural = true break end end
+  for id in pairs(lastSent) do if map[id] == nil then changed[#changed + 1] = id .. ':2' end end
   local now = GetTime()
   local delta = 'RU^' .. table.concat(changed, ',')
-  -- jen postup: mala zprava se zmenenymi questy (spolehlivejsi nez cely log)
-  if not structural and now - lastFullAt < 90 then
+  -- mala zprava jen se zmenami (spolehlivejsi nez cely log); cely log jednou za 90 s
+  if now - lastFullAt < 90 then
     if not changed[1] then return end
     if #delta <= 240 then
       if D.rawSend(delta) then
