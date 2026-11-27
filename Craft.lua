@@ -455,22 +455,88 @@ end
 -- Upgrady z vyroby (pro me i partaky s addonem) a ziskove recepty
 ------------------------------------------------------------------------------------------
 local upCache = {}
+local MANA = { WARRIOR = false, ROGUE = false }
+local ENCH_SLOT = { cloak = 15, back = 15, chest = 5, boots = 8, feet = 8, bracer = 9, bracers = 9, wrist = 9, gloves = 10, hands = 10,
+  shield = 17, weapon = 16, ['2h weapon'] = 16, ['two-handed weapon'] = 16, ['2-handed weapon'] = 16, head = 1, legs = 7, shoulder = 3 }
+local SLOT_CZ = { [15] = 'plast', [5] = 'hrud', [8] = 'boty', [9] = 'naramky', [10] = 'rukavice', [17] = 'stit', [16] = 'zbran', [1] = 'hlava', [7] = 'nohy', [3] = 'ramena' }
+-- text receptu / vyrobku: popis receptu (enchant) nebo radky tooltipu vyrobku (Use:)
+local function recipeText(r)
+  local T = C_TradeSkillUI
+  local parts = {}
+  local d = T and T.GetRecipeDescription and safe(pc(T.GetRecipeDescription, r.i))
+  if type(d) == 'string' then parts[#parts + 1] = d end
+  if r.link and C_TooltipInfo and C_TooltipInfo.GetHyperlink then
+    local data = pc(C_TooltipInfo.GetHyperlink, r.link)
+    for _, l in ipairs(type(data) == 'table' and type(data.lines) == 'table' and data.lines or {}) do
+      local t = safe(l.leftText)
+      if type(t) == 'string' and (t:find('^Use:') or t:find('^Equip:') or t:find('[Rr]estores')) then parts[#parts + 1] = t end
+    end
+  end
+  return table.concat(parts, ' ')
+end
+-- enchant / lektvar / jidlo / obvaz: komu se hodi (staty podle vah, leceni kazdemu, mana kdo ji pouziva)
+local function consumeInfo(r)
+  local G = ns.Gear
+  local text = recipeText(r)
+  if text == '' then return nil end
+  local lo = text:lower()
+  local heal = lo:find('restores %d+ to %d+ health') or lo:find('heals %d+') or lo:find('restores %d+ health')
+  local mana = lo:find('restores %d+ to %d+ mana') or lo:find('restores %d+ mana')
+  local st = G and G.statsFromText and G.statsFromText(text) or {}
+  local function useful(cls, w)
+    if heal then return 1 end
+    if mana then return (MANA[cls or ''] == false) and 0 or 1 end
+    return (G and G.score) and G.score(st, w) or 0
+  end
+  local _, myCls = pc(UnitClass, 'player')
+  local e = { r = r, kind = 'use' }
+  -- enchant: slot a zda tam uz enchant je
+  local slotWord = lo:match('enchant an? ([%a%- ]-) to') or lo:match('enchant an? ([%a%- ]-) so') or lo:match('enchant ([%a%- ]-) to')
+  local slot = slotWord and ENCH_SLOT[slotWord:gsub('^%s+', ''):gsub('%s+$', '')]
+  if slot then
+    e.kind = 'ench'
+    e.slot = slot
+    local link = safe(pc(GetInventoryItemLink, 'player', slot))
+    local en = type(link) == 'string' and link:match('item:%d+:(%d*)')
+    e.free = type(link) == 'string' and (en == nil or en == '' or en == '0')
+    e.noItem = type(link) ~= 'string'
+  end
+  local my = useful(safe(myCls), G and G.weights and G.weights())
+  if my > 0.3 and not e.noItem then e.me = (e.kind == 'ench' and not e.free) and 0.01 or 0.05 e.meTag = true end
+  local peers = {}
+  for name, p in pairs((G and G.peers) or {}) do
+    if GetTime() - (p.at or 0) < 900 then
+      local v = useful(p.cls, G.weightsFor and G.weightsFor(p.spec, p.lvl))
+      if v > 0.3 then peers[#peers + 1] = { name = name, pct = 0.05, tag = true } end
+    end
+  end
+  if peers[1] then e.peers = peers end
+  if not (e.meTag or e.peers) then return nil end
+  e.score = (e.meTag and (e.kind == 'ench' and e.free and 2 or 1) or 0) + #peers * 0.5
+  e.heal, e.mana = heal and true, mana and true
+  return e
+end
 local function upInfo(r)
   local out = itemId(r.link)
-  if not out then return nil end
-  local c = upCache[out]
+  local key = out or ('r' .. tostring(r.i))
+  local c = upCache[key]
   if c ~= nil then return c or nil end
-  upCache[out] = false
+  upCache[key] = false
   local G = ns.Gear
   if not (G and G.parse and G.compare) then return nil end
   local inst = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
-  local loc = inst and select(4, pc(inst, out))
-  if type(loc) ~= 'string' or loc == '' or loc == 'INVTYPE_BAG' or loc == 'INVTYPE_NON_EQUIP_IGNORE' then return nil end
+  local loc = out and inst and select(4, pc(inst, out))
+  if type(loc) ~= 'string' or loc == '' or loc == 'INVTYPE_BAG' or loc == 'INVTYPE_NON_EQUIP_IGNORE' then
+    -- neni vybaveni: enchant / lektvar / jidlo / obvaz
+    local e = consumeInfo(r)
+    upCache[key] = e or false
+    return e
+  end
   local data = (C_TooltipInfo and C_TooltipInfo.GetHyperlink and pc(C_TooltipInfo.GetHyperlink, r.link))
     or (C_TooltipInfo and C_TooltipInfo.GetItemByID and pc(C_TooltipInfo.GetItemByID, out))
   local st, blocked, req, fl = G.parse(data)
   if not st then return nil end
-  local e = { r = r, req = req }
+  local e = { r = r, req = req, kind = 'gear' }
   if not blocked then
     local pct = safeNum(pc(G.compare, r.link, st))
     if pct and pct > 0.03 then e.me = pct end
@@ -481,7 +547,7 @@ local function upInfo(r)
   end
   if not (e.me or e.peers) then return nil end
   e.score = (e.me or 0) + ((e.peers and e.peers[1] and (e.peers[1].pct or 0.3)) or 0) * 0.8
-  upCache[out] = e
+  upCache[key] = e
   return e
 end
 function C.upgrades(s)
@@ -616,7 +682,7 @@ local function build()
   f.tabs = {}
   local TABS = { { 'over', 'Prehled', 'To nejdulezitejsi ze vsech kategorii.' },
     { 'plan', 'Plan', 'Plan levelovani: zaskrtnute recepty, barvy, cil, postup a material.' },
-    { 'up', 'Upgrady', 'Co si muzes vyrobit a je lepsi nez tvoje vybaveni (i pro partaky s addonem).' },
+    { 'up', 'Hodi se', 'Co se hodi tobe nebo parte: lepsi vybaveni, enchanty, lektvary, jidlo, obvazy (partaci s addonem).' },
     { 'profit', 'Profit', 'Recepty, na kterych vydelas (aukce, kdyz cenu addon zna, jinak vendor) minus cena materialu.' },
     { 'new', 'Recepty', 'Nove recepty pro tvuj skill (trener / recept).' } }
   for i, d in ipairs(TABS) do
@@ -885,15 +951,22 @@ function C.refresh()
     for i, u in ipairs(ups) do
       if lim and i > lim then break end
       local who = {}
-      if u.me then who[#who + 1] = ('|cff40ff60ty +%d %%|r'):format(math.floor(u.me * 100 + 0.5)) end
-      for k, p2 in ipairs(u.peers or {}) do
-        if k > 2 then break end
-        who[#who + 1] = ('|cff66ccff%s|r %s'):format(p2.name, p2.empty and '|cff40ff60novy slot|r' or ('|cff40ff60+%d %%|r'):format(math.floor(p2.pct * 100 + 0.5)))
+      if u.kind == 'gear' then
+        if u.me then who[#who + 1] = ('|cff40ff60ty +%d %%|r'):format(math.floor(u.me * 100 + 0.5)) end
+        for k, p2 in ipairs(u.peers or {}) do
+          if k > 2 then break end
+          who[#who + 1] = ('|cff66ccff%s|r %s'):format(p2.name, p2.empty and '|cff40ff60novy slot|r' or ('|cff40ff60+%d %%|r'):format(math.floor(p2.pct * 100 + 0.5)))
+        end
+      else
+        if u.meTag then who[#who + 1] = '|cff40ff60ty|r' .. ((u.kind == 'ench' and u.free) and ' |cffffd200(volny slot)|r' or '') end
+        for k, p2 in ipairs(u.peers or {}) do if k <= 3 then who[#who + 1] = '|cff66ccff' .. p2.name .. '|r' end end
       end
+      local what = u.kind == 'ench' and ('Enchant: %s%s.'):format(SLOT_CZ[u.slot] or '?', u.free and ' - mas ho bez enchantu' or ' - uz tam nejaky enchant mas')
+        or (u.kind == 'use' and (u.heal and 'Leceni - hodi se kazdemu.' or (u.mana and 'Mana - pro classy s manou.' or 'Staty, ktere tvuj / jejich build vyuzije.')) or nil)
       row(col(u.r), { icon = u.r.icon or icn(u.r.link), right = table.concat(who, '  '), link = u.r.link,
-        tip = (u.r.avail > 0 and ('Material mas na %d ks.'):format(u.r.avail) or 'Material zatim nemas.') .. (u.req and (' Od levelu %d.'):format(u.req) or '') })
+        tip = (what and (what .. '\n') or '') .. (u.r.avail > 0 and ('Material mas na %d ks.'):format(u.r.avail) or 'Material zatim nemas.') .. (u.req and (' Od levelu %d.'):format(u.req) or '') })
     end
-    if not ups[1] then row(G .. 'Zadny recept ted nedela upgrade (tobe ani parte).|r') end
+    if not ups[1] then row(G .. 'Nic, co by se hodilo tobe nebo parte.|r') end
   end
   local function profitRows(lim)
     for i, p2 in ipairs(profits) do
@@ -933,14 +1006,14 @@ function C.refresh()
           link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
       end
     end
-    head('Upgrady', 'Vyrobky lepsi nez tvoje vybaveni (i pro partaky s addonem).', 'up')
+    head('Hodi se', 'Vybaveni lepsi nez mas, enchanty, lektvary, jidlo... pro tebe i partaky s addonem.', 'up')
     upRows(3)
     head('Profit', 'Recepty, na kterych vydelas.', 'profit')
     profitRows(3)
     head(('Nove recepty (%d)'):format(#un), 'Recepty, ktere neumis a byly by pro tebe oranzove.', 'new')
     newRows(3)
   elseif tab == 'up' then
-    head('Upgrady z vyroby', 'Porovnani s tvym vybavenim podle vah gearu buildu; partaci podle dat jejich addonu.')
+    head('Hodi se tobe / parte', 'Vybaveni: porovnani podle vah gearu buildu. Enchanty, lektvary, jidlo: staty podle vah, leceni kazdemu, mana classam s manou. Partaci podle dat jejich addonu.')
     upRows(nil)
   elseif tab == 'profit' then
     head('Ziskove recepty', 'Prodej (aukce po 5% poplatku, kdyz addon cenu videl, jinak vendor) minus cena materialu.')

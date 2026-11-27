@@ -135,6 +135,18 @@ local function parseLine(t, st)
   end
 end
 local function total(st) local n = 0 for _, x in pairs(st) do n = n + x end return n end
+-- staty z volneho textu (popis enchantu, "Use:" lektvaru / jidla): "+3 Agility", "Increases Intellect by 25", spell power...
+function G.statsFromText(t)
+  local st = {}
+  if type(t) ~= 'string' then return st end
+  for v, k in t:gmatch('%+(%d+) (%a+)') do parseLine('+' .. v .. ' ' .. k, st) end
+  for part in (t .. '.'):gmatch('([^%.]+)%.') do
+    local tmp = {}
+    parseLine('Equip: ' .. part, tmp)
+    for k, v in pairs(tmp) do if not st[k] then st[k] = v end end
+  end
+  return st
+end
 local function secs(n, u)
   n = tonumber(n) or 0
   u = (u or ''):lower()
