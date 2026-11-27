@@ -412,8 +412,27 @@ local function inParty(name)
     if UnitExists(u) and short(safe(pc(UnitName, u))) == short(name) then return u end
   end
 end
+local logBuf = {}
 function R.recvLog(name, msg)
   local q, prog = {}, {}
+  -- vicedilna zprava: casti sbirat, ulozit az po posledni
+  local k, n, body = msg:match('^RL%^(%d+)/(%d+)%^(.*)$')
+  if k then
+    k, n = tonumber(k), tonumber(n)
+    local b = logBuf[name]
+    if k == 1 or not b or b.n ~= n then b = { n = n, q = {}, prog = {}, got = 0 } logBuf[name] = b end
+    q, prog = b.q, b.prog
+    b.got = b.got + 1
+    msg = 'RL^' .. body
+    if k < n then
+      for e in body:gmatch('[^,]+') do
+        local id, c, pr = e:match('^(%d+):(%d):?(.*)$')
+        if id then q[tonumber(id)] = c == '1' if pr and pr ~= '' then prog[tonumber(id)] = pr end end
+      end
+      return
+    end
+    logBuf[name] = nil
+  end
   for e in msg:sub(4):gmatch('[^,]+') do
     local id, c, pr = e:match('^(%d+):(%d):?(.*)$')
     if id then
@@ -466,23 +485,32 @@ local function sendLog()
   local D = ns.Duo
   if not (D and D.rawSend and D.ok and IsInGroup and IsInGroup()) or not QL.GetNumQuestLogEntries then return end
   if InCombatLockdown and InCombatLockdown() then return end
-  local parts, len = {}, 3
+  -- zprava ma max. 255 znaku: log se posila po castech "RL^k/N^..." (driv se zbytek useknul)
+  local all = {}
   for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
     local info = pc(QL.GetInfo, i)
     local id = type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID)
     if id then
       local comp = QL.IsComplete and safeBool(pc(QL.IsComplete, id))
       local pr = not comp and progAll(id)
-      local p = id .. ':' .. (comp and '1' or '0') .. (pr and (':' .. pr) or '')
-      if len + #p + 1 > 250 then break end
-      parts[#parts + 1] = p len = len + #p + 1
+      all[#all + 1] = id .. ':' .. (comp and '1' or '0') .. (pr and (':' .. pr) or '')
     end
   end
-  local msg = 'RL^' .. table.concat(parts, ',')
+  local chunks, cur, len = {}, {}, 0
+  for _, p in ipairs(all) do
+    if len + #p + 1 > 235 and cur[1] then chunks[#chunks + 1] = cur cur, len = {}, 0 end
+    cur[#cur + 1] = p len = len + #p + 1
+  end
+  chunks[#chunks + 1] = cur
+  local full = table.concat(all, ',')
   local now = GetTime()
-  if msg == lastLog and now - lastLogAt < 45 then return end
-  lastLog, lastLogAt = msg, now
-  D.rawSend(msg)
+  if full == lastLog and now - lastLogAt < 45 then return end
+  lastLog, lastLogAt = full, now
+  for k, c in ipairs(chunks) do
+    local msg = ('RL^%d/%d^%s'):format(k, #chunks, table.concat(c, ','))
+    -- rozestup, at hra zpravy nezahodi (limit rychlosti)
+    if k == 1 or not C_Timer then D.rawSend(msg) else C_Timer.After(0.4 * (k - 1), function() pcall(D.rawSend, msg) end) end
+  end
 end
 R.sendLog = sendLog
 -- aktivni partaci s addonem (posledni log mladsi nez 2 min a jsou v parte)
