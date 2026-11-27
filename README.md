@@ -80,6 +80,8 @@ U okna profese (Tailoring, Blacksmithing, Alchemy...) se ukaze panel ClaudeMaste
 - **Banka** - plan pocita i s tim, co mas v bance (hra si to pamatuje, staci banku jednou otevrit).
 - **Aukce** - pri hledani itemu v aukci si addon zapamatuje nejnizsi cenu za kus (plan ji pak pouzije); u materialu z planu
   ukaze, kolik chybi a za kolik ho koupis z nejlevnejsich nabidek, u vyrobku porovna aukci (po 5% poplatku) s vendorem.
+- **Cil skillu** - v planu tlacitka -5 / -1 / +1 / +5 / max: do kolika skillu plan pocitat.
+- Panely (profese, vendor, aukce) se samy umisti tam, kde neprekryvaji jina otevrena okna.
 - Panel jde presunout (tahem) a zvetsit (roh vpravo dole); dvojklik na roh = puvodni misto a velikost.
 
 Kazdou davku spousti klik hrace (bez kliknuti vyrabet nejde). `/cm profese` vypise, co hra v okne profese vraci.

@@ -338,6 +338,18 @@ function C.remaining(r, rank)
   end
   return n
 end
+-- cilovy skill planu (nil = strop ranku)
+function C.target(s)
+  local t = ns.db and ns.db.craftTarget and ns.db.craftTarget[s.name]
+  if t and t <= s.rank then return nil end
+  return t
+end
+function C.setTarget(s, v)
+  ns.db.craftTarget = ns.db.craftTarget or {}
+  local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
+  if v and (v <= s.rank or v >= top) then v = nil end
+  ns.db.craftTarget[s.name] = v
+end
 -- vybrane recepty (zaskrtnute); bez volby = oranzove a zlute
 function C.selected(s, r)
   local t = ns.db and ns.db.craftSel and ns.db.craftSel[s.name]
@@ -356,6 +368,8 @@ function C.simulate(s)
   for _, r in ipairs(s.list) do if r.kind ~= 'trivial' and C.selected(s, r) then sel[#sel + 1] = r end end
   local segs, per, mats = {}, {}, {}
   local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
+  local tg = C.target(s)
+  if tg and tg > s.rank and tg < top then top = tg end
   for sk = s.rank, top - 1 do
     local best, bc, bp
     for _, r in ipairs(sel) do
@@ -409,6 +423,48 @@ end
 local f, state
 local place
 local WHITE = 'Interface\\Buttons\\WHITE8X8'
+-- chytre umisteni panelu vedle okna: vpravo / vlevo / pod / nad - prvni misto, ktere je na obrazovce
+-- a neprekryva jine otevrene okno (profese, aukce, vendor, tasky, nase panely)
+local AVOID = { 'ProfessionsFrame', 'TradeSkillFrame', 'AuctionHouseFrame', 'AuctionFrame', 'MerchantFrame', 'BankFrame',
+  'ContainerFrameCombinedBags', 'ContainerFrame1', 'ContainerFrame2', 'ContainerFrame3', 'ContainerFrame4', 'ContainerFrame5',
+  'ClaudeMasterCraft', 'ClaudeMasterCraftAH', 'ClaudeMasterCraftShop', 'ClaudeMasterRoute', 'CharacterFrame', 'WorldMapFrame' }
+local function rectOf(fr)
+  if not (fr and fr.IsShown and fr:IsShown() and fr.GetLeft and fr:GetLeft()) then return nil end
+  local sc = (fr:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+  return { l = fr:GetLeft() * sc, r = fr:GetRight() * sc, t = fr:GetTop() * sc, b = fr:GetBottom() * sc }
+end
+local function overlap(a, b) return a.l < b.r - 2 and a.r > b.l + 2 and a.b < b.t - 2 and a.t > b.b + 2 end
+function C.placeSmart(fr, hostFr, gap, rightOff)
+  gap = gap or 4
+  local h = rectOf(hostFr)
+  fr:ClearAllPoints()
+  if not h then fr:SetPoint('CENTER', UIParent, 'CENTER', 300, 0) return end
+  local w, ht = fr:GetWidth(), fr:GetHeight()
+  local W, H = UIParent:GetWidth(), UIParent:GetHeight()
+  local cands = {
+    { 'TOPLEFT', 'TOPRIGHT', (rightOff or 0) + gap, 0, h.r + (rightOff or 0) + gap, h.t },
+    { 'TOPRIGHT', 'TOPLEFT', -gap, 0, h.l - gap - w, h.t },
+    { 'TOPLEFT', 'BOTTOMLEFT', 0, -gap, h.l, h.b - gap },
+    { 'BOTTOMLEFT', 'TOPLEFT', 0, gap, h.l, h.t + gap + ht },
+  }
+  local others = {}
+  for _, n in ipairs(AVOID) do
+    local o = _G[n]
+    if o and o ~= fr and o ~= hostFr then local r = rectOf(o) if r then others[#others + 1] = r end end
+  end
+  local fallback
+  for _, c in ipairs(cands) do
+    local r = { l = c[5], r = c[5] + w, t = c[6], b = c[6] - ht }
+    if r.l >= 0 and r.r <= W and r.b >= 0 and r.t <= H then
+      fallback = fallback or c
+      local ok = true
+      for _, o in ipairs(others) do if overlap(r, o) then ok = false break end end
+      if ok then fr:SetPoint(c[1], hostFr, c[2], c[3], c[4]) return end
+    end
+  end
+  local c = fallback or cands[1]
+  fr:SetPoint(c[1], hostFr, c[2], c[3], c[4])
+end
 local function accent2(a) local c = ns.THEME and ns.THEME.ui or { 0.3, 0.7, 1 } return c[1], c[2], c[3], a or 1 end
 local function build()
   local T = ns.THEME
@@ -467,6 +523,19 @@ local function build()
   end)
   pb:SetScript('OnLeave', function() GameTooltip:Hide() end)
   f.planBtn = pb
+  -- tlacitka cile skillu (ukazi se na radku "Cil skillu")
+  f.tg = {}
+  local defs = { { 'm5', '-5' }, { 'm1', '-1' }, { 'p1', '+1' }, { 'p5', '+5' }, { 'max', 'max' } }
+  for i, d in ipairs(defs) do
+    local tb = CreateFrame('Button', nil, f, 'BackdropTemplate')
+    tb:SetSize(d[1] == 'max' and 32 or 24, 14)
+    tb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    tb.t = tb:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') tb.t:SetPoint('CENTER') tb.t:SetText(d[2])
+    tb.key = d[1]
+    tb:SetScript('OnClick', function(self) if f.tgFn then f.tgFn(self.key) end end)
+    tb:Hide()
+    f.tg[i] = tb
+  end
   -- velke tlacitko "Vyrob"
   local b = CreateFrame('Button', nil, f, 'BackdropTemplate')
   b:SetPoint('TOPLEFT', 8, -28) b:SetPoint('TOPRIGHT', -8, -28) b:SetHeight(40)
@@ -495,7 +564,7 @@ local function build()
     local l = CreateFrame('Button', nil, f)
     l:SetHeight(15) l:SetPoint('LEFT', 10, 0) l:SetPoint('RIGHT', -10, 0)
     l.text = l:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') l.text:SetAllPoints() l.text:SetJustifyH('LEFT') l.text:SetWordWrap(false)
-    l:SetScript('OnClick', function(self) if self.onClick then self.onClick() end end)
+    l:SetScript('OnClick', function(self) if self.onClick then self.onClick(self) end end)
     l:SetScript('OnEnter', function(self)
       if not (self.link or self.tip) then return end
       GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
@@ -511,12 +580,12 @@ end
 
 function place()
   local h = host()
-  f:ClearAllPoints()
   local off = ns.db and ns.db.craftOff
-  -- vpravo od okna profese jsou svisla tlacitka profesi (~50 px): panel az za ne (nebo kam si ho hrac posunul)
-  if h then f:SetPoint('TOPLEFT', h, 'TOPRIGHT', off and off[1] or 56, off and off[2] or -14)
-  else f:SetPoint('RIGHT', UIParent, 'RIGHT', -300, 100) end
   f:SetWidth((ns.db and ns.db.craftW) or 300)
+  -- hrac si panel posunul: drzet jeho misto; jinak chytre (vpravo za svislymi tlacitky profesi, nebo jinde)
+  if h and off then f:ClearAllPoints() f:SetPoint('TOPLEFT', h, 'TOPRIGHT', off[1], off[2])
+  elseif h then C.placeSmart(f, h, 4, 52)
+  else f:ClearAllPoints() f:SetPoint('RIGHT', UIParent, 'RIGHT', -300, 100) end
 end
 
 -- kde sehnat material: Pruzkumnik (ForeverDB) - detail itemu
@@ -555,7 +624,6 @@ function C.refresh()
   local best, can, cant = C.plan(s)
   state = { s = s, best = best }
   local prep = s.prep
-  place()
   f.title:SetText('Levelovani: ' .. s.name)
   f.skill:SetText(('|cffffd200%d|r / %d'):format(s.rank, s.max))
   local b = f.btn
@@ -668,6 +736,19 @@ function C.refresh()
     end
     local segs, mats, total, matT, sellT = C.simulate(s)
     row(' ')
+    -- cil: kolik skillu chces udelat (klik na -5 / +5 / +1 level / max)
+    local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
+    local tg = C.target(s) or top
+    row(('|cff66ccffCil skillu:|r |cffffffff%d|r |cff9aa6b8(+%d)|r'):format(tg, tg - s.rank),
+      { controls = function(btn)
+          local cur = C.target(s) or top
+          if btn == 'm5' then C.setTarget(s, math.max(s.rank + 1, cur - 5))
+          elseif btn == 'p5' then C.setTarget(s, math.min(top, cur + 5))
+          elseif btn == 'm1' then C.setTarget(s, math.max(s.rank + 1, cur - 1))
+          elseif btn == 'p1' then C.setTarget(s, math.min(top, cur + 1))
+          else C.setTarget(s, nil) end
+          C.refresh()
+        end })
     if segs[1] then
       row(('|cff66ccffPlan:|r %d -> %d'):format(segs[1].from, segs[#segs].to))
       row(('   material ~%s, prodej vyrobku ~%s = %s'):format(shortCoin(matT), shortCoin(sellT),
@@ -712,6 +793,7 @@ function C.refresh()
   end
   if #rows == 0 and best then row('|cff9aa6b8Vse potrebne mas - klikej na tlacitko.|r') end
   local y = -74
+  local tgShown = false
   local maxH = ns.db and ns.db.craftH
   for i, l in ipairs(f.lines) do
     local r = rows[i]
@@ -720,10 +802,25 @@ function C.refresh()
       l:ClearAllPoints() l:SetPoint('TOPLEFT', 10, y) l:SetPoint('TOPRIGHT', -10, y) y = y - 15
       l.text:SetText(r.text) l.link, l.tip, l.onClick = r.link, r.tip, r.onClick
       l:Show()
+      if r.controls then
+        f.tgFn = r.controls
+        local prev
+        for k = #f.tg, 1, -1 do
+          local tb = f.tg[k]
+          tb:ClearAllPoints()
+          if prev then tb:SetPoint('RIGHT', prev, 'LEFT', -3, 0) else tb:SetPoint('RIGHT', l, 'RIGHT', 0, 0) end
+          tb:SetBackdropColor(accent2(0.15)) tb:SetBackdropBorderColor(accent2(0.6))
+          tb:Show()
+          prev = tb
+        end
+        tgShown = true
+      end
     else l:Hide() end
   end
+  if not tgShown then for _, tb in ipairs(f.tg) do tb:Hide() end end
   f:SetHeight(maxH or (-y + 8))
   f:Show()
+  place()
   C.saveShop(s, cant)
 end
 
@@ -828,10 +925,8 @@ function C.merchant()
   local money = safeNum(pc(GetMoney)) or 0
   mf.btn:SetAlpha(money >= total and 1 or 0.5)
   mf:SetHeight(26 + mf.text:GetStringHeight() + 42)
-  mf:ClearAllPoints()
-  local host = _G.MerchantFrame
-  if host and host:IsShown() then mf:SetPoint('TOPLEFT', host, 'TOPRIGHT', 4, -30) else mf:SetPoint('CENTER') end
   mf:Show()
+  C.placeSmart(mf, _G.MerchantFrame)
 end
 -- nakup (klik hrace): po davkach podle velikosti stacku
 function C.buyAll()
@@ -1053,8 +1148,8 @@ function C.ahShow()
   af.title:SetText(name or '?')
   af.text:SetText(table.concat(lines, '\n'))
   af:SetHeight(32 + af.text:GetStringHeight() + 8)
-  af:ClearAllPoints() af:SetPoint('TOPLEFT', host, 'TOPRIGHT', 4, -30)
   af:Show()
+  C.placeSmart(af, host)
 end
 -- stare rozhrani aukce (QueryAuctionItems)
 local function oldList()
