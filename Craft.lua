@@ -946,12 +946,15 @@ function C.refresh()
         right = total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200~' .. shortCoin(total) .. '|r'),
         tip = ('Material ~%s, prodej vyrobku vendorovi ~%s. Barvy: %s.'):format(shortCoin(matT), shortCoin(sellT),
           md == 'o' and 'jen oranzove' or (md == 'oy' and 'oranzove + zlute' or 'vse')) })
-      if segs[#segs].to < (C.target(s) or top) then
-        row(('|cffffcc00Od %d uz %s|r'):format(segs[#segs].to, md == 'o' and 'neni oranzovy recept' or (md == 'oy' and 'neni oranz. ani zluty' or 'nic nedava skill')),
-          { icon = TRAIN, tip = 'Nove recepty u trenera nebo z receptu (zalozka Recepty).' })
-      end
     else
       row(G .. 'Zadny vybrany recept uz nedava skill.|r', { icon = TRAIN })
+    end
+  end
+  -- upozorneni, kde zvolene barvy dojdou (az za krokem planu)
+  local function planWarn()
+    if segs[1] and segs[#segs].to < (C.target(s) or top) then
+      row(('|cffffcc00Od %d uz %s|r'):format(segs[#segs].to, md == 'o' and 'neni oranzovy recept' or (md == 'oy' and 'neni oranz. ani zluty' or 'nic nedava skill')),
+        { icon = TRAIN, tip = 'Nove recepty u trenera nebo z receptu (zalozka Recepty).' })
     end
   end
   local function upRows(lim)
@@ -1013,6 +1016,7 @@ function C.refresh()
           link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
       end
     end
+    planWarn()
     head('Hodi se', 'Vybaveni lepsi nez mas, enchanty, lektvary, jidlo... pro tebe i partaky s addonem.', 'up')
     upRows(3)
     head('Profit', 'Recepty, na kterych vydelas.', 'profit')
@@ -1061,6 +1065,7 @@ function C.refresh()
       for _, g in ipairs(segs) do
         row(('|cffffffff%dx|r %s'):format(math.ceil(g.n), col(g.r)), { icon = g.r.icon, right = G .. ('%d-%d|r'):format(g.from, g.to), link = g.r.link })
       end
+      planWarn()
       head('Material')
       local ml = {}
       for _, m in pairs(mats) do ml[#ml + 1] = m end
