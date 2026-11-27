@@ -509,11 +509,22 @@ function G.questByText(name)
   return hits and (hits .. ' (asi)') or nil
 end
 -- quest item podle hry (bag + slot): spolehlivejsi nez jmeno
+-- neni to "quest" pro hrace: Soul Shard (warlock), Craftsman's Writ a veci jen na writy
+local NOTQUEST = { [6265] = true }
+local function writ(title) return type(title) == 'string' and title:find("Craftsman's Writ") ~= nil end
 local function bagQuest(bag, slot, link)
   -- ForeverDB vi, na ktere questy item je: rozhoduje ona (odhad podle textu jen u neznamych itemu)
   local iid = type(link) == 'string' and tonumber(link:match('item:(%d+)'))
+  if iid and NOTQUEST[iid] then return nil end
+  if type(link) == 'string' and writ(link:match('%[(.-)%]')) then return nil end
   local MD = ns.MobDB
   local dbq = iid and MD and MD.itemQuests and MD.itemQuests(iid)
+  if dbq and dbq[1] and MD.questTitle then
+    local keep = {}
+    for _, qq in ipairs(dbq) do if not writ(MD.questTitle(qq)) then keep[#keep + 1] = qq end end
+    if not keep[1] then return nil end   -- jen na Craftsman's Writ questy
+    dbq = keep
+  end
   if dbq and dbq[1] then
     if MD.questItemDone(iid) then
       local names = {}
