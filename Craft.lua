@@ -54,6 +54,14 @@ local function itemName(id)
   local f = (C_Item and C_Item.GetItemNameByID) or (C_Item and C_Item.GetItemInfo) or GetItemInfo
   return f and safe(pc(f, id)) or ('item ' .. id)
 end
+local function diffOf(info)
+  local d = info.difficulty
+  if type(d) == 'string' and RANK[d] then return d end
+  if type(d) == 'number' and DIFF[d] then return DIFF[d] end
+  local r = safeNum(info.relativeDifficulty)
+  if r and DIFF[r] then return DIFF[r] end
+  return nil
+end
 local function scanModern()
   local T = C_TradeSkillUI
   if not T then return nil end
@@ -77,9 +85,14 @@ local function scanModern()
   local out = { name = name, rank = rank or 0, max = max or 0, list = {}, modern = true }
   for _, id in ipairs(ids) do
     local info = T.GetRecipeInfo and pc(T.GetRecipeInfo, id)
-    if type(info) == 'table' and info.learned ~= false and safe(info.name) then
-      local kind = safe(info.difficulty)
-      if type(kind) ~= 'string' then kind = DIFF[safeNum(info.relativeDifficulty) or -1] end
+    if type(info) == 'table' and info.learned == false and safe(info.name) then
+      -- neznamy recept (trener / recept z dropu): jen pro radu, co se naucit
+      local kind = diffOf(info)
+      out.unlearned = out.unlearned or {}
+      out.unlearned[#out.unlearned + 1] = { i = id, name = safe(info.name), kind = kind or '?', icon = safe(info.icon),
+        link = T.GetRecipeItemLink and safe(pc(T.GetRecipeItemLink, id)) }
+    elseif type(info) == 'table' and info.learned ~= false and safe(info.name) then
+      local kind = diffOf(info)
       local r = { i = id, name = safe(info.name), kind = kind or 'trivial', avail = safeNum(info.numAvailable) or 0, reag = {},
         icon = safe(info.icon), link = (T.GetRecipeItemLink and safe(pc(T.GetRecipeItemLink, id))) or safe(info.hyperlink) }
       if T.GetRecipeNumReagents and T.GetRecipeReagentInfo then
@@ -297,6 +310,17 @@ function C.refresh()
     row(('|cffffcc00Trener:|r oranzovych receptu 0, zlutych %d - u trenera %s budou nove recepty.'):format(yellow, s.name),
       { tip = 'Recepty, ktere znas, uz skoro nedavaji skill. Nove (oranzove) se uci u trenera nebo z receptu (drop, vendor).' })
   end
+  -- recepty, ktere jeste neumis (hra je zna): co se naucit (oranzove / zlute)
+  local un = {}
+  for _, r in ipairs(s.unlearned or {}) do if RANK[r.kind] and RANK[r.kind] >= 3 then un[#un + 1] = r end end
+  table.sort(un, function(a, b) if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end return a.name < b.name end)
+  if un[1] then
+    row(('|cffffcc00Naucit (trener / recept):|r %d uzitecnych'):format(#un), { tip = 'Recepty, ktere jeste neumis a daly by ti skill.' })
+    for i, r in ipairs(un) do
+      if i > 3 then break end
+      row(('   |c%s%s|r'):format(COLOR[r.kind] or 'ffffffff', r.name), { link = r.link })
+    end
+  end
   local nextC = {}
   for _, r in ipairs(can) do if r ~= best and #nextC < 2 then nextC[#nextC + 1] = r end end
   if nextC[1] then row('|cff66ccffPak:|r') end
@@ -403,11 +427,33 @@ function C.dump()
     s.modern and 'nove (C_TradeSkillUI)' or 'stare',
     (s.modern and T and T.CraftRecipe or api('DoTradeSkill')) and 'ano' or 'NE',
     (api('StopTradeSkillRepeat') or (T and T.StopRecipeRepeat)) and 'ano' or 'ne'))
+  -- surova data prvnich receptu (ladeni barev)
+  local T2 = C_TradeSkillUI
+  local ids = T2 and T2.GetAllRecipeIDs and pc(T2.GetAllRecipeIDs)
+  for k = 1, 3 do
+    local id = type(ids) == 'table' and ids[k]
+    local info = id and T2.GetRecipeInfo and pc(T2.GetRecipeInfo, id)
+    if type(info) == 'table' then
+      ns.say(('  [raw] %s: difficulty=%s relativeDifficulty=%s numSkillUps=%s learned=%s numAvailable=%s'):format(tostring(info.name),
+        tostring(info.difficulty), tostring(info.relativeDifficulty), tostring(info.numSkillUps), tostring(info.learned), tostring(info.numAvailable)))
+    end
+  end
   local best = C.plan(s)
-  for i, r in ipairs(s.list) do
-    if i > 12 then break end
+  local cnt = { optimal = 0, medium = 0, easy = 0, trivial = 0 }
+  for _, r in ipairs(s.list) do cnt[r.kind] = (cnt[r.kind] or 0) + 1 end
+  local ucnt = { optimal = 0, medium = 0, easy = 0, trivial = 0 }
+  for _, r in ipairs(s.unlearned or {}) do ucnt[r.kind] = (ucnt[r.kind] or 0) + 1 end
+  ns.say(('Umis: oranzovych %d, zlutych %d, zelenych %d, sedych %d. Neumis (hra zna): %d (oranz. %d, zlut. %d, zel. %d).'):format(
+    cnt.optimal, cnt.medium, cnt.easy, cnt.trivial, #(s.unlearned or {}), ucnt.optimal, ucnt.medium, ucnt.easy))
+  -- jen uzitecne (ne sede), od nejlepsich
+  local list = {}
+  for _, r in ipairs(s.list) do if r.kind ~= 'trivial' then list[#list + 1] = r end end
+  table.sort(list, function(a, b) if RANK[a.kind] ~= RANK[b.kind] then return (RANK[a.kind] or 0) > (RANK[b.kind] or 0) end return a.name < b.name end)
+  for i, r in ipairs(list) do
+    if i > 25 then ns.say(('  ... a dalsich %d'):format(#list - 25)) break end
     local mats = {}
     for _, a in ipairs(r.reag) do mats[#mats + 1] = ('%dx %s (%d)'):format(a.need, a.name, a.have) end
-    ns.say(('  %s%s [%s] mas na %d: %s'):format(r == best and '>> ' or '', r.name, r.kind, r.avail, table.concat(mats, ', ')))
+    ns.say(('  %s|c%s%s|r [%s] mas na %d: %s'):format(r == best and '>> ' or '', COLOR[r.kind] or 'ffffffff', r.name, r.kind, r.avail, table.concat(mats, ', ')))
   end
+  if #list == 0 then ns.say('  (zadny recept, ktery by dal skill)') end
 end
