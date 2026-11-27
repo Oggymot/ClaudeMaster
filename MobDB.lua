@@ -51,7 +51,7 @@ end
 function MD.cacheFresh()
   local c = C(true)
   local v = fdbVersion()
-  return c ~= nil and c.schema == 4 and (v == nil or c.ver == v)
+  return c ~= nil and c.schema == 6 and (v == nil or c.ver == v)
 end
 -- sestavi cache z nactene databaze
 function MD.buildCache()
@@ -182,7 +182,22 @@ function MD.buildCache()
   -- itemy, ktere prodavaji vendori (pro nakupni seznam profesi)
   local vend = {}
   for it in pairs(D.vend or {}) do vend[it] = 1 end
-  ns.db.fdbc = { schema = 4, vend = vend, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
+  -- nakupni cena u vendora (nejlevnejsi): vp[npc][item] = { cena, pocet }
+  for _, items in pairs(D.vp or {}) do
+    if type(items) == 'table' then
+      for it, e in pairs(items) do
+        local pr = type(e) == 'table' and tonumber(e[1])
+        if pr and pr > 0 and (vend[it] == 1 or not vend[it] or pr < vend[it]) then vend[it] = pr end
+      end
+    end
+  end
+  -- hranice barev receptu profesi (SkillLineAbility): [spell] = "zluta,seda"
+  local sla = {}
+  for sp, l in pairs(D.sla or {}) do
+    local e = type(l) == 'table' and l[1]
+    if type(e) == 'table' and (e[3] or 0) > 0 and (e[4] or 0) > 0 then sla[sp] = e[3] .. ',' .. e[4] end
+  end
+  ns.db.fdbc = { schema = 6, sla = sla, vend = vend, ver = fdbVersion(), drops = drops, gold = gold, names = names, lv = lv, start = start, qz = qz, iq = iq, qi = qi }
   MD.reset()
   return true
 end
@@ -280,9 +295,23 @@ function MD.questFor(item)
   end
   return best
 end
+-- recept (spell) -> skill, kdy zezloutne a kdy zesedne (zelena = v pulce)
+function MD.skillRange(spell)
+  local c = C(true)
+  local s = c and c.sla and spell and c.sla[spell]
+  if not s then return nil end
+  local y, g = s:match('(%d+),(%d+)')
+  return tonumber(y), tonumber(g)
+end
 function MD.isVendor(item)
   local c = C(true)
-  return c and c.vend and item and c.vend[item] == 1 or false
+  return c and c.vend and item and c.vend[item] ~= nil or false
+end
+-- nakupni cena u vendora v copperech (nil = nevime / neprodava)
+function MD.vendorPrice(item)
+  local c = C(true)
+  local v = c and c.vend and item and c.vend[item]
+  return (type(v) == 'number' and v > 1) and v or nil
 end
 -- item zacina quest: { qid, minLvl, lvl, title }
 function MD.startsQuest(item)

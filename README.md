@@ -72,6 +72,13 @@ U okna profese (Tailoring, Blacksmithing, Alchemy...) se ukaze panel ClaudeMaste
 - **Nakup u vendora** - material od vendora na nejlepsi recepty se ulozi; u obchodnika, ktery ho prodava, se ukaze
   tlacitko "Koupit vse" (jednim klikem koupi chybejici mnozstvi).
 
+- **Cena za bod** - u receptu odhad ceny jednoho bodu skillu (vendor material za nakupni cenu, ostatni za prodejni,
+  vlastni polotovary za cenu jejich materialu; zluty / zeleny recept podle sance na bod).
+- **Plan** (tlacitko v hlavicce) - seznam receptu se zaskrtnutim a odhadem "zbyva ~N ks", nez recept zesedne
+  (hranice barev z ForeverDB). Ze zaskrtnutych addon spocita nejlevnejsi postup az ke stropu ranku (useky skillu,
+  kolik kusu ceho), material celkem a co chybi; vendor material z planu pak nabidne koupit u obchodnika.
+- Panel jde presunout (tahem) a zvetsit (roh vpravo dole); dvojklik na roh = puvodni misto a velikost.
+
 Kazdou davku spousti klik hrace (bez kliknuti vyrabet nejde). `/cm profese` vypise, co hra v okne profese vraci.
 
 ## Data o mobech

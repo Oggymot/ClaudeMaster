@@ -169,12 +169,53 @@ local function missing(r, n)
 end
 -- vyber: nejvyssi barva, ktera jde vyrobit; v ramci barvy nejmin materialu na kus (levnejsi)
 local function cost(r) local c = 0 for _, a in ipairs(r.reag) do c = c + a.need end return c end
+-- cena za bod skillu: material (vendor = nakupni cena, jinak co by dal vendor za prodej, vlastni polotovar = jeho material)
+-- / ocekavany pocet bodu (oranzovy 1, zluty ~0.6, zeleny ~0.25) * body za kus
+local CHANCE = { optimal = 1, medium = 0.6, easy = 0.25, trivial = 0 }
+local priceCache = {}
+local function sellPrice(id)
+  local gi = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  if not gi then return nil end
+  return safeNum(select(11, pc(gi, id)))
+end
+local function unitCost(a, byName, depth)
+  local id = itemId(a.link)
+  local key = id or a.name
+  if priceCache[key] then return priceCache[key] end
+  local MD = ns.MobDB
+  local v = id and MD and MD.vendorPrice and MD.vendorPrice(id)
+  local own = byName[a.name]
+  local c
+  if v then c = v
+  elseif own and depth < 2 then
+    c = 0
+    for _, x in ipairs(own.reag) do c = c + x.need * (unitCost(x, byName, depth + 1) or 0) end
+  else c = id and sellPrice(id) or nil end
+  priceCache[key] = c or 0
+  return c or 0
+end
+function C.pointCost(r, byName)
+  local c = 0
+  for _, a in ipairs(r.reag) do c = c + a.need * unitCost(a, byName, 0) end
+  r.cc = c
+  local exp = (CHANCE[r.kind] or 0) * (r.ups or 1)
+  if exp <= 0 then return nil end
+  return c / exp
+end
 function C.plan(s)
+  priceCache = {}
+  local byNameP = {}
+  for _, r in ipairs(s.list) do byNameP[r.name] = r end
+  for _, r in ipairs(s.list) do r.ppt = C.pointCost(r, byNameP) end
   local can, cant = {}, {}
   for _, r in ipairs(s.list) do
     if (RANK[r.kind] or 0) >= 2 then table.insert(r.avail > 0 and can or cant, r) end
   end
   local function better(a, b)
+    -- nejlevnejsi bod skillu (cena materialu / sance na bod); zeleny jen kdyz nic jineho
+    if (a.kind == 'easy') ~= (b.kind == 'easy') then return b.kind == 'easy' end
+    local pa, pb = math.floor(a.ppt or 1e9), math.floor(b.ppt or 1e9)
+    if pa ~= pb then return pa < pb end
     if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end
     local ca, cb = cost(a), cost(b)
     if ca ~= cb then return ca < cb end
@@ -195,6 +236,12 @@ function C.plan(s)
     r.missTotal = t
   end
   table.sort(cant, function(a, b)
+    if (RANK[a.kind] >= 3) ~= (RANK[b.kind] >= 3) then return RANK[a.kind] >= 3 end
+    if a.vendorOnly ~= b.vendorOnly then return a.vendorOnly end
+    if a.vendorOnly then
+      local pa, pb = math.floor(a.ppt or 1e9), math.floor(b.ppt or 1e9)
+      if pa ~= pb then return pa < pb end
+    end
     if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end
     return a.missTotal < b.missTotal
   end)
@@ -226,10 +273,88 @@ function C.plan(s)
 end
 
 ------------------------------------------------------------------------------------------
+-- Plan levelovani: sance na bod podle hranic barev (ForeverDB) a simulace po bodech skillu
+------------------------------------------------------------------------------------------
+-- sance na bod pri skillu sk: oranzovy 1, pak (seda - sk) / (seda - zluta), sedy 0
+local function chanceAt(r, sk, rank)
+  local MD = ns.MobDB
+  local y, g
+  if MD and MD.skillRange and type(r.i) == 'number' and r.i > 1000 then y, g = MD.skillRange(r.i) end
+  if y and g and g > 0 then
+    if sk >= g then return 0 end
+    if sk < y or g <= y then return 1 end
+    return (g - sk) / (g - y)
+  end
+  -- hranice nezname: jen podle dnesni barvy, max par bodu
+  if sk > rank + 5 then return 0 end
+  return CHANCE[r.kind] or 0
+end
+C.chanceAt = chanceAt
+-- kolik kusu jeste (prumerne) da skill, nez recept zesedne
+function C.remaining(r, rank)
+  local n = 0
+  for sk = rank, rank + 150 do
+    local p = chanceAt(r, sk, rank)
+    if p <= 0 then break end
+    n = n + 1 / (p * math.max(1, r.ups or 1))
+  end
+  return n
+end
+-- vybrane recepty (zaskrtnute); bez volby = oranzove a zlute
+function C.selected(s, r)
+  local t = ns.db and ns.db.craftSel and ns.db.craftSel[s.name]
+  if t and t[r.name] ~= nil then return t[r.name] end
+  return r.kind == 'optimal' or r.kind == 'medium'
+end
+function C.toggle(s, r)
+  ns.db.craftSel = ns.db.craftSel or {}
+  local t = ns.db.craftSel[s.name] or {}
+  ns.db.craftSel[s.name] = t
+  t[r.name] = not C.selected(s, r)
+end
+-- simulace: na kazdy bod skillu nejlevnejsi vybrany recept (cena kusu / sance); usek po useku
+function C.simulate(s)
+  local sel = {}
+  for _, r in ipairs(s.list) do if r.kind ~= 'trivial' and C.selected(s, r) then sel[#sel + 1] = r end end
+  local segs, per, mats = {}, {}, {}
+  local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
+  for sk = s.rank, top - 1 do
+    local best, bc, bp
+    for _, r in ipairs(sel) do
+      local p = chanceAt(r, sk, s.rank) * math.max(1, r.ups or 1)
+      if p > 0 then
+        local c = (r.cc or 0) / p
+        if not bc or c < bc then best, bc, bp = r, c, p end
+      end
+    end
+    if not best then break end
+    local seg = segs[#segs]
+    if seg and seg.r == best then seg.to = sk + 1 seg.n = seg.n + 1 / bp seg.cost = seg.cost + bc
+    else segs[#segs + 1] = { r = best, from = sk, to = sk + 1, n = 1 / bp, cost = bc } end
+    per[best] = (per[best] or 0) + 1 / bp
+  end
+  -- material: soucet za vsechny kusy (cele kusy nahoru)
+  local total = 0
+  for r, n in pairs(per) do
+    local k = math.ceil(n)
+    for _, a in ipairs(r.reag) do
+      local key = a.name
+      local e = mats[key] or { name = a.name, need = 0, have = a.have, link = a.link }
+      e.need = e.need + a.need * k
+      mats[key] = e
+    end
+    total = total + k * (r.cc or 0)
+  end
+  return segs, mats, total
+end
+
+------------------------------------------------------------------------------------------
 -- Okno vedle profese
 ------------------------------------------------------------------------------------------
 local f, state
+local place
 local WHITE = 'Interface\\Buttons\\WHITE8X8'
+local function accent2(a) local c = ns.THEME and ns.THEME.ui or { 0.3, 0.7, 1 } return c[1], c[2], c[3], a or 1 end
 local function build()
   local T = ns.THEME
   f = CreateFrame('Frame', 'ClaudeMasterCraft', UIParent, 'BackdropTemplate')
@@ -237,9 +362,56 @@ local function build()
   f:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
   f:SetBackdropColor(T.bg[1], T.bg[2], T.bg[3], 0.94) f:SetBackdropBorderColor(unpack(T.border))
   f:SetFrameStrata('HIGH') f:SetClampedToScreen(true)
+  -- presouvani (tahem za okraj / nadpis) a zmena velikosti (roh); poloha se pamatuje relativne k oknu profese
+  f:SetMovable(true) f:SetResizable(true) f:EnableMouse(true) f:RegisterForDrag('LeftButton')
+  if f.SetResizeBounds then f:SetResizeBounds(240, 100, 700, 900) elseif f.SetMinResize then f:SetMinResize(240, 100) end
+  f:SetScript('OnDragStart', f.StartMoving)
+  f:SetScript('OnDragStop', function(self)
+    self:StopMovingOrSizing()
+    local h = host()
+    if h and ns.db then
+      ns.db.craftOff = { self:GetLeft() - h:GetRight(), self:GetTop() - h:GetTop() }
+    end
+    place()
+  end)
+  local grip = CreateFrame('Button', nil, f)
+  grip:SetSize(14, 14) grip:SetPoint('BOTTOMRIGHT', -1, 1) grip:SetFrameLevel(f:GetFrameLevel() + 10)
+  grip:SetNormalTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up')
+  grip:SetHighlightTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight')
+  grip:SetPushedTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down')
+  grip:SetScript('OnMouseDown', function() f.sizing = true f:StartSizing('BOTTOMRIGHT') end)
+  grip:SetScript('OnMouseUp', function()
+    f:StopMovingOrSizing() f.sizing = false
+    if ns.db then ns.db.craftW, ns.db.craftH = math.floor(f:GetWidth() + 0.5), math.floor(f:GetHeight() + 0.5) end
+    local h = host()
+    if h and ns.db then ns.db.craftOff = { f:GetLeft() - h:GetRight(), f:GetTop() - h:GetTop() } end
+    C.refresh()
+  end)
+  grip:SetScript('OnDoubleClick', function()
+    if ns.db then ns.db.craftW, ns.db.craftH, ns.db.craftOff = nil, nil, nil end
+    C.refresh()
+  end)
+  grip:SetScript('OnEnter', function(self)
+    GameTooltip:SetOwner(self, 'ANCHOR_TOP') GameTooltip:AddLine('Velikost panelu', 1, 1, 1)
+    GameTooltip:AddLine('Tahni za roh. Panel presunes tahem za nadpis. Dvojklik = puvodni velikost i misto.', 0.8, 0.8, 0.8, true) GameTooltip:Show()
+  end)
+  grip:SetScript('OnLeave', function() GameTooltip:Hide() end)
+  f.sizing = false
   f.title = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal') f.title:SetPoint('TOPLEFT', 10, -8)
   f.title:SetTextColor(unpack(T.title))
-  f.skill = f:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') f.skill:SetPoint('TOPRIGHT', -10, -10)
+  f.skill = f:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') f.skill:SetPoint('TOPRIGHT', -62, -10)
+  local pb = CreateFrame('Button', nil, f, 'BackdropTemplate')
+  pb:SetSize(48, 16) pb:SetPoint('TOPRIGHT', -8, -7)
+  pb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+  pb.t = pb:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') pb.t:SetPoint('CENTER') pb.t:SetText('Plan')
+  pb:SetScript('OnClick', function() C.planMode = not C.planMode C.refresh() end)
+  pb:SetScript('OnEnter', function(self)
+    GameTooltip:SetOwner(self, 'ANCHOR_TOP') GameTooltip:AddLine('Plan levelovani', 1, 1, 1)
+    GameTooltip:AddLine('Zaskrtni recepty, ktere chces delat; addon spocita nejlevnejsi postup az do stropu ranku, kolik kusu ktereho receptu a material.', 0.8, 0.8, 0.8, true)
+    GameTooltip:Show()
+  end)
+  pb:SetScript('OnLeave', function() GameTooltip:Hide() end)
+  f.planBtn = pb
   -- velke tlacitko "Vyrob"
   local b = CreateFrame('Button', nil, f, 'BackdropTemplate')
   b:SetPoint('TOPLEFT', 8, -28) b:SetPoint('TOPRIGHT', -8, -28) b:SetHeight(40)
@@ -264,7 +436,7 @@ local function build()
   f.btn = b
   -- radky: dalsi kroky, nakupni seznam, trener
   f.lines = {}
-  for i = 1, 12 do
+  for i = 1, 40 do
     local l = CreateFrame('Button', nil, f)
     l:SetHeight(15) l:SetPoint('LEFT', 10, 0) l:SetPoint('RIGHT', -10, 0)
     l.text = l:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') l.text:SetAllPoints() l.text:SetJustifyH('LEFT') l.text:SetWordWrap(false)
@@ -282,15 +454,22 @@ local function build()
   f:Hide()
 end
 
-local function place()
+function place()
   local h = host()
   f:ClearAllPoints()
-  -- vpravo od okna profese jsou svisla tlacitka profesi (~50 px): panel az za ne
-  if h then f:SetPoint('TOPLEFT', h, 'TOPRIGHT', 56, -14)
+  local off = ns.db and ns.db.craftOff
+  -- vpravo od okna profese jsou svisla tlacitka profesi (~50 px): panel az za ne (nebo kam si ho hrac posunul)
+  if h then f:SetPoint('TOPLEFT', h, 'TOPRIGHT', off and off[1] or 56, off and off[2] or -14)
   else f:SetPoint('RIGHT', UIParent, 'RIGHT', -300, 100) end
+  f:SetWidth((ns.db and ns.db.craftW) or 300)
 end
 
 -- kde sehnat material: Pruzkumnik (ForeverDB) - detail itemu
+local function ppt(r)
+  if not (r and r.ppt) then return '' end
+  if r.ppt < 1 then return ' |cff9aa6b8~zdarma/bod|r' end
+  return ' |cff9aa6b8~' .. (ns.coin and ns.coin(r.ppt) or math.floor(r.ppt) .. 'c') .. '/bod|r'
+end
 local function findItem(link, name)
   local id = itemId(link)
   if not (id and ns.Explore and ns.Options and ns.Options.toggle) then ns.say('Material: ' .. tostring(name)) return end
@@ -304,6 +483,7 @@ end
 
 function C.refresh()
   if not f then build() end
+  if f.sizing then return end
   local s = C.scan()
   if not s or not (C.open or host()) then f:Hide() return end
   local best, can, cant = C.plan(s)
@@ -326,8 +506,8 @@ function C.refresh()
     local tex = best.icon or (api('GetTradeSkillIcon') and safe(pc(api('GetTradeSkillIcon'), best.i)))
     b.icon:SetTexture(tex or 'Interface\\Icons\\INV_Misc_QuestionMark')
     b.text:SetText(('Vyrob %dx |c%s%s|r'):format(n, COLOR[best.kind] or 'ffffffff', best.name))
-    b.sub:SetText(('|cff9aa6b8%s, materialu na %d ks%s|r'):format(LABEL[best.kind] or best.kind, best.avail,
-      (best.ups and best.ups > 1) and (', +%d skill/kus'):format(best.ups) or ''))
+    b.sub:SetText(('|cff9aa6b8%s, materialu na %d ks%s|r%s'):format(LABEL[best.kind] or best.kind, best.avail,
+      (best.ups and best.ups > 1) and (', +%d skill/kus'):format(best.ups) or '', ppt(best)))
     b:Enable() b:SetAlpha(1)
   else
     b.icon:SetTexture('Interface\\Icons\\INV_Misc_Bag_10')
@@ -341,7 +521,7 @@ function C.refresh()
       local parts = {}
       for _, x in ipairs(m) do if x.vendor then parts[#parts + 1] = x.n .. 'x ' .. x.name end end
       for _, x in ipairs(m) do if not x.vendor then parts[#parts + 1] = '|cff40c040vyrob ' .. x.n .. 'x ' .. x.name .. '|r' end end
-      b.text:SetText(('Kup u vendora -> 5x |c%s%s|r'):format(COLOR[buy.kind] or 'ffffffff', buy.name))
+      b.text:SetText(('Kup u vendora -> 5x |c%s%s|r%s'):format(COLOR[buy.kind] or 'ffffffff', buy.name, ppt(buy)))
       b.sub:SetText('|cff9aa6b8kupit: ' .. table.concat(parts, ', ') .. '|r')
     elseif useful == 0 then
       b.text:SetText('|cffffcc00Zadny oranzovy / zluty recept|r') b.sub:SetText('|cff9aa6b8nove recepty u trenera|r')
@@ -353,6 +533,7 @@ function C.refresh()
   -- radky
   local rows = {}
   local function row(text, extra) extra = extra or {} extra.text = text rows[#rows + 1] = extra end
+  f.planBtn:SetBackdropColor(accent2(C.planMode and 0.5 or 0.12)) f.planBtn:SetBackdropBorderColor(accent2(C.planMode and 1 or 0.5))
   if s.max > 0 and s.max - s.rank <= 10 and s.max < 300 then
     row(('|cffffcc00Trener:|r skill %d/%d - dalsi rank (do %d) se uci u trenera.'):format(s.rank, s.max, s.max + 75),
       { tip = 'Bez noveho ranku se skill nad strop nezvedne.' })
@@ -379,7 +560,7 @@ function C.refresh()
     row(('|cffffcc00U trenera ted naucis:|r %d recept%s'):format(#un, #un == 1 and '' or (#un < 5 and 'y' or 'u')),
       { tip = 'Recepty od trenera, na ktere uz mas skill. Nove recepty davaji skill (oranzove).' })
     for i, r in ipairs(un) do
-      if i > 4 then break end
+      if i > ((ns.db and ns.db.craftH and ns.db.craftH > 260) and 8 or 4) then break end
       row(('   |cffff8040%s|r%s'):format(r.name, r.reqSkill and (' |cff9aa6b8(%d)|r'):format(r.reqSkill) or ''), { link = r.link, tip = r.src })
     end
   elseif soon > 0 then
@@ -389,15 +570,15 @@ function C.refresh()
   for _, r in ipairs(can) do if r ~= best and #nextC < 2 then nextC[#nextC + 1] = r end end
   if nextC[1] then row('|cff66ccffPak:|r') end
   for _, r in ipairs(nextC) do
-    row(('   |c%s%s|r |cff9aa6b8(mas na %d)|r'):format(COLOR[r.kind] or 'ffffffff', r.name, r.avail), { link = r.link })
+    row(('   |c%s%s|r |cff9aa6b8(mas na %d)|r%s'):format(COLOR[r.kind] or 'ffffffff', r.name, r.avail, ppt(r)), { link = r.link })
   end
   -- nakupni seznam: nejlepsi recepty, na ktere material chybi (oranzove / zlute)
   local shown = 0
   for _, r in ipairs(cant) do
-    if shown >= 2 or RANK[r.kind] < 3 then break end
+    if shown >= ((ns.db and ns.db.craftH and ns.db.craftH > 260) and 5 or 2) or RANK[r.kind] < 3 then break end
     shown = shown + 1
     local miss = missing(r, 5)
-    row(('|cffff8855Chybi na 5x|r |c%s%s|r:'):format(COLOR[r.kind] or 'ffffffff', r.name), { link = r.link })
+    row(('|cffff8855Chybi na 5x|r |c%s%s|r:%s'):format(COLOR[r.kind] or 'ffffffff', r.name, ppt(r)), { link = r.link })
     for _, m in ipairs(miss) do
       local own
       for _, x in ipairs(s.list) do if x.name == m.name then own = x end end
@@ -406,17 +587,58 @@ function C.refresh()
         { link = m.link, tip = 'Klik = kde sehnat (Pruzkumnik: vendori, dropy)', onClick = function() findItem(m.link, m.name) end })
     end
   end
+  if C.planMode then
+    rows = {}
+    -- seznam receptu se zaskrtnutim
+    local list = {}
+    for _, r in ipairs(s.list) do if r.kind ~= 'trivial' then list[#list + 1] = r end end
+    table.sort(list, function(a, b) if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end return a.name < b.name end)
+    row('|cff66ccffRecepty (klik = zaskrtnout):|r')
+    for _, r in ipairs(list) do
+      local on = C.selected(s, r)
+      local rem = C.remaining(r, s.rank)
+      row(('%s |c%s%s|r |cff9aa6b8zbyva ~%d ks|r%s'):format(on and '|TInterface\\Buttons\\UI-CheckBox-Check:14:14|t' or '|TInterface\\Buttons\\UI-CheckBox-Up:14:14|t',
+        COLOR[r.kind] or 'ffffffff', r.name, math.floor(rem + 0.5), ppt(r)),
+        { link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
+    end
+    local segs, mats, total = C.simulate(s)
+    row(' ')
+    if segs[1] then
+      row(('|cff66ccffPlan:|r %d -> %d, ~%s'):format(segs[1].from, segs[#segs].to, ns.coin and ns.coin(total) or total))
+      for _, g in ipairs(segs) do
+        row(('   %d-%d: |cffffffff%dx|r |c%s%s|r'):format(g.from, g.to, math.ceil(g.n), COLOR[g.r.kind] or 'ffffffff', g.r.name), { link = g.r.link })
+      end
+      row('|cff66ccffMaterial celkem:|r')
+      local ml = {}
+      for _, m in pairs(mats) do ml[#ml + 1] = m end
+      table.sort(ml, function(a, b) return a.name < b.name end)
+      for _, m in ipairs(ml) do
+        local miss = m.need - m.have
+        local id = itemId(m.link)
+        local vend = id and ns.MobDB and ns.MobDB.isVendor and ns.MobDB.isVendor(id)
+        row(('   %dx %s %s%s'):format(m.need, m.name, miss > 0 and ('|cffff8855(chybi %d)|r'):format(miss) or '|cff40c040(mas)|r',
+          (miss > 0 and vend) and ' |cffffd200- vendor|r' or ''),
+          { link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
+      end
+      C.planShop = mats
+    else
+      row('|cff9aa6b8Zadny vybrany recept uz nedava skill.|r')
+      C.planShop = nil
+    end
+  end
   if #rows == 0 and best then row('|cff9aa6b8Vse potrebne mas - klikej na tlacitko.|r') end
   local y = -74
+  local maxH = ns.db and ns.db.craftH
   for i, l in ipairs(f.lines) do
     local r = rows[i]
+    if r and maxH and -y + 15 + 8 > maxH then r = nil end
     if r then
       l:ClearAllPoints() l:SetPoint('TOPLEFT', 10, y) l:SetPoint('TOPRIGHT', -10, y) y = y - 15
       l.text:SetText(r.text) l.link, l.tip, l.onClick = r.link, r.tip, r.onClick
       l:Show()
     else l:Hide() end
   end
-  f:SetHeight(-y + 8)
+  f:SetHeight(maxH or (-y + 8))
   f:Show()
   C.saveShop(s, cant)
 end
@@ -428,6 +650,16 @@ end
 function C.saveShop(s, cant)
   if not ns.db then return end
   local items, n = {}, 0
+  if C.planMode and C.planShop then
+    for _, m in pairs(C.planShop) do
+      local id = itemId(m.link)
+      if id and m.need > m.have and ns.MobDB and ns.MobDB.isVendor and ns.MobDB.isVendor(id) then
+        items[id] = { name = m.name, want = m.need, for_ = 'plan levelovani' }
+      end
+    end
+    ns.db.craftShop = next(items) and { prof = s.name, items = items } or nil
+    return
+  end
   for _, r in ipairs(cant or {}) do
     if n >= 3 or RANK[r.kind] < 3 then break end
     if r.vendorOnly then
@@ -637,6 +869,19 @@ function C.dump()
         tostring(info.difficulty), tostring(info.relativeDifficulty), tostring(info.numSkillUps), tostring(info.learned), tostring(info.numAvailable)))
     end
   end
+  -- surova data receptu, ktere neumis (zdroj a pozadavky) - pro sekci "U trenera"
+  local shownU = 0
+  for _, r in ipairs(s.unlearned or {}) do
+    if shownU >= 3 then break end
+    shownU = shownU + 1
+    local req = T2 and T2.GetRecipeRequirements and pc(T2.GetRecipeRequirements, r.i)
+    local rq = {}
+    for _, q in ipairs(type(req) == 'table' and req or {}) do
+      if type(q) == 'table' then rq[#rq + 1] = ('%s/%s'):format(tostring(q.name), tostring(q.met)) else rq[#rq + 1] = tostring(q) end
+    end
+    ns.say(('  [neumis] %s: zdroj="%s" pozadavky={%s} -> trener=%s skill=%s'):format(r.name, tostring(r.src), table.concat(rq, '; '),
+      tostring(r.trainer), tostring(r.reqSkill)))
+  end
   local best = C.plan(s)
   local cnt = { optimal = 0, medium = 0, easy = 0, trivial = 0 }
   for _, r in ipairs(s.list) do cnt[r.kind] = (cnt[r.kind] or 0) + 1 end
@@ -652,7 +897,7 @@ function C.dump()
     if i > 25 then ns.say(('  ... a dalsich %d'):format(#list - 25)) break end
     local mats = {}
     for _, a in ipairs(r.reag) do mats[#mats + 1] = ('%dx %s (%d)'):format(a.need, a.name, a.have) end
-    ns.say(('  %s|c%s%s|r [%s] mas na %d: %s'):format(r == best and '>> ' or '', COLOR[r.kind] or 'ffffffff', r.name, r.kind, r.avail, table.concat(mats, ', ')))
+    ns.say(('  %s|c%s%s|r [%s] mas na %d%s: %s'):format(r == best and '>> ' or '', COLOR[r.kind] or 'ffffffff', r.name, r.kind, r.avail, ppt(r), table.concat(mats, ', ')))
   end
   if #list == 0 then ns.say('  (zadny recept, ktery by dal skill)') end
 end
