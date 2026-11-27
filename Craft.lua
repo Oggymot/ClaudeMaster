@@ -1062,6 +1062,19 @@ function C.refresh()
         tip = (what and (what .. '\n') or '') .. (u.r.avail > 0 and ('Material mas na %d ks.'):format(u.r.avail) or 'Material zatim nemas.') .. (u.req and (' Od levelu %d.'):format(u.req) or '') })
     end
     if not ups[1] then row(G .. 'Nic, co by se hodilo tobe nebo parte.|r') end
+    -- parta: maji partaci data addonu? (bez nich nejde porovnat)
+    local ps = ns.Gear and ns.Gear.partyStatus and ns.Gear.partyStatus() or {}
+    if ps[1] then
+      local found = {}
+      for _, u in ipairs(ups) do for _, p2 in ipairs(u.peers or {}) do found[p2.name] = true end end
+      local parts = {}
+      for _, p2 in ipairs(ps) do
+        parts[#parts + 1] = '|cff66ccff' .. p2.name .. '|r ' .. (not p2.data and '|cffff8855bez dat addonu|r'
+          or (found[p2.name] and '|cff40ff60ma upgrady|r' or G .. 'nic lepsiho|r'))
+      end
+      row(G .. 'Parta:|r ' .. table.concat(parts, ', '), { tip = 'Porovnani pro partaky jde jen s jejich ClaudeMasterem (posila vybaveni kazdych 5 min). '
+        .. '"nic lepsiho" = zadny vyrobek neni lepsi nez to, co ma na sobe, nebo ho jeho trida nemuze nosit.' })
+    end
   end
   local function profitRows(lim)
     for i, p2 in ipairs(profits) do

@@ -863,6 +863,22 @@ local function canUse(cls, lvl, link, loc, fl)
   return true
 end
 -- komu z party je item vylepsenim -> { {name, pct, req, empty}, ... } (nejvetsi prvni)
+-- stav party pro porovnani: { {name, cls, lvl, data = true/false} }
+function G.partyStatus()
+  local out = {}
+  local now = GetTime()
+  for i = 1, 4 do
+    local u = 'party' .. i
+    if UnitExists and safeBool(pc(UnitExists, u)) then
+      local nm = safe(pc(UnitName, u))
+      if type(nm) == 'string' then
+        local p = G.peers[nm]
+        out[#out + 1] = { name = nm, cls = select(2, pc(UnitClass, u)), data = p and now - p.at < 900 or false }
+      end
+    end
+  end
+  return out
+end
 function G.peerUps(link, st, req, fl)
   local out = {}
   local loc = equipLocOf(link)
