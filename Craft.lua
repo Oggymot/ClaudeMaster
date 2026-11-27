@@ -338,6 +338,38 @@ function C.remaining(r, rank)
   end
   return n
 end
+-- barvy pro plan: 'all' = vse, 'oy' = oranzove + zlute, 'o' = jen oranzove (jisty bod)
+function C.mode(s) return (ns.db and ns.db.craftMode and ns.db.craftMode[s.name]) or 'all' end
+function C.setMode(s, m)
+  ns.db.craftMode = ns.db.craftMode or {}
+  ns.db.craftMode[s.name] = (m ~= 'all') and m or nil
+end
+-- sance s ohledem na zvolene barvy (zluta = do pulky mezi zlutou a sedou)
+local function chanceMode(r, sk, rank, mode)
+  local p = chanceAt(r, sk, rank)
+  if mode == 'all' or p <= 0 then return p end
+  local MD = ns.MobDB
+  local y, g
+  if MD and MD.skillRange and type(r.i) == 'number' and r.i > 1000 then y, g = MD.skillRange(r.i) end
+  if not (y and g) then
+    -- hranice nezname: jen dnesni barva
+    if mode == 'o' then return r.kind == 'optimal' and p or 0 end
+    return (r.kind == 'optimal' or r.kind == 'medium') and p or 0
+  end
+  if sk < y then return p end                          -- oranzovy
+  if mode == 'o' then return 0 end
+  return (sk < math.floor((y + g) / 2)) and p or 0     -- zluty (zelena zacina v pulce)
+end
+-- kolik kusu jeste da skill v ramci zvolenych barev
+function C.remaining(r, rank, mode)
+  local n = 0
+  for sk = rank, rank + 150 do
+    local p = chanceMode(r, sk, rank, mode or 'all')
+    if p <= 0 then break end
+    n = n + 1 / (p * math.max(1, r.ups or 1))
+  end
+  return n
+end
 -- cilovy skill planu (nil = strop ranku)
 function C.target(s)
   local t = ns.db and ns.db.craftTarget and ns.db.craftTarget[s.name]
@@ -364,6 +396,7 @@ function C.toggle(s, r)
 end
 -- simulace: na kazdy bod skillu nejlevnejsi vybrany recept (cena kusu / sance); usek po useku
 function C.simulate(s)
+  local mode = C.mode(s)
   local sel = {}
   for _, r in ipairs(s.list) do if r.kind ~= 'trivial' and C.selected(s, r) then sel[#sel + 1] = r end end
   local segs, per, mats = {}, {}, {}
@@ -373,7 +406,7 @@ function C.simulate(s)
   for sk = s.rank, top - 1 do
     local best, bc, bp
     for _, r in ipairs(sel) do
-      local p = chanceAt(r, sk, s.rank) * math.max(1, r.ups or 1)
+      local p = chanceMode(r, sk, s.rank, mode) * math.max(1, r.ups or 1)
       if p > 0 then
         -- zisk = cena 0 (jinak by vyhravaly zelene recepty jen kvuli vic kusum); pri shode vyssi sance
         -- + "cena za cas" na kazdy kus (5s + 20 % materialu), at plan nejede zelene recepty jen proto, ze na nich vydelas
@@ -388,9 +421,10 @@ function C.simulate(s)
     per[best] = (per[best] or 0) + 1 / bp
   end
   -- material: soucet za vsechny kusy (cele kusy nahoru)
-  local total, matT, sellT = 0, 0, 0
+  local total, matT, sellT, crafts = 0, 0, 0, 0
   for r, n in pairs(per) do
     local k = math.ceil(n)
+    crafts = crafts + k
     matT, sellT = matT + k * (r.mat or 0), sellT + k * (r.sell or 0)
     for _, a in ipairs(r.reag) do
       local key = a.name
@@ -414,7 +448,7 @@ function C.simulate(s)
       end
     end
   end
-  return segs, mats, total, matT, sellT
+  return segs, mats, total, matT, sellT, crafts
 end
 
 ------------------------------------------------------------------------------------------
@@ -523,6 +557,24 @@ local function build()
   end)
   pb:SetScript('OnLeave', function() GameTooltip:Hide() end)
   f.planBtn = pb
+  -- tlacitka barev planu (radek "Barvy")
+  f.md = {}
+  for i, d in ipairs({ { 'all', 'vse' }, { 'oy', 'O+Z' }, { 'o', 'O' } }) do
+    local tb = CreateFrame('Button', nil, f, 'BackdropTemplate')
+    tb:SetSize(34, 14)
+    tb:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    tb.t = tb:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall') tb.t:SetPoint('CENTER') tb.t:SetText(d[2])
+    tb.key = d[1]
+    tb:SetScript('OnClick', function(self) if f.mdFn then f.mdFn(self.key) end end)
+    tb:SetScript('OnEnter', function(self)
+      GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+      GameTooltip:AddLine(({ all = 'Vsechny barvy (i zelene - vic kusu, levnejsi)', oy = 'Jen oranzove a zlute', o = 'Jen oranzove - kazdy kus = jisty bod' })[self.key], 1, 1, 1)
+      GameTooltip:Show()
+    end)
+    tb:SetScript('OnLeave', function() GameTooltip:Hide() end)
+    tb:Hide()
+    f.md[i] = tb
+  end
   -- tlacitka cile skillu (ukazi se na radku "Cil skillu")
   f.tg = {}
   local defs = { { 'm5', '-5' }, { 'm1', '-1' }, { 'p1', '+1' }, { 'p5', '+5' }, { 'max', 'max' } }
@@ -729,16 +781,19 @@ function C.refresh()
     row('|cff66ccffRecepty (klik = zaskrtnout):|r')
     for _, r in ipairs(list) do
       local on = C.selected(s, r)
-      local rem = C.remaining(r, s.rank)
+      local rem = C.remaining(r, s.rank, C.mode(s))
       row(('%s |c%s%s|r |cff9aa6b8zbyva ~%d ks|r%s'):format(on and '|TInterface\\Buttons\\UI-CheckBox-Check:14:14|t' or '|TInterface\\Buttons\\UI-CheckBox-Up:14:14|t',
         COLOR[r.kind] or 'ffffffff', r.name, math.floor(rem + 0.5), ppt(r)),
         { link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
     end
-    local segs, mats, total, matT, sellT = C.simulate(s)
+    local segs, mats, total, matT, sellT, crafts = C.simulate(s)
     row(' ')
     -- cil: kolik skillu chces udelat (klik na -5 / +5 / +1 level / max)
     local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
     local tg = C.target(s) or top
+    local md = C.mode(s)
+    row(('|cff66ccffBarvy:|r %s'):format(md == 'o' and '|cffff8040jen oranzove|r' or (md == 'oy' and '|cffff8040oranzove|r + |cffffff00zlute|r' or 'vse (i zelene)')),
+      { modes = function(m) C.setMode(s, m) C.refresh() end })
     row(('|cff66ccffCil skillu:|r |cffffffff%d|r |cff9aa6b8(+%d)|r'):format(tg, tg - s.rank),
       { controls = function(btn)
           local cur = C.target(s) or top
@@ -750,7 +805,11 @@ function C.refresh()
           C.refresh()
         end })
     if segs[1] then
-      row(('|cff66ccffPlan:|r %d -> %d'):format(segs[1].from, segs[#segs].to))
+      row(('|cff66ccffPlan:|r %d -> %d, |cffffffff%d vyrob|r'):format(segs[1].from, segs[#segs].to, crafts))
+      if segs[#segs].to < (C.target(s) or top) then
+        row(('   |cffffcc00Od %d uz zadny vybrany recept %s - nove recepty u trenera.|r'):format(segs[#segs].to,
+          md == 'o' and 'neni oranzovy' or (md == 'oy' and 'neni oranzovy ani zluty' or 'nedava skill')))
+      end
       row(('   material ~%s, prodej vyrobku ~%s = %s'):format(shortCoin(matT), shortCoin(sellT),
         total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200cena ~' .. shortCoin(total) .. '|r')),
         { tip = 'Material: vendor za nakupni cenu, ostatni za cenu z aukce (kdyz ji addon videl), jinak za prodejni. Vyrobky za cenu, kterou da vendor. Polotovary se nepocitaji jako prodej.' })
@@ -793,7 +852,7 @@ function C.refresh()
   end
   if #rows == 0 and best then row('|cff9aa6b8Vse potrebne mas - klikej na tlacitko.|r') end
   local y = -74
-  local tgShown = false
+  local tgShown, mdShown = false, false
   local maxH = ns.db and ns.db.craftH
   for i, l in ipairs(f.lines) do
     local r = rows[i]
@@ -802,6 +861,21 @@ function C.refresh()
       l:ClearAllPoints() l:SetPoint('TOPLEFT', 10, y) l:SetPoint('TOPRIGHT', -10, y) y = y - 15
       l.text:SetText(r.text) l.link, l.tip, l.onClick = r.link, r.tip, r.onClick
       l:Show()
+      if r.modes then
+        f.mdFn = r.modes
+        local prev
+        local cur = state and state.s and C.mode(state.s) or 'all'
+        for k = #f.md, 1, -1 do
+          local tb = f.md[k]
+          tb:ClearAllPoints()
+          if prev then tb:SetPoint('RIGHT', prev, 'LEFT', -3, 0) else tb:SetPoint('RIGHT', l, 'RIGHT', 0, 0) end
+          local on = tb.key == cur
+          tb:SetBackdropColor(accent2(on and 0.5 or 0.15)) tb:SetBackdropBorderColor(accent2(on and 1 or 0.6))
+          tb:Show()
+          prev = tb
+        end
+        mdShown = true
+      end
       if r.controls then
         f.tgFn = r.controls
         local prev
@@ -818,6 +892,7 @@ function C.refresh()
     else l:Hide() end
   end
   if not tgShown then for _, tb in ipairs(f.tg) do tb:Hide() end end
+  if not mdShown then for _, tb in ipairs(f.md) do tb:Hide() end end
   f:SetHeight(maxH or (-y + 8))
   f:Show()
   place()
