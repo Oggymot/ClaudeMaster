@@ -415,6 +415,15 @@ end
 local logBuf = {}
 function R.recvLog(name, msg)
   local q, prog = {}, {}
+  local merge = false
+  -- RU^ = jen zmenene questy: doplnit do posledniho logu
+  if msg:sub(1, 3) == 'RU^' then
+    local old = R.peerLogs[name]
+    if not old then return end
+    q, prog, merge = {}, {}, true
+    for id, v in pairs(old.q) do q[id] = v end
+    for id, v in pairs(old.prog or {}) do prog[id] = v end
+  end
   -- vicedilna zprava: casti sbirat, ulozit az po posledni
   local k, n, body = msg:match('^RL%^(%d+)/(%d+)%^(.*)$')
   if k then
@@ -432,12 +441,17 @@ function R.recvLog(name, msg)
       return
     end
     logBuf[name] = nil
+    -- nektera cast se ztratila: neprepsat, jen doplnit (jinak by questy z chybejici casti zmizely)
+    if b.got < n and R.peerLogs[name] then
+      local old = R.peerLogs[name]
+      for id, v in pairs(old.q) do if q[id] == nil then q[id] = v prog[id] = prog[id] or (old.prog or {})[id] end end
+    end
   end
   for e in msg:sub(4):gmatch('[^,]+') do
     local id, c, pr = e:match('^(%d+):(%d):?(.*)$')
     if id then
       q[tonumber(id)] = c == '1'
-      if pr and pr ~= '' then prog[tonumber(id)] = pr end
+      if pr and pr ~= '' then prog[tonumber(id)] = pr else prog[tonumber(id)] = nil end
     end
   end
   local old = R.peerLogs[name]
@@ -491,36 +505,57 @@ local function parseProg(s)
   for a, b in (s or ''):gmatch('(%d+)/(%d+)') do out[#out + 1] = { have = tonumber(a), need = tonumber(b) } end
   return out
 end
-local lastLog, lastLogAt = nil, -99
-local function sendLog()
+local lastSent, lastFullAt = {}, -99
+local sendLog
+local function retrySoon()
+  if C_Timer then C_Timer.After(1.5, function() pcall(sendLog) end) end
+end
+function sendLog()
   local D = ns.Duo
   if not (D and D.rawSend and D.ok and IsInGroup and IsInGroup()) or not QL.GetNumQuestLogEntries then return end
   -- posila se i v boji (addon zpravy boj neomezuje): partak hned vidi, kdyz neco zabijes / seberes
-  -- zprava ma max. 255 znaku: log se posila po castech "RL^k/N^..." (driv se zbytek useknul)
-  local all = {}
+  local all, map = {}, {}
   for i = 1, safeNum(pc(QL.GetNumQuestLogEntries)) or 0 do
     local info = pc(QL.GetInfo, i)
     local id = type(info) == 'table' and not info.isHeader and not info.isHidden and safeNum(info.questID)
     if id then
       local comp = QL.IsComplete and safeBool(pc(QL.IsComplete, id))
       local pr = not comp and progAll(id)
-      all[#all + 1] = id .. ':' .. (comp and '1' or '0') .. (pr and (':' .. pr) or '')
+      local e = id .. ':' .. (comp and '1' or '0') .. (pr and (':' .. pr) or '')
+      all[#all + 1] = e map[id] = e
     end
   end
+  -- co se zmenilo proti tomu, co partak zna
+  local changed, structural = {}, false
+  for id, e in pairs(map) do
+    if lastSent[id] == nil then structural = true elseif lastSent[id] ~= e then changed[#changed + 1] = e end
+  end
+  for id in pairs(lastSent) do if map[id] == nil then structural = true break end end
+  local now = GetTime()
+  local delta = 'RU^' .. table.concat(changed, ',')
+  -- jen postup: mala zprava se zmenenymi questy (spolehlivejsi nez cely log)
+  if not structural and now - lastFullAt < 45 then
+    if not changed[1] then return end
+    if #delta <= 240 then
+      if D.rawSend(delta) then
+        for id, e in pairs(map) do lastSent[id] = e end
+      else retrySoon() end
+      return
+    end
+  end
+  -- cely log po castech "RL^k/N^..." (max. 255 znaku na zpravu)
   local chunks, cur, len = {}, {}, 0
   for _, p in ipairs(all) do
     if len + #p + 1 > 235 and cur[1] then chunks[#chunks + 1] = cur cur, len = {}, 0 end
     cur[#cur + 1] = p len = len + #p + 1
   end
   chunks[#chunks + 1] = cur
-  local full = table.concat(all, ',')
-  local now = GetTime()
-  if full == lastLog and now - lastLogAt < 45 then return end
-  lastLog, lastLogAt = full, now
-  for k, c in ipairs(chunks) do
-    local msg = ('RL^%d/%d^%s'):format(k, #chunks, table.concat(c, ','))
+  if not D.rawSend(('RL^1/%d^%s'):format(#chunks, table.concat(chunks[1], ','))) then retrySoon() return end
+  lastSent, lastFullAt = map, now
+  for k = 2, #chunks do
+    local msg = ('RL^%d/%d^%s'):format(k, #chunks, table.concat(chunks[k], ','))
     -- rozestup, at hra zpravy nezahodi (limit rychlosti)
-    if k == 1 or not C_Timer then D.rawSend(msg) else C_Timer.After(0.4 * (k - 1), function() pcall(D.rawSend, msg) end) end
+    if C_Timer then C_Timer.After(0.5 * (k - 1), function() pcall(D.rawSend, msg) end) else D.rawSend(msg) end
   end
 end
 R.sendLog = sendLog
@@ -1657,6 +1692,8 @@ qev:SetScript('OnEvent', function(_, e)
   if e == 'QUEST_LOG_UPDATE' and not sendPend and C_Timer then
     sendPend = true
     C_Timer.After(1, function() sendPend = false pcall(sendLog) end)
+    -- pocty cilu se nekdy propisou az chvili po udalosti: jeste jednou
+    C_Timer.After(3, function() pcall(sendLog) end)
   end
   if e == 'SUPER_TRACKING_CHANGED' and not applying and ns.db and ns.db.partyFocus ~= false then
     local id = curSuper()
@@ -1682,7 +1719,7 @@ tick:SetScript('OnUpdate', function(_, el)
     icon.n:SetText(ok and steps and steps > 0 and steps or '')
   end
   sendAcc = (sendAcc or 0) + 1
-  if sendAcc >= 4 then sendAcc = 0 pcall(sendLog) end
+  if sendAcc >= 2 then sendAcc = 0 pcall(sendLog) end
   -- v boji jen pri zmene questu (postup) a bez questovych tlacitek
   if frame and frame:IsShown() and not (InCombatLockdown() and (itemShown or not logDirty)) then
     -- prepocet jen pri pohybu (25+ yd), zmene logu nebo jednou za 15 s
