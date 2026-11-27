@@ -534,7 +534,7 @@ function sendLog()
   local now = GetTime()
   local delta = 'RU^' .. table.concat(changed, ',')
   -- jen postup: mala zprava se zmenenymi questy (spolehlivejsi nez cely log)
-  if not structural and now - lastFullAt < 45 then
+  if not structural and now - lastFullAt < 90 then
     if not changed[1] then return end
     if #delta <= 240 then
       if D.rawSend(delta) then
@@ -563,7 +563,7 @@ R.sendLog = sendLog
 local function peers()
   local out = {}
   for name, l in pairs(R.peerLogs) do
-    if GetTime() - l.at < 120 and inParty(name) then out[#out + 1] = { name = name, unit = inParty(name), q = l.q, prog = l.prog or {} } end
+    if GetTime() - l.at < 200 and inParty(name) then out[#out + 1] = { name = name, unit = inParty(name), q = l.q, prog = l.prog or {} } end
   end
   table.sort(out, function(a, b) return a.name < b.name end)
   return out
