@@ -276,7 +276,10 @@ function C.refresh()
     b:Enable() b:SetAlpha(1)
   else
     b.icon:SetTexture('Interface\\Icons\\INV_Misc_Bag_10')
-    b.text:SetText(s.rank >= s.max and s.max > 0 and '|cffffcc00Strop ranku - jdi k trenerovi|r' or '|cffff8855Nemas material na zadny uzitecny recept|r')
+    local useful = 0
+    for _, r in ipairs(s.list) do if RANK[r.kind] >= 3 then useful = useful + 1 end end
+    b.text:SetText(s.rank >= s.max and s.max > 0 and '|cffffcc00Strop ranku - jdi k trenerovi|r'
+      or (useful == 0 and '|cffffcc00Zadny oranzovy / zluty recept - jdi k trenerovi|r' or '|cffff8855Nemas material na zadny uzitecny recept|r'))
     b.sub:SetText('|cff9aa6b8viz nakupni seznam nize|r')
     b:Disable() b:SetAlpha(0.7)
   end
@@ -286,6 +289,13 @@ function C.refresh()
   if s.max > 0 and s.max - s.rank <= 10 and s.max < 300 then
     row(('|cffffcc00Trener:|r skill %d/%d - dalsi rank (do %d) se uci u trenera.'):format(s.rank, s.max, s.max + 75),
       { tip = 'Bez noveho ranku se skill nad strop nezvedne.' })
+  end
+  -- malo uzitecnych receptu: u trenera budou nove (oranzove)
+  local orange, yellow = 0, 0
+  for _, r in ipairs(s.list) do if r.kind == 'optimal' then orange = orange + 1 elseif r.kind == 'medium' then yellow = yellow + 1 end end
+  if orange == 0 and yellow <= 2 and not (s.max > 0 and s.max - s.rank <= 10) then
+    row(('|cffffcc00Trener:|r oranzovych receptu 0, zlutych %d - u trenera %s budou nove recepty.'):format(yellow, s.name),
+      { tip = 'Recepty, ktere znas, uz skoro nedavaji skill. Nove (oranzove) se uci u trenera nebo z receptu (drop, vendor).' })
   end
   local nextC = {}
   for _, r in ipairs(can) do if r ~= best and #nextC < 2 then nextC[#nextC + 1] = r end end
