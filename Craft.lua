@@ -678,6 +678,32 @@ function C.refresh()
   local best, can, cant = C.plan(s)
   state = { s = s, best = best }
   local prep = s.prep
+  -- tlacitko dela prvni krok planu (stejne barvy, cil a zaskrtnute recepty jako plan)
+  local planBuy, planN
+  local segs = C.simulate(s)
+  local first = segs[1]
+  if first then
+    local pr = first.r
+    planN = math.max(1, math.ceil(first.n))
+    if pr.avail > 0 then
+      best, prep = pr, nil
+    else
+      best, prep = nil, nil
+      local byName = {}
+      for _, r in ipairs(s.list) do byName[r.name] = r end
+      local miss = missing(pr, planN)
+      local allOwnOrVendor, ownFirst = true, nil
+      for _, m in ipairs(miss) do
+        local own = byName[m.name]
+        if own and own.avail > 0 then ownFirst = ownFirst or { recipe = own, n = math.min(m.n, own.avail), target = pr }
+        elseif not m.vendor then allOwnOrVendor = false end
+      end
+      if ownFirst then prep = ownFirst
+      elseif allOwnOrVendor and #miss > 0 then planBuy = pr end
+      if not prep and not planBuy then planBuy = nil end
+    end
+    state.best = best
+  end
   f.title:SetText('Levelovani: ' .. s.name)
   f.skill:SetText(('|cffffd200%d|r / %d'):format(s.rank, s.max))
   local b = f.btn
@@ -689,7 +715,7 @@ function C.refresh()
     b.sub:SetText(('|cff9aa6b8polotovar na |c%s%s|r|cff9aa6b8 (%s)|r'):format(COLOR[prep.target.kind] or 'ffffffff', prep.target.name, LABEL[prep.target.kind] or ''))
     b:Enable() b:SetAlpha(1)
   elseif best then
-    local n = math.min(best.avail, BATCH[best.kind] or 1)
+    local n = math.min(best.avail, planN or BATCH[best.kind] or 1)
     state.n = n
     local tex = best.icon or (api('GetTradeSkillIcon') and safe(pc(api('GetTradeSkillIcon'), best.i)))
     b.icon:SetTexture(tex or 'Interface\\Icons\\INV_Misc_QuestionMark')
@@ -701,18 +727,22 @@ function C.refresh()
     b.icon:SetTexture('Interface\\Icons\\INV_Misc_Bag_10')
     local useful = 0
     for _, r in ipairs(s.list) do if RANK[r.kind] >= 3 then useful = useful + 1 end end
-    local buy = cant[1] and RANK[cant[1].kind] >= 3 and cant[1].vendorOnly and cant[1]
+    local buy = planBuy or (not first and cant[1] and RANK[cant[1].kind] >= 3 and cant[1].vendorOnly and cant[1])
+    local buyN = planBuy and planN or 5
     if s.rank >= s.max and s.max > 0 then
       b.text:SetText('|cffffcc00Strop ranku - jdi k trenerovi|r') b.sub:SetText('')
     elseif buy then
-      local m = missing(buy, 5)
+      local m = missing(buy, buyN)
       local parts = {}
       for _, x in ipairs(m) do if x.vendor then parts[#parts + 1] = x.n .. 'x ' .. x.name end end
       for _, x in ipairs(m) do if not x.vendor then parts[#parts + 1] = '|cff40c040vyrob ' .. x.n .. 'x ' .. x.name .. '|r' end end
-      b.text:SetText(('5x |c%s%s|r'):format(COLOR[buy.kind] or 'ffffffff', buy.name))
+      b.text:SetText(('%dx |c%s%s|r'):format(buyN, COLOR[buy.kind] or 'ffffffff', buy.name))
       b.sub:SetText('|cffffd200kup u vendora:|r |cff9aa6b8' .. table.concat(parts, ', ') .. '  -  ' .. ppt(buy, true) .. '|r')
     elseif useful == 0 then
       b.text:SetText('|cffffcc00Zadny oranzovy / zluty recept|r') b.sub:SetText('|cff9aa6b8nove recepty u trenera|r')
+    elseif first then
+      b.text:SetText(('|cffff8855Chybi material na %dx|r |c%s%s|r'):format(planN, COLOR[first.r.kind] or 'ffffffff', first.r.name))
+      b.sub:SetText('|cff9aa6b8co sehnat - viz nize (v planu)|r')
     else
       b.text:SetText('|cffff8855Chybi material|r') b.sub:SetText('|cff9aa6b8co sehnat - viz nize|r')
     end
