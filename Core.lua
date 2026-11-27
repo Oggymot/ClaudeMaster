@@ -883,7 +883,9 @@ ns.scaleProbe = newProbe(1, {
 })
 
 local function healthProbe(unit, lines)
-  return newProbe(#lines, {
+  -- vlastni HP: +1 bar "je hodnota nad 1.5?" (nezavisle na meritku) -> prubezna kontrola meritka i v boji
+  local extra = unit == 'player' and 1 or 0
+  return newProbe(#lines + extra, {
     unit = unit, lines = lines,
     begin = function(P)
       return UnitExists(unit) and ns.db and ns.db.hpScale ~= nil and UnitHealthPercent ~= nil
@@ -891,9 +893,25 @@ local function healthProbe(unit, lines)
     end,
     prep = function(P, i, b) b:SetMinMaxValues(0, 2) b:SetValue(1) end,
     apply = function(P, i, b)
+      if i > #P.lines then b:SetValue(UnitHealthPercent(unit, true, stepCurve(1.5))) return end
       b:SetValue(UnitHealthPercent(unit, true, stepCurve(P.lines[i] / 100 * ns.db.hpScale)))
     end,
     read = function(P)
+      if extra == 1 and safeBool(pc(UnitIsDeadOrGhost, 'player')) ~= true then
+        -- hodnota > 1.5 => skala 0-100; <= 1.5 => skala 0-1 (nebo skoro mrtvy). Nesoulad 2x za sebou = spatne meritko
+        local big = P.fired[#P.lines + 1] == true
+        local want = big and 100 or 1
+        if ns.db.hpScale ~= want then
+          P.scaleBad = (P.scaleBad or 0) + 1
+          if P.scaleBad >= 2 then
+            ns.db.hpScale = want P.scaleBad = 0
+            P.hist, P.hiPrev, P.hiCur, P.hiMax = nil, nil, nil, nil
+            ns.hpScaleFix = (ns.hpScaleFix or 0) + 1
+          end
+          return false
+        end
+        P.scaleBad = 0
+      end
       if not readBands(P, false) then return false end
       -- kontrola meritka: hrac mimo boj "pod vsemi carami" (pod 20 %) je skoro jiste spatne meritko
       if unit == 'player' and P.below[#P.below] and P.below[1] and not ns.inCombat()
