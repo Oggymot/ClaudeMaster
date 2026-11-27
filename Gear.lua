@@ -360,7 +360,9 @@ local function onItemTip(tt, data)
   if st then pcall(G.myTip, tt, link, st, blocked, req, fl) end
   -- itemy na quest (hra u nich nic nepise)
   local qn = (G.questByLink and G.questByLink[link]) or (G.questNeed and G.questNeed(link))
-  if qn then
+  if qn and qn.done then
+    tt:AddLine('|T' .. QUEST_TEX .. ':14:14:0:0:64:64:0:64:0:64:140:140:140|t |cff9aa6b8Bylo na quest:|r |cffbbbbbb' .. (qn.title or '?') .. '|r |cff40ff60(hotovo)|r |cff9aa6b8- muzes prodat|r', 1, 1, 1, true)
+  elseif qn then
     local cnt = (qn.need and qn.need > 0) and (' %d/%d'):format(qn.have or 0, qn.need) or ''
     local qt = qn.title or 'k zadnemu questu v logu |cff9aa6b8(asi uz splneny)|r'
     tt:AddLine('|T' .. QUEST_TEX .. ':14:14|t |cffffd100Quest:|r ' .. qt .. cnt .. ' |cff9aa6b8- neprodavat|r')
@@ -505,7 +507,11 @@ local function bagQuest(bag, slot, link)
     local id = safeNum(qi.questID)
     -- hra ho ma za questovy, ale vsechny questy, ktere ho potrebuji, mas hotove (ForeverDB) -> uz neni potreba
     local iid = type(link) == 'string' and tonumber(link:match('item:(%d+)'))
-    if not id and iid and ns.MobDB and ns.MobDB.questItemDone and ns.MobDB.questItemDone(iid) then return nil end
+    if not id and iid and ns.MobDB and ns.MobDB.questItemDone and ns.MobDB.questItemDone(iid) then
+      local names = {}
+      for _, q in ipairs(ns.MobDB.itemQuests(iid) or {}) do names[#names + 1] = ns.MobDB.questTitle(q) or ('#' .. q) end
+      return { title = table.concat(names, ', '), done = true }
+    end
     local title = id and C_QuestLog and C_QuestLog.GetTitleForQuestID and safe(pc(C_QuestLog.GetTitleForQuestID, id))
     local starts = safeBool(qi.isActive) == false and id
     if starts then return { title = (title or 'novy quest') .. ' |cff9aa6b8(zacina quest)|r' } end
@@ -601,7 +607,11 @@ function G.upgrades(force)
       if gift then G.giftMap[key] = gift sell = nil end
       -- potrebujes na quest: neprodavat, vykricnik
       local qn = type(link) == 'string' and bagQuest(bag, slot, link)
-      if qn then G.questMap[key] = qn sell = nil G.giftMap[key] = nil G.questByLink[link] = qn end
+      if qn then
+        G.questMap[key] = qn G.questByLink[link] = qn
+        -- hotovy quest: item uz neni potreba -> klidne prodat (sedy vykricnik)
+        if not qn.done then sell = nil G.giftMap[key] = nil end
+      end
       if sell then G.sellMap[key] = sell G.sellByLink[link] = sell end
     end
   end
@@ -1040,7 +1050,13 @@ local function questMark(btn, on)
     t:SetTexture(QUEST_T) t:SetSize(16, 16) t:SetPoint('TOPLEFT', btn, 'TOPLEFT', 1, -4)
     btn.cmQuest = t
   end
-  if btn.cmQuest then btn.cmQuest:SetShown(on and true or false) end
+  if btn.cmQuest then
+    btn.cmQuest:SetShown(on and true or false)
+    -- quest uz hotovy: sedy vykricnik (bylo to na quest, ted uz neni potreba)
+    local done = type(on) == 'table' and on.done
+    if btn.cmQuest.SetDesaturated then btn.cmQuest:SetDesaturated(done and true or false) end
+    btn.cmQuest:SetAlpha(done and 0.65 or 1)
+  end
 end
 -- tlacitka itemu z batohu jinych addonu: jednou za cas projit vsechny framy (EnumerateFrames)
 local other, otherAt = setmetatable({}, { __mode = 'k' }), -99

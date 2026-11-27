@@ -393,6 +393,15 @@ function MD.itemQuests(item)
   for q in s:gmatch('%d+') do out[#out + 1] = tonumber(q) end
   return out
 end
+-- nazev questu z cache (questy s cilem itemu)
+function MD.questTitle(qid)
+  local c = C(true)
+  local e = c and c.qi and c.qi[qid]
+  local t = e and e:match('|([^|]*)$')
+  if t and t ~= '' then return t end
+  local QL = C_QuestLog
+  return QL and QL.GetTitleForQuestID and safe(pc(QL.GetTitleForQuestID, qid)) or nil
+end
 -- item uz neni potreba: vsechny questy, ktere ho chteji, mas hotove (a zadny neni v logu)
 function MD.questItemDone(item)
   local qs = MD.itemQuests(item)
