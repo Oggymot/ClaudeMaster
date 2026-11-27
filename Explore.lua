@@ -55,8 +55,9 @@ end
 local ICON = {
   quest = 'Interface\\GossipFrame\\AvailableQuestIcon',
   zone = 'Interface\\Icons\\INV_Misc_Map_01',
-  npc = 'Interface\\Icons\\INV_Misc_GroupNeedMore',
-  rare = 'Interface\\Icons\\Ability_Hunter_MarkedForDeath',
+  npc = 'Interface\\Icons\\INV_Misc_Head_Human_01',
+  rare = 'Interface\\Icons\\INV_Misc_Bone_HumanSkull_01',
+  give = 'Interface\\GossipFrame\\AvailableQuestIcon',
 }
 
 -- quest pro me: level, frakce giveru, predpoklady, ne hotovy / v logu
@@ -405,12 +406,12 @@ function X.quest(qid)
   local x = type(D.qx[qid]) == 'table' and D.qx[qid] or {}
   local v = R().value(qid, R().inLogSet()[qid] or false)
   local maxXP = safeNum(pc(UnitXPMax, 'player'))
-  out[#out + 1] = { icon = ICON.quest, title = ('|cffffd200%s|r'):format(info[1]),
+  out[#out + 1] = { hero = true, icon = ICON.quest, title = ('|cffffd200%s|r'):format(info[1]),
     sub = ('level %d, od levelu %d%s'):format(info[2] or 0, info[3] or 1, R().done(qid) and ' - uz mas hotovo' or ''),
     right = v and R().valueText(v) or '', link = 'quest:' .. qid, tip = v and R().valueTip(v) or nil }
   out[#out + 1] = { head = 'Kde' }
   for _, k in ipairs(D.qg[qid] or {}) do
-    if R().factionOk(k) then out[#out + 1] = spotRow(ICON.npc, k, me, 'zadava') end
+    if R().factionOk(k) then out[#out + 1] = spotRow(ICON.give, k, me, 'zadava') end
   end
   local op, od = R().objective(qid, me)
   if op then out[#out + 1] = { icon = ICON.zone, title = 'Misto plneni', sub = where(op), right2 = yd(od), p = op } end
@@ -553,8 +554,8 @@ function X.item(id)
   local it = D.item[id]
   if not it then return { { text = '|cff9aa6b8Item neni v databazi.|r' } }, '?' end
   local me = R().playerPos()
-  local r = itemRow(id, ('vyzaduje level %d'):format(it[3] or 1), me)
-  r.open = nil
+  local r = itemRow(id, (it[3] and it[3] > 1) and ('vyzaduje level %d'):format(it[3]) or ((it[2] or 1) >= 2 and 'vybaveni' or 'item'), me)
+  r.open, r.hero = nil, true
   out[1] = r
   local dl = D.drop[id]
   if dl then
@@ -566,7 +567,7 @@ function X.item(id)
       if k > 10 then break end
       local key = 'c' .. e.npc
       local n = D.npc[e.npc]
-      local row = spotRow(n and (n[5] or 0) >= 2 and ICON.rare or ICON.npc, key, me,
+      local row = spotRow(ICON.rare, key, me,
         ('%.1f %%%s'):format(e.ch / 100, n and n[3] and (', level ' .. n[3]) or ''))
       out[#out + 1] = row
     end
@@ -645,7 +646,7 @@ function X.npc(id)
   local rec = MD and MD.byNameLevel(n[1], n[3])
   local lv = n[3] and ((n[4] and n[4] ~= n[3]) and (n[3] .. '-' .. n[4]) or tostring(n[3])) or '?'
   local typ = D.ctype and D.ctype[id] and D.ctype[id][1]
-  out[#out + 1] = { icon = ICON.npc, title = ('|cff66ccff%s|r |cff9aa6b8[%s]|r%s'):format(n[1], lv, RANK[n[5] or 0] and (' ' .. RANK[n[5]]) or ''),
+  out[#out + 1] = { hero = true, icon = ICON.npc, title = ('|cff66ccff%s|r |cff9aa6b8[%s]|r%s'):format(n[1], lv, RANK[n[5] or 0] and (' ' .. RANK[n[5]]) or ''),
     sub = (n[2] and ('<' .. n[2] .. '>  ') or '') .. (typ and typ ~= 'Not specified' and typ or '') }
   -- boj: databaze (classic) + co se addon naucil
   local fight = {}

@@ -574,7 +574,7 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
 end }
 
 PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\Icons\\INV_Misc_Map_01', build = function(p, db)
-  p.section('Pruzkumnik', 'Hledani a chytre filtry nad databazi ForeverDB. Klik na vysledek = sipka na mape.')
+  p.section('Pruzkumnik', 'Questy, NPC, itemy a dropy z ForeverDB. Klik = detail, pravy klik = sipka / aktivovat quest.')
   local status = p.note('', 11)
   local function setStatus(t) status.fs:SetText(t or '') status.fit() p.layout() end
   -- hledani s lupou
@@ -620,19 +620,26 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
   function show(list, what)
     back:SetShown(#stack > 0)
     local n = 0
-    for _, l in ipairs(list or {}) do if l.title then n = n + 1 end end
-    head.t:SetText(what and ('|cffffffff%s|r   |cff8a93a6%d vysledku|r'):format(what, n) or '')
+    for _, l in ipairs(list or {}) do if l.title and not l.hero then n = n + 1 end end
+    -- drobeckova navigace: Blizko > Quest > Item
+    local path = {}
+    for _, st in ipairs(stack) do if st.what and st.what ~= '' then path[#path + 1] = '|cff8a93a6' .. st.what .. '|r' end end
+    path[#path + 1] = '|cffffffff' .. (what or '') .. '|r'
+    local detail = list and list[1] and list[1].hero
+    head.t:SetText(table.concat(path, ' |cff5a6070>|r ') .. ((not detail and what) and ('   |cff8a93a6%d vysledku|r'):format(n) or ''))
     local odd = false
     for i, r in ipairs(rows) do
       local l = list and list[i]
       r.p, r.link, r.tipText, r.open = nil, nil, nil, nil
-      r.arrow:Hide()
+      r.arrow:Hide() r.hline:Hide() r.heroRow = nil r.icon:SetSize(26, 26) r.title:SetFont(FONT, 12, '')
       if not l then r:Hide()
       elseif l.head then
-        r:SetHeight(24) r.kind = 'head'
+        r:SetHeight(28) r.kind = 'head'
         r.icon:Hide() r.sub:SetText('') r.right:SetText('') r.right2:SetText('') r.bar:Hide() r.bg:Hide() r.stripe:Hide()
-        r.title:ClearAllPoints() r.title:SetPoint('BOTTOMLEFT', 2, 4)
+        r.title:SetFont(FONT, 12, '')
+        r.title:ClearAllPoints() r.title:SetPoint('BOTTOMLEFT', 2, 5)
         r.title:SetText(l.head) r.title:SetTextColor(accent())
+        r.hline:Show()
         odd = false r:Show()
       elseif not l.title then
         r:SetHeight(26) r.kind = 'msg'
@@ -640,22 +647,29 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
         r.title:ClearAllPoints() r.title:SetPoint('LEFT', 8, 0) r.title:SetText(l.text or '') r.title:SetTextColor(1, 1, 1)
         r:Show()
       else
-        r:SetHeight(RH) r.kind = 'item'
+        local hero = l.hero
+        r.heroRow = hero
+        r:SetHeight(hero and 50 or RH) r.kind = 'item'
         odd = not odd
-        r.bg:Show() r.bg:SetColorTexture(1, 1, 1, odd and 0.035 or 0.012)
-        r.stripe:Hide()
+        r.bg:Show()
+        if hero then r.bg:SetColorTexture(accent(0.13)) r.stripe:Show() r.stripe:SetWidth(3)
+        else r.bg:SetColorTexture(1, 1, 1, odd and 0.035 or 0.012) r.stripe:Hide() r.stripe:SetWidth(2) end
+        r.icon:SetSize(hero and 40 or 26, hero and 40 or 26)
         r.icon:SetTexture(l.icon or 'Interface\\Icons\\INV_Misc_QuestionMark') r.icon:Show()
-        r.title:ClearAllPoints() r.title:SetPoint('TOPLEFT', 36, -4) r.title:SetText(l.title) r.title:SetTextColor(1, 1, 1)
+        r.title:SetFont(FONT, hero and 15 or 12, '')
+        r.sub:ClearAllPoints() r.sub:SetPoint('BOTTOMLEFT', hero and 52 or 36, hero and 7 or 4)
+        r.title:ClearAllPoints() r.title:SetPoint('TOPLEFT', hero and 52 or 36, hero and -7 or -4) r.title:SetText(l.title) r.title:SetTextColor(1, 1, 1)
         r.sub:SetText(l.sub or '')
         r.right:SetText(l.right or '') r.right2:SetText(l.right2 or '')
         local rw = math.max(r.right:GetStringWidth(), r.right2:GetStringWidth())
-        local tw = CW - 48 - rw - 10 - (l.open and 12 or 0)
+        local tw = CW - (hero and 64 or 48) - rw - 10 - (l.open and 14 or 0)
         r.title:SetWidth(tw) r.sub:SetWidth(tw)
         if l.bar then r.bar:SetWidth(math.max(2, CW * math.min(1, l.bar))) r.bar:Show() else r.bar:Hide() end
         r.p, r.link, r.tipText, r.open = l.p, l.link, l.tip, l.open
         r.arrow:SetShown(l.open ~= nil)
-        if l.open then r.right:SetPoint('TOPRIGHT', -20, -4) r.right2:SetPoint('BOTTOMRIGHT', -20, 4)
-        else r.right:SetPoint('TOPRIGHT', -8, -4) r.right2:SetPoint('BOTTOMRIGHT', -8, 4) end
+        r.right:ClearAllPoints() r.right2:ClearAllPoints()
+        local ro = l.open and -24 or -8
+        r.right:SetPoint('TOPRIGHT', ro, hero and -8 or -4) r.right2:SetPoint('BOTTOMRIGHT', ro, hero and 8 or 4)
         r:Show()
       end
     end
@@ -713,8 +727,6 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     filter('Moje questy', 100, 'Moje questy', function() return ns.Explore.active() end,
       'Questy v logu: hotove k odevzdani nahore, pak rozpracovane podle vzdalenosti. Klik = detail (cile, retez, co odemkne).'),
     button(p.c, 'Trasa questu', 110, function() if ns.Route then ns.Route.toggle() end end, 'Okno s trasou questu (/cm trasa).'))
-  p.add(checkbox(p.c, 'Data ForeverDB v tooltipech', 'Dropy mobu, penize a itemy zacinajici quest z ForeverDB. Addon si z databaze jednou udela malou cache (po prihlaseni, jen pri nove verzi ForeverDB) - cela databaze se pak drzi v pameti jen pri pouziti Pruzkumnika / trasy.',
-    function() return db.fdbAuto ~= false end, function(v) db.fdbAuto = v end), 8)
   p.add(head, 6)
   for i = 1, 30 do
     local r = CreateFrame('Button', nil, p.c)
@@ -730,7 +742,10 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     r.bar = r:CreateTexture(nil, 'BACKGROUND', nil, 1) r.bar:SetTexture(WHITE)
     r.bar:SetPoint('TOPLEFT', 0, 0) r.bar:SetPoint('BOTTOMLEFT', 0, 0) r.bar:SetVertexColor(1, 0.82, 0, 0.07)
     r.hl = r:CreateTexture(nil, 'HIGHLIGHT') r.hl:SetAllPoints() r.hl:SetColorTexture(1, 1, 1, 0.07)
-    r.arrow = label(r, '>', 14, 0.55, 0.6, 0.7) r.arrow:SetPoint('RIGHT', -6, 0) r.arrow:Hide()
+    r.arrow = r:CreateTexture(nil, 'ARTWORK') r.arrow:SetTexture('Interface\\ChatFrame\\ChatFrameExpandArrow')
+    r.arrow:SetSize(14, 14) r.arrow:SetPoint('RIGHT', -6, 0) r.arrow:SetVertexColor(0.7, 0.75, 0.85) r.arrow:Hide()
+    r.hline = r:CreateTexture(nil, 'ARTWORK') r.hline:SetTexture(WHITE) r.hline:SetHeight(1)
+    r.hline:SetPoint('BOTTOMLEFT', 0, 2) r.hline:SetPoint('BOTTOMRIGHT', 0, 2) r.hline:SetVertexColor(accent(0.25)) r.hline:Hide()
     r:RegisterForClicks('LeftButtonUp', 'RightButtonUp')
     r:SetScript('OnClick', function(self, btn)
       if btn ~= 'RightButton' and self.open then
@@ -756,11 +771,13 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
       elseif self.p then GameTooltip:AddLine('Klik = sipka na mape', 0.55, 0.85, 1) end
       GameTooltip:Show()
     end)
-    r:SetScript('OnLeave', function(self) self.stripe:Hide() GameTooltip:Hide() end)
+    r:SetScript('OnLeave', function(self) if not self.heroRow then self.stripe:Hide() end GameTooltip:Hide() end)
     r:Hide()
     rows[i] = r
     p.add(r, 0)
   end
+  p.add(checkbox(p.c, 'Data ForeverDB v tooltipech', 'Dropy mobu, penize, questove itemy a itemy zacinajici quest z ForeverDB. Addon si z databaze jednou udela malou cache (po prihlaseni, jen pri nove verzi ForeverDB) - cela databaze se pak drzi v pameti jen pri pouziti Pruzkumnika / trasy.',
+    function() return db.fdbAuto ~= false end, function(v) db.fdbAuto = v end), 14)
   if not (ns.Route and ns.Route.available()) then
     setStatus('|cffff8855Pruzkumnik potrebuje addon ForeverDB (data o questech, NPC a dropech). Zbytek addonu funguje i bez nej.|r')
   else

@@ -256,7 +256,8 @@ end
 local function place()
   local h = host()
   f:ClearAllPoints()
-  if h then f:SetPoint('TOPLEFT', h, 'TOPRIGHT', 4, -14)
+  -- vpravo od okna profese jsou svisla tlacitka profesi (~50 px): panel az za ne
+  if h then f:SetPoint('TOPLEFT', h, 'TOPRIGHT', 56, -14)
   else f:SetPoint('RIGHT', UIParent, 'RIGHT', -300, 100) end
 end
 
