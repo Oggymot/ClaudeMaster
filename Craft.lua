@@ -1056,24 +1056,50 @@ function C.refresh()
     end
     if not profits[1] then row(G .. 'Zadny recept neni ziskovy (podle znamych cen). Vyhledej vyrobky v aukci.|r') end
   end
+  -- zdroj noveho receptu + nejblizsi misto (vendor / drop) od hrace
+  local R = ns.Route
+  local me = R and R.playerPos and R.playerPos()
+  for _, r in ipairs(un) do
+    local pid, src, pts
+    if MD and MD.patternFor then pid, src, pts = MD.patternFor(r.name) end
+    r.pid, r.src, r.near, r.nearD = pid, src or '', nil, nil
+    for _, p in ipairs(pts or {}) do
+      local w = R and R.world and R.world(p.map, p.x, p.y)
+      local d = (w and me and R.dist) and R.dist(me, w) or nil
+      if w and (not r.nearD or (d or 99999) < r.nearD) then r.near, r.nearD = { map = p.map, x = p.x, y = p.y, w = w, kind = p.kind, npc = p.npc }, d or 99999 end
+    end
+  end
+  -- serazeni: nejblizsi zdroj nahore (stejny kontinent), pak ostatni patterny, pak trener
+  table.sort(un, function(a, b)
+    local da, db = a.nearD or (a.pid and 1e6 or 2e6), b.nearD or (b.pid and 1e6 or 2e6)
+    if da ~= db then return da < db end
+    return a.yellowAt > b.yellowAt
+  end)
   local function srcOf(r)
-    local pid, src
-    if MD and MD.patternFor then pid, src = MD.patternFor(r.name) end
-    src = src or ''
-    if not pid then return '|cff66ccfftrener|r', nil end
+    if not r.pid then return '|cff66ccfftrener|r' end
+    if r.near then
+      local zone = R.mapName and R.mapName(r.near.map) or '?'
+      local dist = (r.nearD and r.nearD < 99999) and (math.floor(r.nearD + 0.5) .. ' yd') or zone
+      return ('|cffffd200%s|r %s%s|r'):format(r.near.kind == 'v' and 'vendor' or 'drop', G, dist)
+    end
     local w = {}
-    if src:find('v') then w[#w + 1] = 'vendor' end
-    if src:find('d') then w[#w + 1] = 'drop' end
-    if src:find('q') then w[#w + 1] = 'quest' end
-    return '|cffffd200pattern|r ' .. G .. (w[1] and table.concat(w, '/') or '?') .. '|r', pid
+    if r.src:find('v') then w[#w + 1] = 'vendor' end
+    if r.src:find('d') then w[#w + 1] = 'drop' end
+    if r.src:find('q') then w[#w + 1] = 'quest' end
+    return '|cffffd200pattern|r ' .. G .. (w[1] and table.concat(w, '/') or '?') .. '|r'
   end
   local function newRows(lim)
     for i, r in ipairs(un) do
       if lim and i > lim then break end
-      local srcTxt, pid = srcOf(r)
-      row(('|cffff8040%s|r'):format(r.name), { icon = r.icon, right = srcTxt .. '  ' .. G .. ('do %d|r'):format(r.yellowAt), link = r.link,
-        tip = pid and 'Uci se z patternu - klik = kde ho sehnat (vendor / drop / quest).' or 'Uci se u trenera (nebo ho tvuj trener nema - pak pattern / vyssi rank).',
-        onClick = pid and function() findItem('item:' .. pid, r.name) end or nil })
+      local nm = '?'
+      if r.near and R and R.DB and R.DB() and R.npcName then local ok, x = pcall(R.npcName, 'c' .. r.near.npc) if ok and x then nm = x end end
+      local who = r.near and ((r.near.kind == 'v' and 'Prodava ' or 'Pada z ') .. nm .. ', ' .. (R.mapName and R.mapName(r.near.map) or '?')) or nil
+      row(('|cffff8040%s|r'):format(r.name), { icon = r.icon, right = srcOf(r) .. '  ' .. G .. ('do %d|r'):format(r.yellowAt), link = r.link,
+        tip = r.pid and ((who and (who .. '.\n') or '') .. 'Klik = sipka k nejblizsimu zdroji. Detail patternu v Pruzkumniku (vyhledej jeho jmeno).')
+          or 'Uci se u trenera (nebo ho tvuj trener nema - pak pattern / vyssi rank).',
+        onClick = r.pid and function()
+          if r.near and R and R.waypoint then R.waypoint(r.near, 'Pattern: ' .. r.name) else findItem('item:' .. r.pid, r.name) end
+        end or nil })
     end
     if not un[1] then row(G .. 'Zadne nove recepty pro tvuj skill (nebo je ForeverDB nezna).|r') end
   end

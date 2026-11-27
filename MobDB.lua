@@ -51,7 +51,7 @@ end
 function MD.cacheFresh()
   local c = C(true)
   local v = fdbVersion()
-  return c ~= nil and c.schema == 8 and (v == nil or c.ver == v)
+  return c ~= nil and c.schema == 9 and (v == nil or c.ver == v)
 end
 -- sestavi cache z nactene databaze
 function MD.buildCache()
@@ -205,7 +205,23 @@ function MD.buildCache()
       or nm:match('^Schematic: (.+)$') or nm:match('^Manual: (.+)$')
     if rn then
       local src = (D.vend and D.vend[id] and 'v' or '') .. (D.drop[id] and 'd' or '') .. (D.rew and D.rew[id] and 'q' or '')
-      pat[rn] = id .. '|' .. src
+      -- kde: vendori (max 4) a nejcastejsi dropy (max 2) -> "v:npc:mapa:x:y,d:npc:mapa:x:y"
+      local pts = {}
+      local function add(kind, npc)
+        if not spotsOf then return end
+        local ok, sp = pcall(spotsOf, 'c' .. npc)
+        local p = ok and type(sp) == 'table' and sp[1]
+        if p and p.map and p.x then pts[#pts + 1] = ('%s:%d:%d:%d:%d'):format(kind, npc, p.map, p.x, p.y) end
+      end
+      for k, npc in ipairs(D.vend and D.vend[id] or {}) do if k > 4 then break end add('v', npc) end
+      local dl = D.drop[id]
+      if dl then
+        local best = {}
+        for j = 1, #dl - 1, 2 do best[#best + 1] = { dl[j], dl[j + 1] } end
+        table.sort(best, function(a, b) return a[2] > b[2] end)
+        for k = 1, math.min(2, #best) do add('d', best[k][1]) end
+      end
+      pat[rn] = id .. '|' .. src .. '|' .. table.concat(pts, ',')
     end
   end
   -- treneri vyssich ranku (Expert / Artisan / Master) podle podtitulku: [slovo profese] = "id|jmeno|podtitulek|frakce|mapa;..."
@@ -340,8 +356,12 @@ function MD.patternFor(recipeName)
   local c = C(true)
   local s = c and c.pat and recipeName and c.pat[recipeName]
   if not s then return nil end
-  local id, src = s:match('^(%d+)|(.*)$')
-  return tonumber(id), src or ''
+  local id, src, pts = s:match('^(%d+)|([^|]*)|?(.*)$')
+  local list = {}
+  for kind, npc, map, x, y in (pts or ''):gmatch('(%a):(%d+):(%d+):(%d+):(%d+)') do
+    list[#list + 1] = { kind = kind, npc = tonumber(npc), map = tonumber(map), x = tonumber(x), y = tonumber(y) }
+  end
+  return tonumber(id), src or '', list
 end
 -- treneri vyssiho ranku pro profesi: { {id, name, sub, fac, map}, ... }
 function MD.trainers(word)
