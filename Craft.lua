@@ -597,6 +597,22 @@ pcall(upEv.RegisterEvent, upEv, 'PLAYER_EQUIPMENT_CHANGED')
 upEv:SetScript('OnEvent', function() upCache = {} end)
 function C.resetUps() upCache = {} end
 
+-- pozadovany skill patternu z tooltipu hry ("Requires Tailoring (215)"); hra ho musi znat (jinak nil a zkusi se priste)
+local preq = {}
+function C.patternReq(pid)
+  if preq[pid] ~= nil then return preq[pid] or nil end
+  local data = C_TooltipInfo and C_TooltipInfo.GetItemByID and pc(C_TooltipInfo.GetItemByID, pid)
+  local lines = type(data) == 'table' and data.lines
+  if type(lines) ~= 'table' or not lines[2] then return nil end
+  for _, l in ipairs(lines) do
+    local t = safe(l.leftText)
+    local v = type(t) == 'string' and t:match('^Requires [%a ]+ %((%d+)%)$')
+    if v then preq[pid] = tonumber(v) return preq[pid] end
+  end
+  preq[pid] = false
+  return nil
+end
+
 ------------------------------------------------------------------------------------------
 -- Okno vedle profese
 ------------------------------------------------------------------------------------------
@@ -1063,6 +1079,10 @@ function C.refresh()
   for _, r in ipairs(un) do
     local pid, src, pts, req
     if MD and MD.patternFor then pid, src, pts, req = MD.patternFor(r.name) end
+    -- pozadovany skill: databaze nema -> tooltip patternu ("Requires Tailoring (215)"), jinak odhad (zluta - 15)
+    if not req and pid then req = C.patternReq(pid) end
+    r.reqEst = false
+    if not req and r.yellowAt then req = r.yellowAt - 15 r.reqEst = true end
     r.pid, r.src, r.near, r.nearD, r.req = pid, src or '', nil, nil, req
     r.later = req and req > s.rank or false
     for _, p in ipairs(pts or {}) do
@@ -1103,7 +1123,7 @@ function C.refresh()
         rows[#rows + 1] = { head = 'Pozdeji (az budes mit skill)', text = '', tip = 'Pattern jde naucit az od urciteho skillu (u obchodnika je cerveny).' }
       end
       local name = r.later and ('|cff808080%s|r'):format(r.name) or ('|cffff8040%s|r'):format(r.name)
-      local rt = r.later and ('|cffff8855od %d|r'):format(r.req) or (srcOf(r) .. '  ' .. G .. ('do %d|r'):format(r.yellowAt))
+      local rt = r.later and ('|cffff8855%sod %d|r'):format(r.reqEst and 'asi ' or '', r.req) or (srcOf(r) .. '  ' .. G .. ('do %d|r'):format(r.yellowAt))
       row(name, { icon = r.icon, right = rt, link = r.link,
         tip = r.pid and ((who and (who .. '.\n') or '') .. 'Klik = sipka k nejblizsimu zdroji, pravy klik = pattern v Pruzkumniku (vsichni vendori / dropy).')
           or 'Uci se u trenera (nebo ho tvuj trener nema - pak pattern / vyssi rank).',
