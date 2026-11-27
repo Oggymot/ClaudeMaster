@@ -370,6 +370,13 @@ function C.remaining(r, rank, mode)
   end
   return n
 end
+-- recept se smi v planu ukazat / pouzit podle zvolenych barev (dnesni barva)
+function C.allowed(r, mode)
+  if r.kind == 'trivial' then return false end
+  if mode == 'o' then return r.kind == 'optimal' end
+  if mode == 'oy' then return r.kind == 'optimal' or r.kind == 'medium' end
+  return true
+end
 -- cilovy skill planu (nil = strop ranku)
 function C.target(s)
   local t = ns.db and ns.db.craftTarget and ns.db.craftTarget[s.name]
@@ -398,7 +405,7 @@ end
 function C.simulate(s)
   local mode = C.mode(s)
   local sel = {}
-  for _, r in ipairs(s.list) do if r.kind ~= 'trivial' and C.selected(s, r) then sel[#sel + 1] = r end end
+  for _, r in ipairs(s.list) do if C.allowed(r, mode) and C.selected(s, r) then sel[#sel + 1] = r end end
   local segs, per, mats = {}, {}, {}
   local top = (s.max and s.max > s.rank) and s.max or (s.rank + 75)
   local tg = C.target(s)
@@ -1022,18 +1029,6 @@ function C.refresh()
     head(('Nove recepty pro tvuj skill (%d)'):format(#un), 'Recepty, ktere neumis a byly by pro tebe oranzove. Uci se u trenera, nebo z receptu (vendor / drop).')
     newRows(nil)
   elseif tab == 'plan' then
-    -- seznam receptu se zaskrtnutim
-    local list = {}
-    for _, r in ipairs(s.list) do if r.kind ~= 'trivial' then list[#list + 1] = r end end
-    table.sort(list, function(a, b) if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end return a.name < b.name end)
-    head('Recepty v planu', 'Klik na recept = pridat / odebrat z planu.')
-    for _, r in ipairs(list) do
-      local on = C.selected(s, r)
-      local rem = C.remaining(r, s.rank, md)
-      row(on and col(r) or ('|cff808080' .. r.name .. '|r'), { icon = on and 'Interface\\Buttons\\UI-CheckBox-Check' or 'Interface\\Buttons\\UI-CheckBox-Up',
-        right = G .. ('~%d ks|r'):format(math.floor(rem + 0.5)) .. ppt(r),
-        link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
-    end
     head('Nastaveni')
     local tg = C.target(s) or top
     row(('Barvy  %s'):format(md == 'o' and '|cffff8040oranzove|r' or (md == 'oy' and '|cffff8040oranz.|r + |cffffff00zlute|r' or G .. 'vse|r')),
@@ -1048,6 +1043,18 @@ function C.refresh()
           else C.setTarget(s, nil) end
           C.refresh()
         end })
+    -- seznam receptu se zaskrtnutim
+    local list = {}
+    for _, r in ipairs(s.list) do if C.allowed(r, md) then list[#list + 1] = r end end
+    table.sort(list, function(a, b) if RANK[a.kind] ~= RANK[b.kind] then return RANK[a.kind] > RANK[b.kind] end return a.name < b.name end)
+    head('Recepty v planu', 'Klik na recept = pridat / odebrat z planu. Recepty mimo zvolene barvy jsou schovane.')
+    for _, r in ipairs(list) do
+      local on = C.selected(s, r)
+      local rem = C.remaining(r, s.rank, md)
+      row(on and col(r) or ('|cff808080' .. r.name .. '|r'), { icon = on and 'Interface\\Buttons\\UI-CheckBox-Check' or 'Interface\\Buttons\\UI-CheckBox-Up',
+        right = G .. ('~%d ks|r'):format(math.floor(rem + 0.5)) .. ppt(r),
+        link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
+    end
     head(segs[1] and ('Plan  %d -> %d'):format(segs[1].from, segs[#segs].to) or 'Plan')
     planSummary()
     if segs[1] then
