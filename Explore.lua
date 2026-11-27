@@ -234,6 +234,120 @@ function X.nearby()
 end
 
 ------------------------------------------------------------------------------------------
+-- Suroviny: byliny / rudy pobliz podle skillu + kde farmit materialy z planu profese
+------------------------------------------------------------------------------------------
+local NODES = {
+  Mining = { { 'Copper Vein', 1 }, { 'Incendicite Mineral Vein', 65 }, { 'Tin Vein', 65 }, { 'Silver Vein', 75 },
+    { 'Lesser Bloodstone Deposit', 75 }, { 'Ooze Covered Silver Vein', 75 }, { 'Iron Deposit', 125 }, { 'Indurium Mineral Vein', 150 },
+    { 'Gold Vein', 155 }, { 'Ooze Covered Gold Vein', 155 }, { 'Mithril Deposit', 175 }, { 'Ooze Covered Mithril Deposit', 175 },
+    { 'Truesilver Deposit', 230 }, { 'Ooze Covered Truesilver Deposit', 230 }, { 'Dark Iron Deposit', 230 },
+    { 'Small Thorium Vein', 245 }, { 'Ooze Covered Thorium Vein', 245 }, { 'Rich Thorium Vein', 275 }, { 'Ooze Covered Rich Thorium Vein', 275 } },
+  Herbalism = { { 'Peacebloom', 1 }, { 'Silverleaf', 1 }, { 'Earthroot', 15 }, { 'Mageroyal', 50 }, { 'Briarthorn', 70 },
+    { 'Stranglekelp', 85 }, { 'Bruiseweed', 100 }, { 'Wild Steelbloom', 115 }, { 'Grave Moss', 120 }, { 'Kingsblood', 125 },
+    { 'Liferoot', 150 }, { 'Fadeleaf', 160 }, { 'Goldthorn', 170 }, { "Khadgar's Whisker", 185 }, { 'Wintersbite', 195 },
+    { 'Firebloom', 205 }, { 'Purple Lotus', 210 }, { "Arthas' Tears", 220 }, { 'Sungrass', 230 }, { 'Blindweed', 235 },
+    { 'Ghost Mushroom', 245 }, { 'Gromsblood', 250 }, { 'Golden Sansam', 260 }, { 'Dreamfoil', 270 },
+    { 'Mountain Silversage', 280 }, { 'Plaguebloom', 285 }, { 'Icecap', 290 }, { 'Black Lotus', 300 } },
+}
+local NODEICON = { Mining = 'Interface\\Icons\\Trade_Mining', Herbalism = 'Interface\\Icons\\Trade_Herbalism' }
+local objIds
+local function objByName(name)
+  if not objIds then
+    objIds = {}
+    local want = {}
+    for _, l in pairs(NODES) do for _, n in ipairs(l) do want[n[1]] = true end end
+    for id, o in pairs(DB().obj or {}) do
+      local nm = type(o) == 'table' and o[1] or o
+      if type(nm) == 'string' and want[nm] then objIds[nm] = objIds[nm] or {} table.insert(objIds[nm], id) end
+    end
+  end
+  return objIds[name] or {}
+end
+-- barva sberu jako u receptu: oranzova (jista +1), zluta, zelena, seda
+local function nodeColor(sk, req)
+  if sk < req then return 'ffff5555', 'malo skillu' end
+  if sk < req + 25 then return 'ffff8040', 'oranzova' end
+  if sk < req + 50 then return 'ffffff00', 'zluta' end
+  if sk < req + 100 then return 'ff40c040', 'zelena' end
+  return 'ff9d9d9d', 'seda'
+end
+-- kde farmit item: moby tveho levelu s nejlepsi sanci (blizsi maji prednost)
+function X.farm(id, me, n)
+  local D = DB()
+  local dl = D and D.drop[id]
+  if not dl then return {} end
+  local L, out = lvl(), {}
+  for j = 1, #dl - 1, 2 do
+    local nd = D.npc[dl[j]]
+    local ml = nd and (nd[3] or nd[4]) or 0
+    if nd and ml <= L + 2 and ml >= L - 12 and (nd[5] or 0) ~= 1 then
+      local key = 'c' .. dl[j]
+      local p, d = firstSpot(key, me)
+      if p and d < 99999 then
+        local ch = dl[j + 1] / 100
+        out[#out + 1] = { key = key, name = nd[1], lvl = ml, ch = ch, p = p, d = d, score = ch / (1 + d / 3000) }
+      end
+    end
+  end
+  table.sort(out, function(a, b) return a.score > b.score end)
+  while #out > (n or 5) do table.remove(out) end
+  return out
+end
+function X.gather()
+  local D, out = DB(), {}
+  local me = R().playerPos()
+  if not me then return { { text = '|cff9aa6b8Pozice neni k dispozici.|r' } } end
+  -- 1) materialy z planu profese, ktere chybi
+  local pm = ns.db and ns.db.craftPlanMats
+  if type(pm) == 'table' then
+    local any = false
+    for id, m in pairs(pm) do
+      local have = safeNum(pc(GetItemCount, id, true)) or 0
+      if have < (m.need or 0) and not (ns.MobDB and ns.MobDB.isVendor and ns.MobDB.isVendor(id)) then
+        local f = X.farm(id, me, 2)
+        if f[1] then
+          if not any then out[#out + 1] = { head = 'Farmit pro plan profese' } any = true end
+          for _, e in ipairs(f) do
+            out[#out + 1] = { icon = itemIcon(id), title = ('%s |cff9aa6b8(chybi %d)|r'):format(itemName(id), m.need - have),
+              sub = ('%s [%d] - %.0f %%, %s'):format(e.name, e.lvl, e.ch, where(e.p)), right2 = yd(e.d), p = e.p,
+              open = function() return X.item(id) end }
+          end
+        end
+      end
+    end
+  end
+  -- 2) byliny / rudy pobliz, ktere umis
+  local profs = ns.Gear and ns.Gear.myProfs and ns.Gear.myProfs() or {}
+  for _, prof in ipairs({ 'Herbalism', 'Mining' }) do
+    local sk = tonumber(profs[prof])
+    if sk then
+      local rows = {}
+      for _, n in ipairs(NODES[prof]) do
+        if n[2] <= sk and sk < n[2] + 100 then
+          local bp, bd
+          for _, oid in ipairs(objByName(n[1])) do
+            local p, d = firstSpot('o' .. oid, me)
+            if p and (not bd or d < bd) then bp, bd = p, d end
+          end
+          if bp and bd < 5000 then
+            local c, cn = nodeColor(sk, n[2])
+            rows[#rows + 1] = { icon = NODEICON[prof], title = ('|c%s%s|r'):format(c, n[1]),
+              sub = ('%s %d (mas %d) - %s, %s'):format(prof == 'Mining' and 'Mining' or 'Herbalism', n[2], sk, cn, where(bp)),
+              right2 = yd(bd), p = bp, d = bd, req = n[2] }
+          end
+        end
+      end
+      -- nejdriv to, co dava skill (vyssi pozadavek), pak blizsi
+      table.sort(rows, function(a, b) if a.req ~= b.req then return a.req > b.req end return a.d < b.d end)
+      if rows[1] then out[#out + 1] = { head = (prof == 'Mining' and 'Rudy' or 'Byliny') .. (' pobliz (skill %d)'):format(sk) } end
+      for i, r in ipairs(rows) do if i > 8 then break end out[#out + 1] = r end
+    end
+  end
+  if #out == 0 then out[1] = { text = '|cff9aa6b8Nic: nemas Herbalism / Mining, nebo plan profese nic nepotrebuje (otevri okno profese).|r' } end
+  return out
+end
+
+------------------------------------------------------------------------------------------
 -- Hledani: text (quest / NPC / item), nebo "z:oblast" = questy v oblasti pro tvuj level
 ------------------------------------------------------------------------------------------
 function X.search(text)
@@ -570,6 +684,14 @@ function X.item(id)
       local row = spotRow(ICON.rare, key, me,
         ('%.1f %%%s'):format(e.ch / 100, n and n[3] and (', level ' .. n[3]) or ''))
       out[#out + 1] = row
+    end
+  end
+  local fm = dl and X.farm(id, me, 4) or {}
+  if fm[1] then
+    out[#out + 1] = { head = 'Kde farmit (tvuj level)' }
+    for _, e in ipairs(fm) do
+      out[#out + 1] = { icon = ICON.rare, title = ('%s |cff9aa6b8[%d]|r'):format(e.name, e.lvl), sub = ('%.1f %% - %s'):format(e.ch, where(e.p)),
+        right2 = yd(e.d), p = e.p, open = function() return X.npc(tonumber(e.key:sub(2))) end }
     end
   end
   local od = D.odrop and D.odrop[id]

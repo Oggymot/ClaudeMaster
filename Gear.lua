@@ -578,6 +578,7 @@ function G.upgrades(force)
   G.giftMap = {}
   G.questMap = {}
   G.questByLink = {}
+  G.junkMap = {}
   if not (getNum and getInfo) then return list end
   local lvl = safeNum(UnitLevel('player')) or 60
   local specLabel = (G.SPECS[G.spec()] or {}).label or 'tvuj spec'
@@ -646,7 +647,10 @@ function G.upgrades(force)
       if qn then
         G.questMap[key] = qn G.questByLink[link] = qn
         -- hotovy quest: item uz neni potreba -> klidne prodat (sedy vykricnik)
-        if not qn.done then sell = nil G.giftMap[key] = nil end
+        if not qn.done then sell = nil G.giftMap[key] = nil
+        elseif value and not sell then sell = 'quest uz mas hotovy' end
+        -- hotovy quest a nejde prodat: zahodit
+        if qn.done and not value then G.junkMap = G.junkMap or {} G.junkMap[key] = { link = link, why = 'quest hotovy, neda se prodat' } end
       end
       if sell then G.sellMap[key] = sell G.sellByLink[link] = sell end
     end
@@ -1700,6 +1704,43 @@ function G.sellMarked(onlyJunk)
   step()
 end
 
+-- prehled uklidu: { {link, why, price, n} } na prodej, { {link, why} } k zahozeni
+function G.cleanup()
+  pcall(G.upgrades, true)
+  local getInfo = C_Container and C_Container.GetContainerItemInfo
+  local sl, jl = {}, {}
+  for key, why in pairs(G.sellMap or {}) do
+    local bag, slot = key:match('^(%-?%d+):(%d+)$')
+    bag, slot = tonumber(bag), tonumber(slot)
+    local info = bag and bag >= 0 and bag <= 5 and getInfo and pc(getInfo, bag, slot)
+    local link = type(info) == 'table' and safe(info.hyperlink)
+    if type(link) == 'string' then
+      local n = safeNum(info.stackCount) or 1
+      sl[#sl + 1] = { link = link, why = why, n = n, price = (safeNum(select(11, pc(GetItemInfo, link))) or 0) * n }
+    end
+  end
+  for key, e in pairs(G.junkMap or {}) do
+    local bag = tonumber(key:match('^(%-?%d+):'))
+    if bag and bag >= 0 and bag <= 5 then jl[#jl + 1] = e end
+  end
+  table.sort(sl, function(a, b) return a.price > b.price end)
+  return sl, jl
+end
+function G.cleanupSay()
+  local sl, jl = G.cleanup()
+  local total = 0
+  for _, e in ipairs(sl) do total = total + e.price end
+  if not sl[1] and not jl[1] then ns.say('Uklid batohu: neni co prodat ani zahodit.') return end
+  if sl[1] then
+    ns.say(('Uklid batohu: na prodej %d %s za %s (u obchodnika klik na minci):'):format(#sl, #sl == 1 and 'vec' or 'veci', money(total)))
+    for i, e in ipairs(sl) do if i <= 10 then ns.say('  ' .. e.link .. (e.n > 1 and (' x' .. e.n) or '') .. ' - ' .. e.why) end end
+  end
+  if jl[1] then
+    ns.say('Zahodit (neda se prodat):')
+    for _, e in ipairs(jl) do ns.say('  ' .. e.link .. ' - ' .. e.why) end
+  end
+end
+
 local function repair()
   if not (CanMerchantRepair and pc(CanMerchantRepair)) then return end
   local cost, can = pc(GetRepairAllCost)
@@ -1733,9 +1774,23 @@ local function makeBtn()
   b:SetScript('OnClick', function() G.sellMarked(false) C_Timer.After(1, updateBtn) end)
   b:SetScript('OnEnter', function(self)
     GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
-    GameTooltip:AddLine('ClaudeMaster: prodat oznacene')
-    GameTooltip:AddLine('Proda vsechno s minci v batohu (duvod je v tooltipu itemu).', 1, 1, 1, true)
-    GameTooltip:AddLine('Sede veci se prodavaji samy.', 0.7, 0.7, 0.7, true)
+    GameTooltip:AddLine('ClaudeMaster: uklid batohu')
+    local sl, jl = G.cleanup()
+    local total = 0
+    if sl[1] then GameTooltip:AddLine('Klik = prodat:', 1, 0.82, 0) end
+    for i, e in ipairs(sl) do
+      total = total + e.price
+      if i <= 15 then GameTooltip:AddDoubleLine(e.link .. (e.n > 1 and (' x' .. e.n) or ''), '|cff9aa6b8' .. e.why .. '|r  ' .. money(e.price), 1, 1, 1, 1, 1, 1) end
+    end
+    if #sl > 15 then GameTooltip:AddLine(('... a dalsich %d'):format(#sl - 15), 0.7, 0.7, 0.7) end
+    if sl[1] then GameTooltip:AddDoubleLine('Celkem', money(total), 0.7, 0.7, 0.7, 1, 1, 1) end
+    if jl[1] then
+      GameTooltip:AddLine(' ')
+      GameTooltip:AddLine('Zahodit (neda se prodat):', 1, 0.5, 0.3)
+      for i, e in ipairs(jl) do if i <= 8 then GameTooltip:AddDoubleLine(e.link, '|cff9aa6b8' .. e.why .. '|r', 1, 1, 1, 1, 1, 1) end end
+    end
+    if not sl[1] and not jl[1] then GameTooltip:AddLine('Neni co prodat ani zahodit.', 0.7, 0.7, 0.7) end
+    GameTooltip:AddLine('Sede veci se prodavaji samy. Duvod je i v tooltipu itemu.', 0.55, 0.85, 1, true)
     GameTooltip:Show()
   end)
   b:SetScript('OnLeave', function() GameTooltip:Hide() end)

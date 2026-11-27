@@ -539,8 +539,9 @@ function R.plan()
   for _, id in ipairs(ids) do
     local e = Qs[id]
     local q = { id = id, title = e.title }
+    local tag = R.questTag and R.questTag(id)
     if #e.turn > 0 then stops[#stops + 1] = { q = q, kind = 'turnin', keys = DB.qe[id] or {}, who = e.turn } end
-    if #e.obj > 0 then stops[#stops + 1] = { q = q, kind = 'obj', who = e.obj } end
+    if #e.obj > 0 then stops[#stops + 1] = { q = q, kind = 'obj', who = e.obj, tag = tag } end
   end
   local function mineIn(s) for _, w in ipairs(s.who) do if w == myName then return true end end end
   local function locate(s, pos)
@@ -555,14 +556,27 @@ function R.plan()
   local route, pos, left = {}, start, stops
   -- nejdriv vse v zone, kde hrac je; pak zbytek (nejblizsi soused)
   local myZone = zoneOf(me.map)
+  -- sam (bez party): elitni / dungeonove ukoly az na konec
+  local solo = not (IsInGroup and IsInGroup())
   while #left > 0 and #route < 14 do
     local bi, bp, bd, bk, hi, hp, hd, hk
+    local anyFree = false
+    if solo then for _, s in ipairs(left) do if not s.tag then anyFree = true break end end end
     for i, s in ipairs(left) do
-      local p, d, k = locate(s, pos)
-      if p and (not bd or d < bd - 0.01) then bi, bp, bd, bk = i, p, d, k end
-      if p and myZone and zoneOf(p.map) == myZone and (not hd or d < hd - 0.01) then hi, hp, hd, hk = i, p, d, k end
+      if not (solo and anyFree and s.tag) then
+        local p, d, k = locate(s, pos)
+        if p and (not bd or d < bd - 0.01) then bi, bp, bd, bk = i, p, d, k end
+        if p and myZone and zoneOf(p.map) == myZone and (not hd or d < hd - 0.01) then hi, hp, hd, hk = i, p, d, k end
+      end
     end
     if hi then bi, bp, bd, bk = hi, hp, hd, hk end
+    if not bi and solo and anyFree then
+      -- zbyle volne ukoly nemaji polohu: vzit i oznacene
+      for i, s in ipairs(left) do
+        local p, d, k = locate(s, pos)
+        if p and (not bd or d < bd - 0.01) then bi, bp, bd, bk = i, p, d, k end
+      end
+    end
     if not bi then break end
     local s = table.remove(left, bi)
     s.p, s.d, s.npc, s.mine = bp, dist(me, bp.w), bk, mineIn(s)
@@ -727,6 +741,129 @@ function R.focus(qid, p, title)
   end
 end
 
+-- elitni / skupinovy / dungeonovy quest (stitek hry): 'elite' / 'dungeon' / 'raid' / nil
+local tagc = {}
+function R.questTag(qid)
+  if not qid then return nil end
+  if tagc[qid] ~= nil then return tagc[qid] or nil end
+  local t
+  if QL.GetQuestTagInfo then
+    local ti = pc(QL.GetQuestTagInfo, qid)
+    local id = type(ti) == 'table' and safeNum(ti.tagID)
+    local nm = type(ti) == 'table' and safe(ti.tagName)
+    if id == 81 or (type(nm) == 'string' and nm:find('Dungeon')) then t = 'dungeon'
+    elseif id == 62 or (type(nm) == 'string' and nm:find('Raid')) then t = 'raid'
+    elseif id == 1 or (type(nm) == 'string' and (nm:find('Elite') or nm:find('Group'))) then t = 'elite' end
+    if type(ti) == 'table' then tagc[qid] = t or false end
+  end
+  if not t then
+    local title = QL.GetTitleForQuestID and safe(pc(QL.GetTitleForQuestID, qid))
+    if type(title) == 'string' then
+      if title:find('%(Dungeon%)') then t = 'dungeon' elseif title:find('%(Raid%)') then t = 'raid' elseif title:find('%(Elite%)') then t = 'elite' end
+    end
+  end
+  return t
+end
+local TAGICON = { elite = '|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_8:13:13|t', dungeon = '|cffff9933[D]|r', raid = '|cffff5555[R]|r' }
+R.TAGICON = TAGICON
+
+-- lety: nejblizsi letecky bod tve frakce (ForeverDB taxi: {jmeno, kontinent, x, y, z, ?, aliance, horda})
+local taxiKnown = {}
+local function taxiNodes()
+  local out = {}
+  local f = safe(pc(UnitFactionGroup, 'player'))
+  for _, t in pairs(DB and DB.taxi or {}) do
+    if type(t) == 'table' and t[1] and t[3] then
+      -- [7] = gryf/netopyr hordy, [8] = aliance
+      local ok = (f == 'Horde' and (t[7] or 0) > 0) or (f ~= 'Horde' and (t[8] or 0) > 0)
+      local sw = ns.db and ns.db.taxiSwap
+      if ok and not t[1]:find('zzOLD') then out[#out + 1] = { name = t[1], w = { c = t[2], x = sw and t[4] or t[3], y = sw and t[3] or t[4] } } end
+    end
+  end
+  return out
+end
+function R.nearestTaxi(w)
+  local best, bd
+  for _, n in ipairs(taxiNodes()) do
+    local d = dist(w, n.w)
+    if d < 99999 and (not bd or d < bd) then best, bd = n, d end
+  end
+  if best then best.known = (ns.db and ns.db.taxiKnown and ns.db.taxiKnown[best.name]) or nil end
+  return best, bd
+end
+do
+  local tf = CreateFrame('Frame')
+  pcall(tf.RegisterEvent, tf, 'TAXIMAP_OPENED')
+  tf:SetScript('OnEvent', function()
+    if not ns.db then return end
+    ns.db.taxiKnown = ns.db.taxiKnown or {}
+    -- kalibrace os (hrac stoji u letce): ktere poradi souradnic sedi
+    if DB and DB.taxi then
+      local me = playerPos()
+      local function best(swap)
+        local bd
+        for _, t in pairs(DB.taxi) do
+          if type(t) == 'table' and t[3] and me then
+            local d = dist(me, { c = t[2], x = swap and t[4] or t[3], y = swap and t[3] or t[4] })
+            if not bd or d < bd then bd = d end
+          end
+        end
+        return bd or 99999
+      end
+      local a, b = best(false), best(true)
+      if a < 80 or b < 80 then ns.db.taxiSwap = b < a or nil end
+    end
+    local T = C_TaxiMap
+    local map = C_Map and safeNum(pc(C_Map.GetBestMapForUnit, 'player'))
+    local list = T and T.GetAllTaxiNodes and map and pc(T.GetAllTaxiNodes, map)
+    if type(list) == 'table' then
+      for _, n in ipairs(list) do
+        local st = safeNum(n.state)
+        if safe(n.name) and (st == 0 or st == 1) then ns.db.taxiKnown[safe(n.name)] = true end
+      end
+    elseif NumTaxiNodes and TaxiNodeName and TaxiNodeGetType then
+      for i = 1, safeNum(pc(NumTaxiNodes)) or 0 do
+        local nm, ty = safe(pc(TaxiNodeName, i)), safe(pc(TaxiNodeGetType, i))
+        if nm and (ty == 'CURRENT' or ty == 'REACHABLE') then ns.db.taxiKnown[nm] = true end
+      end
+    end
+  end)
+end
+
+-- odkud cil questu: nejblizsi mob k zabiti / zdroj potrebneho itemu (s sanci)
+local srcCache = {}
+function R.objSources(qid, from)
+  local c = srcCache[qid]
+  local now = GetTime and GetTime() or 0
+  if c and now - c.t < 15 then return c.v end
+  local v = R.objSources0(qid, from)
+  srcCache[qid] = { t = now, v = v }
+  return v
+end
+function R.objSources0(qid, from)
+  local x = DB and DB.qx and DB.qx[qid]
+  if type(x) ~= 'table' then return {} end
+  local out = {}
+  for _, nid in ipairs(type(x[8]) == 'table' and x[8] or {}) do
+    local p, d = nearest({ 'c' .. nid }, from)
+    if p and d < 99999 then out[#out + 1] = { text = 'Zabit: ' .. npcName('c' .. nid), p = p, d = d } end
+  end
+  for _, iid in ipairs(type(x[10]) == 'table' and x[10] or {}) do
+    local dl = DB.drop[iid]
+    local best, bd, bch, bn
+    if dl then
+      for j = 1, math.min(#dl - 1, 16), 2 do
+        local p, d = nearest({ 'c' .. dl[j] }, from)
+        -- blizko a s dobrou sanci: skore = sance / vzdalenost
+        if p and d < 99999 and (not best or (dl[j + 1] / (d + 200)) > (bch / (bd + 200))) then best, bd, bch, bn = p, d, dl[j + 1], dl[j] end
+      end
+    end
+    local it = DB.item[iid]
+    if best then out[#out + 1] = { text = ('%s: %s (%.0f %%)'):format(it and it[1] or 'item', npcName('c' .. bn), bch / 100), p = best, d = bd } end
+  end
+  return out
+end
+
 -- PvP quest: battleground zona v databazi (AV / WSG / AB / kategorie Battlegrounds) nebo stitek hry "PvP"
 local BG = { [2597] = true, [3277] = true, [3358] = true, [-25] = true }
 local pvpc = {}
@@ -762,6 +899,12 @@ local function richTip(tt)
     if c then G:AddLine(R.classIcon(tt.qid) .. ' Class quest: ' .. cname(c) .. (mine and '' or ' |cffff5555(ne pro tebe)|r'), 0.85, 0.75, 1) end
   end
   G:AddDoubleLine(tt.action, tt.dist or '', 1, 1, 1, 0.7, 0.7, 0.7)
+  if tt.tag then
+    G:AddLine(TAGICON[tt.tag] .. (tt.tag == 'elite' and ' Elitni / skupinovy quest' or (tt.tag == 'dungeon' and ' Dungeon quest' or ' Raid quest'))
+      .. ((IsInGroup and IsInGroup()) and '' or ' |cff9aa6b8- sam: zarazeno az na konec|r'), 1, 0.6, 0.3)
+  end
+  if tt.lvl then G:AddLine('|cff40ff60^|r Timto odevzdanim das dalsi level', 0.4, 1, 0.5) end
+  if tt.fly then G:AddDoubleLine('|TInterface\\TaxiFrame\\UI-Taxi-Icon-Green:14:14|t Let', tt.fly, 0.55, 0.6, 0.7, 1, 1, 1) end
   if tt.zone then G:AddDoubleLine('Zona', tt.zone, 0.55, 0.6, 0.7, 1, 1, 1) end
   if tt.who then G:AddDoubleLine('Parta', tt.who, 0.55, 0.6, 0.7, 0.4, 0.8, 1) end
   local v = tt.v
@@ -784,6 +927,11 @@ local function richTip(tt)
     G:AddLine(' ')
     G:AddLine('Cile', 0.4, 0.8, 1)
     for _, o in ipairs(tt.objs) do G:AddDoubleLine(o[1], o[2] or '', 1, 1, 1, 1, 1, 1) end
+  end
+  if tt.src and tt.src[1] then
+    G:AddLine(' ')
+    G:AddLine('Kde to ziskat (nejblizsi)', 0.4, 0.8, 1)
+    for _, o in ipairs(tt.src) do G:AddDoubleLine(o[1], o[2] or '', 0.9, 0.9, 0.9, 0.7, 0.7, 0.7) end
   end
 end
 
@@ -937,6 +1085,9 @@ local function collect()
   local lines = {}
   local function add(l) lines[#lines + 1] = l end
   local sumXP, steps = 0, 0
+  local curXP, maxXP0 = safeNum(pc(UnitXP, 'player')), safeNum(pc(UnitXPMax, 'player'))
+  local needXP = curXP and maxXP0 and maxXP0 > 0 and (maxXP0 - curXP) or nil
+  local lvlAt
   if not DB then
     add({ msg = '|cffff8855ForeverDB neni nactena.|r' })
   else
@@ -972,6 +1123,8 @@ local function collect()
         local v = s.mine and R.value(s.q.id, true) or R.value(s.q.id, false)
         steps = steps + 1
         if s.mine and s.kind == 'turnin' and v.xp then sumXP = sumXP + v.xp end
+        local lvlHere = needXP and not lvlAt and sumXP >= needXP
+        if lvlHere then lvlAt = steps end
         local k = KIND[s.kind]
         -- cile (jen rozpracovane): moje pocty + postup partaku
         local obj = (s.kind == 'obj' and s.mine) and objectives(s.q.id) or {}
@@ -1015,9 +1168,32 @@ local function collect()
             or '|TInterface\\GossipFrame\\IncompleteQuestIcon:14:14|t |cffffd200Splnit|r - misto plneni' }
         local ci = R.classIcon(s.q.id)
         tt.qid = s.q.id
+        -- elitni / dungeon: lebka / [D]
+        local qtag = R.questTag(s.q.id)
+        tt.tag = qtag
+        if qtag then ci = (ci ~= '' and (ci .. ' ') or '') .. TAGICON[qtag] end
+        -- daleko v jine zone: doporucit let
+        if not isHere and s.d and s.d > 2500 and s.p and s.p.w then
+          local dn, dd = R.nearestTaxi(s.p.w)
+          local mn = R.lastMe and R.nearestTaxi(R.lastMe)
+          if dn and dd < 1500 and not (mn and mn.name == dn.name) then
+            tt.fly = (mn and (mn.name .. ' -> ') or '') .. dn.name .. (dn.known and '' or ' |cffff8855(nemas objeveno)|r')
+            sub = '|TInterface\\TaxiFrame\\UI-Taxi-Icon-Green:12:12|t ' .. sub
+          end
+        end
+        -- odkud cil: nejblizsi mob / zdroj itemu
+        if s.kind == 'obj' and s.mine then
+          local src = R.objSources(s.q.id, R.lastMe)
+          if src[1] then
+            tt.src = {}
+            for j = 1, math.min(#src, 4) do tt.src[j] = { src[j].text, yd(src[j].d) } end
+          end
+        end
         local pv = (pvp and (pvpIcon() .. ' ') or '') .. (ci ~= '' and (ci .. ' ') or '')
-        add({ num = i, color = k, first = i == 1, tt = tt, here = isHere or false, text = k[1] .. ' ' .. pv .. s.q.title .. whoTag(s), right = s.mine and R.valueText(v, true) or '',
-          ctext = k[1] .. ' ' .. pv .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s), objTip = objTip,
+        local lvl = lvlHere and ' |cff40ff60^lvl|r' or ''
+        if lvlHere then tt.lvl = true end
+        add({ num = i, color = k, first = i == 1, tt = tt, here = isHere or false, text = k[1] .. ' ' .. pv .. s.q.title .. whoTag(s) .. lvl, right = s.mine and R.valueText(v, true) or '',
+          ctext = k[1] .. ' ' .. pv .. s.q.title .. (ps and (' |cffffffff' .. ps .. '|r') or '') .. whoTag(s) .. lvl, objTip = objTip,
           sub = sub, right2 = isHere and yd(s.d) or '', p = s.p, label = s.q.title, qid = s.q.id, short = s.q.title,
           tip = k[5] .. ': ' .. s.q.title .. '\n' .. (s.kind == 'turnin' and ('Odevzdat u %s (%s)'):format(s.npc and npcName(s.npc) or '?', where) or ('Misto plneni: ' .. where))
             .. (isHere and '' or (', ' .. yd(s.d))) .. '\n' .. R.valueTip(v) })
@@ -1102,9 +1278,16 @@ local function collect()
       end
     end
   end
-  local maxXP = safeNum(pc(UnitXPMax, 'player'))
+  local maxXP = maxXP0
   local sum = steps > 0 and ('%d krok%s  -  odevzdanim ziskas |cffffd200+%d XP|r'):format(steps, steps == 1 and '' or (steps < 5 and 'y' or 'u'), sumXP) or ''
-  R.sumTip = (steps > 0 and maxXP and maxXP > 0) and ('Odevzdanim vsech kroku ziskas %d XP = %d %% levelu.'):format(sumXP, math.floor(sumXP / maxXP * 100 + 0.5)) or nil
+  -- do dalsiho levelu: kolik chybi a kterym krokem ho das
+  local lvlLine
+  if needXP and steps > 0 then
+    if lvlAt then lvlLine = ('Do levelu chybi %d XP - das ho %d. krokem (|cff40ff60^lvl|r).'):format(needXP, lvlAt)
+    else lvlLine = ('Do levelu chybi %d XP - odevzdanim das %d, zbyde %d XP.'):format(needXP, sumXP, needXP - sumXP) end
+    sum = sum .. (lvlAt and '  |cff40ff60(lvl)|r' or '')
+  end
+  R.sumTip = (steps > 0 and maxXP and maxXP > 0) and (('Odevzdanim vsech kroku ziskas %d XP = %d %% levelu.'):format(sumXP, math.floor(sumXP / maxXP * 100 + 0.5)) .. (lvlLine and ('\n' .. lvlLine) or '')) or nil
   return lines, sum, steps
 end
 
@@ -1132,15 +1315,17 @@ function R.refresh()
   for i, r in ipairs(frame.rows) do
     local l = lines[i + start]
     local h = l and ((l.small or l.msg) and (compact and 15 or 16) or (l.head and (compact and 18 or 22) or rh))
-    if not l or (maxH and -y + h + 8 > maxH) then r:Hide()
+    if not l or (maxH and -y + h + 8 + (l.num and 4 or 0) > maxH) then r:Hide()
     else
       shown = shown + 1
       r:SetWidth(w - 12)
+      -- mezera mezi kroky (misto cisel)
+      if l.num and shown > 1 then y = y - (compact and 2 or 4) end
       r:SetHeight(h) r:ClearAllPoints() r:SetPoint('TOPLEFT', 6, y) y = y - h
       r.p, r.label, r.tip, r.qid, r.detailFirst, r.tt = l.p, l.label, l.tip, l.qid, l.detailFirst, l.tt
       if compact and l.sub then r.tip = (l.sub .. (l.right2 and l.right2 ~= '' and (', ' .. l.right2) or '')) .. (l.tip and ('\n' .. l.tip) or '') end
       if l.objTip and l.objTip[1] then r.tip = (r.tip and (r.tip .. '\n') or '') .. '|cffffd200Cile:|r\n' .. table.concat(l.objTip, '\n') end
-      r.num:SetText(l.num and (l.num .. '.') or '')
+      r.num:SetText('')
       r.right:SetText(l.right or '') r.right2:SetText((not compact) and l.right2 or '')
       r.right:ClearAllPoints()
       if compact then r.right:SetPoint('RIGHT', -6, 0) else r.right:SetPoint('TOPRIGHT', -6, -3) end
@@ -1175,7 +1360,7 @@ function R.refresh()
         local dim = (l.here == false and not focus) and 0.55 or 1
         r.text:SetAlpha(dim) r.sub:SetAlpha(dim) r.right:SetAlpha(dim) r.num:SetAlpha(dim)
         local rw = math.max(r.right:GetStringWidth() or 0, compact and 0 or (r.right2:GetStringWidth() or 0))
-        local left = l.num and 28 or 10
+        local left = 10
         if compact then r.text:SetPoint('LEFT', left, 0) else r.text:SetPoint('TOPLEFT', left, -3) end
         r.text:SetText(compact and l.ctext or l.text) r.text:SetWidth(w - 24 - left - rw - 8)
         r.sub:ClearAllPoints() r.sub:SetPoint('BOTTOMLEFT', left, 3) r.sub:SetWidth(w - 24 - left - rw - 8)
@@ -1227,7 +1412,7 @@ local function buildIcon()
           if l.head then GameTooltip:AddLine(l.head, 0.4, 0.8, 1)
           else
             local sup = ns.Quests and ns.Quests.superId and ns.Quests.superId()
-            GameTooltip:AddDoubleLine((sup and l.qid == sup and '|cffffd200>|r ' or '') .. l.num .. '. ' .. (l.ctext or l.text), l.right2 or '', 1, 1, 1, 0.6, 0.6, 0.6)
+            GameTooltip:AddDoubleLine((sup and l.qid == sup and '|cffffd200>|r ' or '') .. (l.ctext or l.text), l.right2 or '', 1, 1, 1, 0.6, 0.6, 0.6)
           end
         elseif not l.small and l.text then
           n = n + 1

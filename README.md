@@ -48,6 +48,15 @@ tveho levelu, ktere jsou vylepsenim) a *Blizko* (questy a rare moby pobliz). Kli
 Klik na oblast = seznam questu v ni, klik na quest = detail (zadavatel, misto plneni, odevzdani, odmeny,
 reputace, cile, co je predtim, co quest odemkne a cely retez dal se souctem XP). Filtr *Moje questy* = quest log, klik na item = odkud pada, z jakeho questu je a kdo ho prodava. Pravy klik = sipka.
 
+V trase jsou kroky bez cisel (s mezerou mezi kroky). Elitni / skupinove questy maji lebku, dungeonove `[D]`;
+kdyz jsi sam, zaradi se az na konec. Pod souctem XP je "do levelu": kolik XP chybi a kterym odevzdanim das level
+(`^lvl` u kroku). U vzdalenych kroku v jine zone tooltip doporuci let (nejblizsi letiste u cile, upozorni na neobjevene -
+addon si objevena letiste pamatuje pri otevreni mapy letu). U kroku "Splnit" tooltip ukaze, kde cil ziskat: nejblizsi
+moby k zabiti a moby, ze kterych potrebny item pada (se sanci).
+
+Filtr *Suroviny* v Pruzkumniku: byliny a rudy pobliz podle tveho skillu Herbalism / Mining (barvy jako u receptu)
+a kde farmit materialy, ktere chybi do planu profese. Detail itemu ma i sekci *Kde farmit (tvuj level)*.
+
 V parte si addony posilaji quest log, takze trasa je spolecna: zahrne i questy, ktere ma jen partak,
 a u zastavky napise, kdo tam co odevzda nebo splni navic.
 
@@ -86,8 +95,18 @@ a **Recepty** (nove recepty pro tvuj skill):
 - **Cil skillu** - v planu tlacitka -5 / -1 / +1 / +5 / max: do kolika skillu plan pocitat.
 - Panely (profese, vendor, aukce) se samy umisti tam, kde neprekryvaji jina otevrena okna.
 - Panel jde presunout (tahem) a zvetsit (roh vpravo dole); dvojklik na roh = puvodni misto a velikost.
+- **Polotovar z aukce** - u materialu, ktery plan vyrabi z surovin, porovna cenu hotoveho kusu v aukci se surovinami.
 
 Kazdou davku spousti klik hrace (bez kliknuti vyrabet nejde). `/cm profese` vypise, co hra v okne profese vraci.
+
+## Obchodnik, uklid, trener
+
+- **Zasoby** - u obchodnika panel "Nakup": jidlo a piti pro tvuj level (piti jen pro manu), reagencie tridy
+  (Ankh, Rune of Teleportation, svicky, seminka...) a munice lovce podle zbrane; jednim klikem koupi, co chybi.
+- **Uklid batohu** - mince na okne obchodnika: tooltip ukaze, co prodat (sede, neumis nosit, horsi, itemy hotovych
+  questu) a co zahodit (hotove questy, nejdou prodat); klik proda. `/cm uklid` vypise totez do chatu.
+- **Trener tridy** - addon si u trenera zapamatuje kouzla, ktera jeste nemas; po levelu napise, co se muzes naucit
+  a za kolik (`/cm trener`).
 
 ## Data o mobech
 

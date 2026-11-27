@@ -1223,6 +1223,20 @@ function C.refresh()
         if m.bank > 0 then st = ('|cff66ccff%d v bance|r  '):format(m.bank) .. st end
         row(('%dx %s'):format(m.need, m.name), { icon = icn(m.link), right = st,
           link = m.link, tip = 'Klik = kde sehnat', onClick = function() findItem(m.link, m.name) end })
+        -- aukce: koupit polotovar hotovy, nebo vyrobit ze surovin? (ceny z posledni navstevy AH)
+        if m.sub and m.sub[1] and miss > 0 and mid then
+          local pI, raw, ok = C.ahPrice(mid), 0, true
+          for _, sb in ipairs(m.sub) do
+            local pr = C.ahPrice(itemId(sb.link))
+            if pr then raw = raw + pr * sb.need / math.max(1, m.craft or 1) else ok = false end
+          end
+          if pI and ok and raw > 0 then
+            local better = pI < raw * 0.95
+            row(better and ('|cffffd200AH: koupit %s hotove je levnejsi|r'):format(m.name) or '|cff40c040AH: vyrobit ze surovin je levnejsi|r',
+              { indent = 14, right = ('%s vs %s'):format(shortCoin(pI), shortCoin(raw)),
+                tip = ('Za kus: hotovy %s z aukce, suroviny %s.'):format(shortCoin(pI), shortCoin(raw)) })
+          end
+        end
         for _, sb in ipairs(m.sub or {}) do
           local sbank = bankCount(itemId(sb.link))
           local sm = sb.need - sb.have - sbank
@@ -1342,17 +1356,92 @@ end
 
 local mf
 local function moneyStr(c) return ns.coin and ns.coin(c) or tostring(c) end
+-- zasoby u obchodnika: jidlo / piti pro tvuj level, reagencie tridy, munice lovce
+-- kategorie = stupne { id, level }; vezme se nejlepsi stupen <= tvuj level, ktery obchodnik prodava
+local FOODS = {
+  { 4540, 1 }, { 4541, 5 }, { 4542, 15 }, { 4544, 25 }, { 4601, 35 }, { 8950, 45 },        -- chleba
+  { 117, 1 }, { 2287, 5 }, { 3770, 15 }, { 3771, 25 }, { 4599, 35 }, { 8952, 45 },        -- maso
+  { 4536, 1 }, { 4537, 5 }, { 4538, 15 }, { 4539, 25 }, { 4602, 35 }, { 8953, 45 },       -- ovoce
+  { 2070, 1 }, { 414, 5 }, { 422, 15 }, { 1707, 25 }, { 3927, 35 }, { 8932, 45 },         -- syr
+  { 787, 1 }, { 4592, 5 }, { 4593, 15 }, { 4594, 25 }, { 21552, 35 }, { 8957, 45 },       -- ryby
+  { 4604, 1 }, { 4605, 5 }, { 4606, 15 }, { 4607, 25 }, { 4608, 35 }, { 8948, 45 },       -- houby
+}
+local SUPPLY = {
+  water = { label = 'piti', want = 20, mana = true, tiers = { { 159, 1 }, { 1179, 5 }, { 1205, 15 }, { 1708, 25 }, { 1645, 35 }, { 8766, 45 } } },
+  food = { label = 'jidlo', want = 20, tiers = FOODS },
+  arrow = { label = 'sipy', want = 1000, ammo = 'arrow', tiers = { { 2512, 1 }, { 2515, 10 }, { 3030, 25 }, { 11285, 40 } } },
+  bullet = { label = 'naboje', want = 1000, ammo = 'bullet', tiers = { { 2516, 1 }, { 2519, 10 }, { 3033, 25 }, { 11284, 40 } } },
+}
+local REAG = {
+  MAGE = { { 17056, 12, 10 }, { 17031, 20, 5 }, { 17032, 40, 5 }, { 17020, 56, 20 } },
+  PRIEST = { { 17028, 48, 10 }, { 17029, 56, 10 } },
+  PALADIN = { { 17033, 30, 5 }, { 21177, 52, 40 } },
+  SHAMAN = { { 17030, 30, 5 } },
+  DRUID = { { 17034, 20, 2, 'seed' }, { 17035, 30, 2, 'seed' }, { 17036, 40, 2, 'seed' }, { 17037, 50, 2, 'seed' }, { 17038, 60, 2, 'seed' },
+    { 17021, 50, 10 }, { 17026, 60, 10 } },
+  ROGUE = { { 5140, 22, 10 } },
+  WARLOCK = { { 5565, 50, 2 }, { 16583, 60, 2 } },
+}
+local function ammoKind()
+  local link = GetInventoryItemLink and safe(pc(GetInventoryItemLink, 'player', 18))
+  if type(link) ~= 'string' then return nil end
+  local sub = select(7, pc(GetItemInfoInstant or function() end, link))
+  sub = safeNum(sub)
+  if sub == 3 then return 'bullet' elseif sub == 2 or sub == 18 then return 'arrow' end
+  return nil
+end
+-- co koupit u tohoto obchodnika: { [id] = { name, want, for_, have } }
+function C.supplyWants(sold)
+  local out = {}
+  if ns.db and ns.db.supplies == false then return out end
+  local L = safeNum(pc(UnitLevel, 'player')) or 1
+  local mana = safeNum(pc(UnitPowerType, 'player')) == 0
+  local _, cls = pc(UnitClass, 'player')
+  local ak = select(2, pc(UnitClass, 'player')) == 'HUNTER' and ammoKind()
+  local function pick(tiers)
+    local best, bl
+    for _, t in ipairs(tiers) do
+      if sold[t[1]] and t[2] <= L and (not bl or t[2] > bl) then best, bl = t[1], t[2] end
+    end
+    return best, bl
+  end
+  for key, c in pairs(SUPPLY) do
+    if (not c.mana or mana) and (not c.ammo or c.ammo == ak) then
+      local id, bl = pick(c.tiers)
+      if id then
+        -- uz mas: vsechno ze stejne kategorie o max. 1 stupen horsi
+        local have = 0
+        for _, t in ipairs(c.tiers) do if t[2] >= bl - 10 then have = have + itemCount(t[1]) end end
+        local want = (ns.db and ns.db['supply_' .. key]) or c.want
+        out[id] = { name = itemName(id), want = want, have = have, for_ = 'zasoby (' .. c.label .. ')' }
+      end
+    end
+  end
+  local seed
+  for _, r in ipairs(REAG[cls] or {}) do
+    if r[2] <= L and sold[r[1]] then
+      if r[4] == 'seed' then if not seed or r[2] > seed[2] then seed = r end
+      else out[r[1]] = { name = itemName(r[1]), want = r[3], for_ = 'reagencie' } end
+    end
+  end
+  if seed then out[seed[1]] = { name = itemName(seed[1]), want = seed[3], for_ = 'reagencie' } end
+  return out
+end
 local function merchantList()
   local shop = ns.db and ns.db.craftShop
-  if not (shop and shop.items) then return {} end
   local out = {}
   local NI, IL, II = api('GetMerchantNumItems'), api('GetMerchantItemLink'), api('GetMerchantItemInfo')
   if not (NI and IL) then return out end
+  local items = {}
+  for id, e in pairs(shop and shop.items or {}) do items[id] = e end
+  local sold = {}
+  for i = 1, safeNum(pc(NI)) or 0 do local id = itemId(safe(pc(IL, i))) if id then sold[id] = true end end
+  for id, e in pairs(C.supplyWants(sold)) do if not items[id] then items[id] = e end end
   for i = 1, safeNum(pc(NI)) or 0 do
     local id = itemId(safe(pc(IL, i)))
-    local e = id and shop.items[id]
+    local e = id and items[id]
     if e then
-      local have = itemCount(id)
+      local have = e.have or itemCount(id)
       local need = e.want - have
       if need > 0 then
         local price, bundle = 0, 1
@@ -1398,10 +1487,10 @@ function C.merchant()
   if not mf then buildMerchant() end
   local lines, total = {}, 0
   for _, e in ipairs(list) do
-    lines[#lines + 1] = ('%dx %s  %s'):format(e.buys * e.bundle, e.name, moneyStr(e.cost))
+    lines[#lines + 1] = ('%dx %s |cff9aa6b8(%s)|r  %s'):format(e.buys * e.bundle, e.name, e.for_ or 'profese', moneyStr(e.cost))
     total = total + e.cost
   end
-  mf.title:SetText('Material na profese')
+  mf.title:SetText('Nakup: zasoby a material')
   mf.text:SetText(table.concat(lines, '\n'))
   mf.btn.t:SetText('Koupit vse  ' .. moneyStr(total))
   local money = safeNum(pc(GetMoney)) or 0
@@ -1440,7 +1529,7 @@ local mev = CreateFrame('Frame')
 for _, e in ipairs({ 'MERCHANT_SHOW', 'MERCHANT_UPDATE', 'MERCHANT_CLOSED', 'BAG_UPDATE_DELAYED' }) do pcall(mev.RegisterEvent, mev, e) end
 mev:SetScript('OnEvent', function(_, e)
   if e == 'MERCHANT_CLOSED' then if mf then mf:Hide() end return end
-  if ns.db and ns.db.craftHelp == false then return end
+  if ns.db and ns.db.craftHelp == false and ns.db.supplies == false then return end
   if e == 'BAG_UPDATE_DELAYED' and not (mf and mf:IsShown()) then return end
   if C_Timer then C_Timer.After(0.15, function() pcall(C.merchant) end) else pcall(C.merchant) end
 end)

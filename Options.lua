@@ -536,6 +536,12 @@ PAGES[#PAGES + 1] = { key = 'items', name = 'Veci a questy', icon = 'Interface\\
     function() return db.autoRepair ~= false end, function(v) db.autoRepair = (not v) and false or nil end))
   p.add(checkbox(p.c, 'Automaticky prodat sede veci', 'U obchodnika proda sedy junk. Ostatni oznacene veci prodas minci na okne obchodnika.',
     function() return db.autoSell ~= false end, function(v) db.autoSell = (not v) and false or nil end))
+  p.add(checkbox(p.c, 'Nabizet zasoby (jidlo, piti, reagencie, munice)', 'U obchodnika ukaze panel "Nakup" s jidlem a pitim pro tvuj level, '
+    .. 'reagenciemi tvoji tridy a munici lovce (do 20 ks jidla / piti). Koupis jednim klikem.',
+    function() return db.supplies ~= false end, function(v) db.supplies = (not v) and false or nil end))
+  p.add(checkbox(p.c, 'Pripominat trenera tridy', 'Po novem levelu napise, ktera kouzla se uz muzes u trenera naucit a za kolik '
+    .. '(seznam si addon zapamatuje pri navsteve trenera).',
+    function() return db.trainerTip ~= false end, function(v) db.trainerTip = (not v) and false or nil end))
   p.section('Vybaveni', 'Addon hodnoti itemy podle vah statu tveho buildu (zalozka Build).')
   p.add(checkbox(p.c, 'Sipky a hodnoceni v batohu a tooltipu', 'Zelena sipka = lepsi pro tebe, v tooltipu o kolik %.',
     function() return db.gearTips ~= false end, function(v) db.gearTips = (not v) and false or nil
@@ -726,6 +732,8 @@ PAGES[#PAGES + 1] = { key = 'explore', name = 'Pruzkumnik', icon = 'Interface\\I
     filter('Blizko', 80, 'Blizko', function() return ns.Explore.nearby() end, 'Questy k vzeti a rare moby pobliz.'),
     filter('Moje questy', 100, 'Moje questy', function() return ns.Explore.active() end,
       'Questy v logu: hotove k odevzdani nahore, pak rozpracovane podle vzdalenosti. Klik = detail (cile, retez, co odemkne).'),
+    filter('Suroviny', 90, 'Suroviny', function() return ns.Explore.gather() end,
+      'Byliny a rudy pobliz podle tveho skillu (Herbalism / Mining) a kde farmit materialy, ktere chybi do planu profese.'),
     button(p.c, 'Trasa questu', 110, function() if ns.Route then ns.Route.toggle() end end, 'Okno s trasou questu (/cm trasa).'))
   p.add(head, 6)
   for i = 1, 30 do

@@ -34,3 +34,4 @@ Quests.lua
 Route.lua
 Explore.lua
 Talents.lua
+Trainer.lua
