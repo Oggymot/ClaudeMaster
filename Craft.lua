@@ -950,16 +950,23 @@ function C.refresh()
   local PWORD = { Tailoring = 'Tailor', Blacksmithing = 'Blacksmith', Leatherworking = 'Leatherworker', Alchemy = 'Alchemist',
     Enchanting = 'Enchanter', Engineering = 'Engineer', Cooking = 'Cook', ['First Aid'] = 'First Aid', Fishing = 'Fisherman',
     Herbalism = 'Herbalist', Mining = 'Miner', Skinning = 'Skinner', Jewelcrafting = 'Jewelcrafter' }
-  local RANKS = { [75] = { 'Journeyman', 50, 10 }, [150] = { 'Expert', 125, 20 }, [225] = { 'Artisan', 200, 35 } }
+  -- Forever: dalsi rank az na stropu (overeno u Artisanu - Georgio Bolero ho na 205/225 nenabidl); level jako v classicu
+  local RANKS = { [75] = { 'Journeyman', 75, 10 }, [150] = { 'Expert', 150, 20 }, [225] = { 'Artisan', 225, 35 } }
   local rankShown = false
   local function rankRows()
     local rk = RANKS[s.max]
-    if rankShown or not rk or s.rank < rk[2] then return end
+    if rankShown or not rk then return end
     rankShown = true
     local lvl = safeNum(pc(UnitLevel, 'player')) or 1
+    if s.rank < rk[2] then
+      -- jeste ne: rict od kdy (at hrac nehleda trenera zbytecne)
+      row(('%s %saz na %d (strop)|r'):format(rk[1], G, rk[2]), { icon = TRAIN,
+        tip = ('Na Foreveru se %s uci az na stropu ranku (%d). Do te doby zlute recepty a patterny.'):format(rk[1], rk[2]) })
+      return
+    end
     row(('|cff40ff60Muzes se naucit %s|r %s(strop %d)|r'):format(rk[1], G, s.max + 75), { icon = TRAIN,
       right = lvl >= rk[3] and '' or ('|cffff8855od lvl %d|r'):format(rk[3]),
-      tip = ('%s se uci od skillu %d a levelu %d. Novy rank zvedne strop skillu a trener pak nabidne nove recepty.'):format(rk[1], rk[2], rk[3]) })
+      tip = ('%s: na stropu ranku (%d) a od levelu %d. Novy rank zvedne strop skillu a trener pak nabidne nove recepty.'):format(rk[1], rk[2], rk[3]) })
     if rk[1] == 'Journeyman' then return end
     local word = PWORD[s.name]
     local myF = safe(pc(UnitFactionGroup, 'player')) == 'Horde' and 'H' or 'A'
