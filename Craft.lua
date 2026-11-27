@@ -817,9 +817,9 @@ end
 local function ppt(r, plain)
   if not (r and r.ppt) then return '' end
   local t
-  if r.ppt <= -1 then t = '|cff40ff60zisk ~' .. shortCoin(-r.ppt) .. '|r'
+  if r.ppt <= -1 then t = '|cff40ff60zisk cca ' .. shortCoin(-r.ppt) .. '|r'
   elseif r.ppt < 1 then t = 'zdarma'
-  else t = '~' .. shortCoin(r.ppt) end
+  else t = 'cca ' .. shortCoin(r.ppt) end
   return plain and (t .. '/bod') or (' |cff9aa6b8' .. t .. '|cff9aa6b8/bod|r')
 end
 local function findItem(link, name)
@@ -943,8 +943,8 @@ function C.refresh()
   local function planSummary()
     if segs[1] then
       row(('|cffffffff%d -> %d|r  %s%d vyrob|r'):format(segs[1].from, segs[#segs].to, G, crafts), {
-        right = total < 0 and ('|cff40ff60zisk ~' .. shortCoin(-total) .. '|r') or ('|cffffd200~' .. shortCoin(total) .. '|r'),
-        tip = ('Material ~%s, prodej vyrobku vendorovi ~%s. Barvy: %s.'):format(shortCoin(matT), shortCoin(sellT),
+        right = total < 0 and ('|cff40ff60zisk cca ' .. shortCoin(-total) .. '|r') or ('|cffffd200cca ' .. shortCoin(total) .. '|r'),
+        tip = ('Material cca %s, prodej vyrobku vendorovi cca %s. Barvy: %s.'):format(shortCoin(matT), shortCoin(sellT),
           md == 'o' and 'jen oranzove' or (md == 'oy' and 'oranzove + zlute' or 'vse')) })
     else
       row(G .. 'Zadny vybrany recept uz nedava skill.|r', { icon = TRAIN })
@@ -983,7 +983,7 @@ function C.refresh()
       if lim and i > lim then break end
       row(col(p2.r), { icon = p2.r.icon or icn(p2.r.link), link = p2.r.link,
         right = ('|cff40ff60+%s|r %s/ks %s|r'):format(shortCoin(p2.profit), G, p2.ah and '|cffffd200aukce' or 'vendor'),
-        tip = ('Prodej ~%s (%s), material ~%s. Material mas na %d ks.%s'):format(shortCoin(p2.price), p2.ah and 'aukce po 5% poplatku' or 'vendor',
+        tip = ('Prodej cca %s (%s), material cca %s. Material mas na %d ks.%s'):format(shortCoin(p2.price), p2.ah and 'aukce po 5% poplatku' or 'vendor',
           shortCoin(p2.r.mat or 0), p2.r.avail, p2.ah and '' or ' Cenu v aukci addon nezna - vyhledej vyrobek v aukci.') })
     end
     if not profits[1] then row(G .. 'Zadny recept neni ziskovy (podle znamych cen). Vyhledej vyrobky v aukci.|r') end
@@ -1056,7 +1056,7 @@ function C.refresh()
       local on = C.selected(s, r)
       local rem = C.remaining(r, s.rank, md)
       row(on and col(r) or ('|cff808080' .. r.name .. '|r'), { icon = on and 'Interface\\Buttons\\UI-CheckBox-Check' or 'Interface\\Buttons\\UI-CheckBox-Up',
-        right = G .. ('~%d ks|r'):format(math.floor(rem + 0.5)) .. ppt(r),
+        right = G .. ('cca %d ks|r'):format(math.floor(rem + 0.5)) .. ppt(r),
         link = r.link, tip = 'Klik = pridat / odebrat z planu', onClick = function() C.toggle(s, r) C.refresh() end })
     end
     head(segs[1] and ('Plan  %d -> %d'):format(segs[1].from, segs[#segs].to) or 'Plan')
@@ -1469,7 +1469,7 @@ function C.ahShow()
         local q = math.min(left, e.q)
         cost, left = cost + q * e.u, left - q
       end
-      lines[#lines + 1] = ('|cffffd200Plan potrebuje %d|r (mas %d): koupit %d ks ~ %s%s'):format(pm.need, have, need - math.max(0, left),
+      lines[#lines + 1] = ('|cffffd200Plan potrebuje %d|r (mas %d): koupit %d ks za cca %s%s'):format(pm.need, have, need - math.max(0, left),
         shortCoin(cost), left > 0 and (' |cffff8855(v aukci chybi %d)|r'):format(left) or '')
       local vp = ns.MobDB and ns.MobDB.vendorPrice and ns.MobDB.vendorPrice(id)
       if vp then
@@ -1483,7 +1483,7 @@ function C.ahShow()
   local co = ns.db.craftOut and ns.db.craftOut[id]
   if co then
     local net = math.floor(low * 0.95)
-    lines[#lines + 1] = ('Vyrobek: aukce ~%s (po poplatku), vendor %s, material %s'):format(shortCoin(net), shortCoin(co.v or 0), shortCoin(co.m or 0))
+    lines[#lines + 1] = ('Vyrobek: aukce cca %s (po poplatku), vendor %s, material %s'):format(shortCoin(net), shortCoin(co.v or 0), shortCoin(co.m or 0))
     lines[#lines + 1] = net > (co.v or 0) and '|cff40c040Vyplati se prodat v aukci.|r' or '|cffffd200Vyplati se spis vendor.|r'
   end
   if not (pm or co) then lines[#lines + 1] = '|cff9aa6b8Cena ulozena - plan profesi ji pouzije.|r' end

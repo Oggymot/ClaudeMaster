@@ -517,7 +517,7 @@ local function infoLines(c)
     local need, specific = ns.Mem.needMana(c.hostile and ns.Immune.tname or nil, c.group)
     -- jen kdyz mana nestaci (jinak zbytecny radek)
     if need and c.mana < need * 1.15 + 0.05 then
-      lines[#lines + 1] = ('|cffff7070Na %s boj ~%d%% many (mas %d%%)|r'):format(specific and 'tento' or 'dalsi',
+      lines[#lines + 1] = ('|cffff7070Na %s boj cca %d%% many (mas %d%%)|r'):format(specific and 'tento' or 'dalsi',
         math.floor(need * 100 + 0.5), math.floor(c.mana * 100))
     end
   end
@@ -574,7 +574,7 @@ local function infoLines(c)
       t = t .. SEP .. (tp >= 85 and '|cffff5555' or (tp >= 60 and '|cffffcc00' or '|cff9aa6b8')) .. 'threat ' .. tp .. '%|r'
     end
     if c.ttd then t = t .. SEP .. (c.ttd < 1 and '|cffffffffpadne kazdou chvili|r' or ('padne za |cffffffff%ds|r'):format(math.floor(c.ttd + 0.5)))
-    elseif c.ttdMem then t = t .. SEP .. ('padne za ~%ds'):format(math.floor(c.ttdMem)) end
+    elseif c.ttdMem then t = t .. SEP .. ('padne za cca %ds'):format(math.floor(c.ttdMem)) end
     local mt = UI.mobText(c)
     if mt then t = t .. SEP .. mt end
     lines[#lines + 1] = t
@@ -620,7 +620,7 @@ local function infoLines(c)
   if c.barrierUp then st[#st + 1] = '|cff99c8ffBarrier|r' end
   if c.php and c.inCombat and c.php < 75 then
     local col = c.hpLow35 and '|cffff4444' or (c.hpLow50 and '|cffffcc00' or '|cff66ee77')
-    st[#st + 1] = col .. 'HP ~' .. math.floor(c.php) .. '%|r'
+    st[#st + 1] = col .. 'HP cca ' .. math.floor(c.php) .. '%|r'
   end
   if #st > 0 then lines[#lines + 1] = table.concat(st, SEP) end
   local out = table.concat(lines, '\n')

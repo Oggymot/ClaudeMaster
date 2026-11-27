@@ -107,7 +107,7 @@ function X.leveling()
     local d = me and R().dist(me, z.p.w)
     out[#out + 1] = { icon = ICON.zone, title = '|cffffd200' .. R().mapName(z.map) .. '|r',
       sub = ('%d questu pro tvuj level%s'):format(z.n, maxXP > 0 and (', cca %.1f levelu'):format(z.xp / maxXP) or ''),
-      right = ('|cffffd200~%d XP|r'):format(z.xp), right2 = yd(d), bar = z.xp / top,
+      right = ('|cffffd200cca %d XP|r'):format(z.xp), right2 = yd(d), bar = z.xp / top,
       p = z.p, open = function() return X.zone(z.map) end, tip = 'Klik = questy v teto oblasti, pravy klik = sipka.' }
   end
   if #out == 0 then out[1] = { text = '|cff9aa6b8Zadne questy pro tvuj level nenalezeny.|r' } end
@@ -473,7 +473,7 @@ function X.quest(qid)
   if #chain > 1 then
     local sum = 0
     for _, q in ipairs(chain) do local r = D.qrw[q] sum = sum + ((type(r) == 'table' and r[2]) or 0) end
-    out[#out + 1] = { head = ('Cely retez dal: %d kroku, ~%d XP'):format(#chain, sum) }
+    out[#out + 1] = { head = ('Cely retez dal: %d kroku, cca %d XP'):format(#chain, sum) }
     for i, q in ipairs(chain) do local r = qrow(q, me, i .. '. krok') if r then out[#out + 1] = r end end
   end
   return out, info[1]
@@ -670,7 +670,7 @@ function X.npc(id)
   if #fight > 0 or money then out[#out + 1] = { head = 'Boj a odmena' } end
   for _, f in ipairs(fight) do out[#out + 1] = { icon = 'Interface\\Icons\\Ability_Warrior_BattleShout', title = f.t, sub = f.s, tip = f.s } end
   if money and money.avg > 0 then
-    out[#out + 1] = { icon = 'Interface\\Icons\\INV_Misc_Coin_02', title = 'Penize ~' .. MD.coin(money.avg),
+    out[#out + 1] = { icon = 'Interface\\Icons\\INV_Misc_Coin_02', title = 'Penize cca ' .. MD.coin(money.avg),
       sub = ('%s - %s, z %d zabiti'):format(MD.coin(money.min), MD.coin(money.max), money.n) }
   end
   -- kde: zony a pocet spawnu
