@@ -1226,7 +1226,9 @@ function G.refreshBags()
     mark(b, up)
     sellMark(b, show and key and not up and G.sellMap and G.sellMap[key])
     giftMark(b, show and key and not up and G.giftMap and G.giftMap[key])
-    questMark(b, key and not up and G.questMap and G.questMap[key])
+    -- hotovy quest: jen v tooltipu (bez sedeho vykricniku)
+    local qm = key and not up and G.questMap and G.questMap[key]
+    questMark(b, qm and not qm.done and qm)
   end
   eachButton(_G.ContainerFrameCombinedBags, upd)
   for i = 1, 13 do eachButton(_G['ContainerFrame' .. i], upd) end
