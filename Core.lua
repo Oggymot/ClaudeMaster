@@ -807,24 +807,35 @@ local function newProbe(n, def)
     local clip = CreateFrame('Frame', nil, b)
     clip:SetPoint('TOPLEFT', b, 'TOPLEFT') clip:SetPoint('BOTTOMRIGHT', b:GetStatusBarTexture(), 'BOTTOMRIGHT')
     clip:SetScript('OnSizeChanged', function() P.fired[i] = true end)
+    P.clips = P.clips or {}
+    P.clips[i] = clip
     if i == CTRL then P.ctrl = b else P.bars[i] = b end
   end
+  -- neviditelne ramecky si hra nemusi sama prepocitat: dotaz na rozmer prepocet vynuti (a spusti OnSizeChanged)
+  local function resolve() for _, c in ipairs(P.clips) do pcall(c.GetWidth, c) end end
   function P.reset() P.valid = false P.phase = 0 end
   function P.step()
     if P.ok == nil then   -- samotest: 1 -> 2 musi zmenit velikost
       local b = P.bars[1]
       if P.phase == 0 then b:SetMinMaxValues(0, 2) b:SetValue(1) P.phase = -1 return end
-      if P.phase == -1 then wipe(P.fired) b:SetValue(2) P.phase = -2 return end
+      if P.phase == -1 then resolve() wipe(P.fired) b:SetValue(2) resolve() P.phase = -2 return end
+      resolve()
       P.ok = P.fired[1] == true P.phase = 0
+      if not P.ok then P.failAt = GetTime() P.fails = (P.fails or 0) + 1 end
       return
     end
-    if not P.ok then return end
+    -- samotest selhal: zkusit znovu za 5 s (ne vzdat naporad)
+    if not P.ok then
+      if GetTime() - (P.failAt or 0) > 5 then P.ok = nil P.phase = 0 end
+      return
+    end
     if P.phase == 0 then
       local okB, go = pcall(P.begin, P)
       if not okB or not go then P.valid = false return end
       P.tok = ns.T and ns.T.token
       for i, b in ipairs(P.bars) do pcall(P.prep, P, i, b) end
       P.ctrl:SetMinMaxValues(0, 2) P.ctrl:SetValue(1)
+      resolve()
       P.phase = 1
     elseif P.phase == 1 then
       wipe(P.fired)
@@ -833,8 +844,10 @@ local function newProbe(n, def)
         if not pcall(P.apply, P, i, b) then P.applyFail = true end
       end
       P.ctrl:SetValue(2)
+      resolve()
       P.phase = 2
     else
+      resolve()
       P.phase = 0
       -- mezitim se zmenil cil: cteni patri staremu cili, zahodit
       if P.tok ~= (ns.T and ns.T.token) then return end
@@ -1030,8 +1043,9 @@ function ns.hpProbeInfo()
   for i = 1, #P.lines do bits[i] = P.fired[i] and '1' or '0' end
   local hp, mx = pc(UnitHealth, 'player'), pc(UnitHealthMax, 'player')
   local raw = pc(UnitHealthPercent, 'player')
-  local ovr = (_G.UnitHealthPercent ~= UnitHealthPercent) and ' PREPSANO-JINYM-ADDONEM' or ''
-  return ('sc=%s ok=%s valid=%s age=%.1f bits=%s x15=%s ctrl=%s bad2=%s fix=%s/%s hiMax=%s raw=%s hp=%s/%s'):format(tostring(ns.db and ns.db.hpScale),
+  local SP = ns.scaleProbe
+  local ovr = (SP and (' scaleOk=' .. tostring(SP.ok)) or '') .. ((_G.UnitHealthPercent ~= UnitHealthPercent) and ' PREPSANO-JINYM-ADDONEM' or '')
+  return ('fails=%s sc=%s ok=%s valid=%s age=%.1f bits=%s x15=%s ctrl=%s bad2=%s fix=%s/%s hiMax=%s raw=%s hp=%s/%s'):format(tostring(P.fails), tostring(ns.db and ns.db.hpScale),
     tostring(P.ok), tostring(P.valid), GetTime() - (P.at or 0), table.concat(bits), tostring(P.fired[#P.lines + 1] == true),
     tostring(P.fired[#P.lines + 2] == true), tostring(P.bad2), tostring(ns.hpScaleFix), tostring(ns.hpResets), tostring(P.hiMax),
     issecret(raw) and 'secret' or tostring(raw), issecret(hp) and 'secret' or tostring(hp), issecret(mx) and 'secret' or tostring(mx)) .. ovr
